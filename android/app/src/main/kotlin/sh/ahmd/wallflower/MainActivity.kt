@@ -4,24 +4,23 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import sh.ahmd.wallflower.protocol.VERSION
+import androidx.activity.viewModels
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import sh.ahmd.wallflower.session.Session
+import sh.ahmd.wallflower.session.TcpTransport
+import sh.ahmd.wallflower.ui.WallflowerApp
+
+class SessionViewModel : ViewModel() {
+    val session = Session(TcpTransport(), viewModelScope)
+}
 
 class MainActivity : ComponentActivity() {
+    private val vm: SessionViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent {
-            Box(Modifier.fillMaxSize().background(Color(0xFF1E2326)), contentAlignment = Alignment.Center) {
-                Text("wallflower · protocol v$VERSION", color = Color(0xFFD3C6AA), fontFamily = FontFamily.Monospace)
-            }
-        }
+        setContent { WallflowerApp(vm.session) }
     }
 }

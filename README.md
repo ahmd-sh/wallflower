@@ -10,8 +10,9 @@ phone app ──ssh stdio──▶ wallflower serve (one per connection) ──t
 
 ## Status
 
-The gateway works end to end. The Android app (`android/`) has its protocol
-module done; the UI is next. The wire format is
+The gateway works end to end. The Android app (`android/`) renders live panes
+with libghostty-vt, with window tabs, native scrollback and a composer; it
+connects over a development TCP transport for now, SSH is next. The wire format is
 [docs/protocol.md](docs/protocol.md), pinned by golden frames in `testdata/`
 that both the Go and Kotlin tests check.
 
@@ -25,7 +26,13 @@ bin/wallflower watch -output=false                            # raw control-mode
 Requires tmux 3.8 (JSON layouts, floating panes).
 
 ```sh
+scripts/build-libghostty.sh          # once, and after bumping GHOSTTY_COMMIT
 cd android && ./gradlew :protocol:test :app:assembleDebug
+./gradlew :terminal:connectedDebugAndroidTest   # needs a device or emulator
+
+# develop against an emulator, with a throwaway tmux server
+bin/wallflower listen -L demo        # loopback only, no auth
+adb reverse tcp:41777 tcp:41777
 ```
 
 ## tmux control mode notes
