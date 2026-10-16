@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -42,10 +43,11 @@ type gateway struct {
 	tmux       *tmux.Client
 	out        *outbox
 	cols, rows int
-	session    *tmux.Session    // last snapshot
-	panes      map[string]*pane // panes the client has open
-	zoomed     map[string]bool  // windows the client zoomed -> zoom state before
-	group      string           // the session the client asked for; its own session is grouped with it
+	session    *tmux.Session     // last snapshot
+	panes      map[string]*pane  // panes the client has open
+	zoomed     map[string]bool   // windows the client zoomed -> zoom state before
+	group      string            // the session the client asked for; its own session is grouped with it
+	programs   map[string]string // tty and versioned command -> the name it was run as
 	lastState  []byte
 	dirty      bool
 	exitReason string
@@ -63,7 +65,7 @@ type pane struct {
 func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	g := &gateway{out: newOutbox(out), panes: map[string]*pane{}, zoomed: map[string]bool{}}
+	g := &gateway{out: newOutbox(out), panes: map[string]*pane{}, zoomed: map[string]bool{}, programs: map[string]string{}}
 	defer g.out.close(2 * time.Second)
 
 	r := protocol.NewReader(in)
@@ -277,11 +279,22 @@ func (g *gateway) handle(f protocol.Frame) error {
 			return nil
 		}
 		g.claimSize()
-		cmd := "send-keys -t " + m.Pane
+		cmd := "send-keys -t " + m.Pane + " --"
 		for _, k := range m.Keys {
 			cmd += " " + tmux.Quote(k)
 		}
 		return g.run(cmd)
+
+	case *protocol.Paste:
+		if err := checkID(paneID, m.Pane); err != nil {
+			return err
+		}
+		if m.Text == "" {
+			return nil
+		}
+		g.claimSize()
+		buf := fmt.Sprintf("wallflower-%d", os.Getpid())
+		return g.run(fmt.Sprintf("set-buffer -b %[1]s -- %[2]s ; paste-buffer -p -d -b %[1]s -t %[3]s", buf, tmux.QuoteText(m.Text), m.Pane))
 
 	case *protocol.Select:
 		switch {
@@ -377,7 +390,7 @@ func (g *gateway) sendState() {
 		return
 	}
 	g.session = s
-	st := stateOf(s)
+	st := stateOf(s, g.program)
 	st.Name = g.group // the client's own session is an implementation detail
 	if b, _ := protocol.AppendJSON(nil, st); !bytes.Equal(b, g.lastState) {
 		g.out.push(b)
@@ -405,7 +418,7 @@ func (g *gateway) sendState() {
 	}
 }
 
-func stateOf(s *tmux.Session) protocol.State {
+func stateOf(s *tmux.Session, program func(tmux.Pane) string) protocol.State {
 	st := protocol.State{Session: s.ID, Name: s.Name, Windows: []protocol.Window{}}
 	for _, w := range s.Windows {
 		pw := protocol.Window{
@@ -416,12 +429,49 @@ func stateOf(s *tmux.Session) protocol.State {
 			pw.Panes = append(pw.Panes, protocol.Pane{
 				ID: p.ID, Index: p.Index, Active: p.Active, X: p.Left, Y: p.Top,
 				Cols: p.Width, Rows: p.Height, Floating: p.Floating, Z: p.Z, Alt: p.AltScreen,
-				Agent: p.Agent, Title: p.Title, Path: p.Path, Command: p.Command,
+				Agent: p.Agent, Title: p.Title, Path: p.Path, Command: program(p),
 			})
 		}
 		st.Windows = append(st.Windows, pw)
 	}
 	return st
+}
+
+// versioned matches a command that is a version number: some tools install
+// as .../name/versions/1.2.3 and run that file, so tmux, which names the
+// executable, reports the version (Claude Code shows up as 2.1.300).
+var versioned = regexp.MustCompile(`^v?[0-9]+(\.[0-9]+)+$`)
+
+// program is the pane's foreground program, by the name it was run as when
+// tmux only knows its version.
+func (g *gateway) program(p tmux.Pane) string {
+	if !versioned.MatchString(p.Command) || p.TTY == "" {
+		return p.Command
+	}
+	key := p.TTY + " " + p.Command
+	name, ok := g.programs[key]
+	if !ok {
+		if name = foreground(p.TTY); name == "" {
+			name = p.Command
+		}
+		g.programs[key] = name
+	}
+	return name
+}
+
+// foreground is the name the tty's foreground process was run as (argv[0]).
+func foreground(tty string) string {
+	out, err := exec.Command("ps", "-o", "pid=,tpgid=,comm=", "-t", strings.TrimPrefix(tty, "/dev/")).Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 3 && f[0] == f[1] {
+			return strings.TrimPrefix(filepath.Base(strings.Join(f[2:], " ")), "-")
+		}
+	}
+	return ""
 }
 
 // claimSize makes this client the window's size again if another client

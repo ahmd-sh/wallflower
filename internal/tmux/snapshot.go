@@ -39,6 +39,7 @@ type Pane struct {
 	Title     string `json:"title"`
 	Path      string `json:"path"`
 	Command   string `json:"command"`
+	TTY       string `json:"tty"`
 }
 
 // Tab-separated so names, titles and paths can contain spaces.
@@ -51,7 +52,7 @@ var (
 		"#{pane_id}", "#{window_id}", "#{pane_index}", "#{pane_active}",
 		"#{pane_width}", "#{pane_height}", "#{pane_left}", "#{pane_top}",
 		"#{pane_floating_flag}", "#{alternate_on}", "#{@agent_state}",
-		"#{pane_title}", "#{pane_current_path}", "#{pane_current_command}",
+		"#{pane_title}", "#{pane_current_path}", "#{pane_current_command}", "#{pane_tty}",
 	}, "\t")
 )
 
@@ -88,7 +89,7 @@ func (c *Client) Snapshot() (*Session, error) {
 	}
 	for _, line := range r.Blocks[2] {
 		f := strings.Split(line, "\t")
-		if len(f) != 14 {
+		if len(f) != 15 {
 			return nil, fmt.Errorf("tmux: unexpected list-panes line %q", line)
 		}
 		i, ok := byID[f[1]]
@@ -99,7 +100,7 @@ func (c *Client) Snapshot() (*Session, error) {
 			ID: f[0], Index: atoi(f[2]), Active: f[3] == "1",
 			Width: atoi(f[4]), Height: atoi(f[5]), Left: atoi(f[6]), Top: atoi(f[7]),
 			Floating: f[8] == "1", AltScreen: f[9] == "1",
-			Agent: f[10], Title: f[11], Path: f[12], Command: f[13],
+			Agent: f[10], Title: f[11], Path: f[12], Command: f[13], TTY: f[14],
 		}
 		for _, cell := range windows[i].Layout.Root.Panes() {
 			if cell.Pane == p.ID && cell.Z != nil {
@@ -116,6 +117,35 @@ func (c *Client) Snapshot() (*Session, error) {
 // escapes inside single quotes, so embedded ones close and reopen the quote.
 func Quote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
+}
+
+// QuoteText double-quotes any text for a tmux command line, escaping
+// newlines and control characters (control mode reads one command per line)
+// and the $ that would otherwise expand. NUL can't be in a tmux argument and
+// is dropped.
+func QuoteText(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == 0:
+		case c == '\\' || c == '"' || c == '$':
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		case c == '\n':
+			b.WriteString(`\n`)
+		case c == '\r':
+			b.WriteString(`\r`)
+		case c == '\t':
+			b.WriteString(`\t`)
+		case c < 0x20 || c == 0x7f:
+			fmt.Fprintf(&b, `\%03o`, c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 func atoi(s string) int {

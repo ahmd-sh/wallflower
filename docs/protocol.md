@@ -50,13 +50,19 @@ client never has to resync on its own.
 | `open` | `pane`, `history`? | repaint and stream a pane; `history` lines of scrollback (default 1000) |
 | `close` | `pane` | stop streaming a pane |
 | `keys` | `pane`, `keys` | tmux key names: `Enter`, `Escape`, `Up`, `C-c`, `M-Enter`, `BTab`, …; encoded for the pane's modes |
+| `paste` | `pane`, `text` | paste as a terminal would: bracketed if the app asked for it (newlines don't run anything), newlines as Enter |
 | `select` | `window` or `pane` | make it current in the client's session (sizes it for the client) |
 | `zoom` | `pane` | toggle zoom; zooms are undone when the client disconnects |
 | `scrollback` | `id`, `pane`, `start`, `end` | lines in tmux numbering: 0 is the top visible line, negative is history |
 | `tmux` | `id`, `command` | run a raw tmux command line (escape hatch) |
 | `ping` | `id` | |
 
-Text goes in pane data frames; `keys` is for keys that aren't text.
+Text goes in pane data frames; `keys` is for keys that aren't text. Text with
+newlines goes in `paste`, so an app sees it as one paste rather than lines
+typed and entered.
+
+Messages are handled in order, so a `pong` means everything sent before its
+`ping` has reached tmux.
 
 ## Gateway → client
 
@@ -81,7 +87,8 @@ A window is `id`, `index`, `name`, `active`, `zoomed`, `cols`, `rows` and
 | `floating`, `z` | floating pane, and its stacking order (0 is the front) |
 | `alt` | a full-screen app owns the pane; tmux keeps no scrollback for it |
 | `agent` | the pane's `@agent_state` option, set by hooks (`tmux set -p @agent_state waiting`) |
-| `title`, `path`, `command` | |
+| `title`, `path` | |
+| `command` | the foreground program; tools that run from a versioned file (`.../claude/versions/2.1.300`) report the name they were run as |
 
 When a window is zoomed, only its active pane is visible.
 

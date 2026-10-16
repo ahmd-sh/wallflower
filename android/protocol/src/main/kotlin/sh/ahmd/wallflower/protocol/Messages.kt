@@ -41,6 +41,11 @@ data class Close(val pane: String) : ClientMessage
 @SerialName("keys")
 data class Keys(val pane: String, val keys: List<String>) : ClientMessage
 
+/** Pasted as a terminal would: bracketed if the app asked for it, so newlines don't run anything. */
+@Serializable
+@SerialName("paste")
+data class Paste(val pane: String, val text: String) : ClientMessage
+
 @Serializable
 @SerialName("select")
 data class Select(val window: String? = null, val pane: String? = null) : ClientMessage

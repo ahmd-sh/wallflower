@@ -41,6 +41,13 @@ type Keys struct {
 	Keys []string `json:"keys"`
 }
 
+// Paste pastes text the way a terminal does: bracketed if the pane's app
+// asked for bracketed paste, so its newlines don't run anything.
+type Paste struct {
+	Pane string `json:"pane"`
+	Text string `json:"text"`
+}
+
 type Select struct {
 	Window string `json:"window,omitempty"`
 	Pane   string `json:"pane,omitempty"`
@@ -76,6 +83,7 @@ func (Zoom) Type() string              { return "zoom" }
 func (ScrollbackRequest) Type() string { return "scrollback" }
 func (TmuxCommand) Type() string       { return "tmux" }
 func (Ping) Type() string              { return "ping" }
+func (Paste) Type() string             { return "paste" }
 
 // Gateway to client.
 
@@ -162,7 +170,7 @@ func (Bye) Type() string             { return "bye" }
 
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Select{}, Zoom{},
-	ScrollbackRequest{}, TmuxCommand{}, Ping{},
+	ScrollbackRequest{}, TmuxCommand{}, Ping{}, Paste{},
 )
 
 var serverMessages = registry(

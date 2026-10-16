@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,14 @@ import (
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 	"github.com/ahmd-sh/wallflower/internal/tmuxtest"
 )
+
+func TestMain(m *testing.M) {
+	if os.Getenv("WALLFLOWER_TEST_SLEEP") != "" {
+		time.Sleep(time.Minute)
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
 
 type client struct {
 	t      *testing.T
@@ -169,8 +179,8 @@ func TestHelloStateOpenType(t *testing.T) {
 	c.sendText(p.ID, "echo hi-$((1+1))\r")
 	c.output(p.ID, "hi-2\r\n")
 
-	c.send(protocol.Keys{Pane: p.ID, Keys: []string{"echo ", `"key's"`, "Enter"}})
-	c.output(p.ID, "key's\r\n")
+	c.send(protocol.Keys{Pane: p.ID, Keys: []string{"echo ", "-n", " ", `"key's"`, "Enter"}})
+	c.output(p.ID, "-n key's\r\n")
 }
 
 func TestRepaint(t *testing.T) {
@@ -289,6 +299,47 @@ func TestStateFollowsTmux(t *testing.T) {
 	if s.Name != "t" {
 		t.Errorf("state names the client's own session %q, want the group t", s.Name)
 	}
+}
+
+func TestPaste(t *testing.T) {
+	c := connect(t, 60, 20)
+	p := activePane(c.state("state", func(s protocol.State) bool { return true })).ID
+	c.send(protocol.Open{Pane: p})
+	c.output(p, "$")
+
+	// An app that asked for bracketed paste gets the text bracketed, with
+	// newlines as Enter the way a terminal sends them.
+	c.sendText(p, `printf '\033[?2004h'; stty raw -echo; cat -v`+"\r")
+	time.Sleep(200 * time.Millisecond)
+	c.send(protocol.Paste{Pane: p, Text: "one $HOME\n'two'"})
+	c.output(p, "^[[200~one $HOME^M'two'^[[201~")
+}
+
+func TestVersionedProgram(t *testing.T) {
+	c := connect(t, 60, 20)
+	c.state("state", func(s protocol.State) bool { return true })
+
+	// Run the way Claude Code runs: a file named after its version, started
+	// through a symlink with the tool's name. The file is this test binary
+	// (see TestMain); macOS won't run a copy of a system one.
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "1.2.3")
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(bin, filepath.Join(dir, "tool")); err != nil {
+		t.Fatal(err)
+	}
+	c.tmux("send-keys", "-t", "t", "WALLFLOWER_TEST_SLEEP=1 "+filepath.Join(dir, "tool"), "Enter")
+	c.state("program named tool", func(s protocol.State) bool { return activePane(s).Command == "tool" })
 }
 
 func TestOwnCurrentWindow(t *testing.T) {

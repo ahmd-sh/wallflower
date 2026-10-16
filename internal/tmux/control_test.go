@@ -3,6 +3,8 @@ package tmux
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -69,6 +71,27 @@ func TestRun(t *testing.T) {
 	tricky := `it's "q" $HOME ; #x`
 	if out, err := c.Run("display -p " + Quote(tricky)); err != nil || out[0] != tricky {
 		t.Fatalf("Quote round trip = %q, %v", out, err)
+	}
+}
+
+func TestQuoteText(t *testing.T) {
+	c, _ := newClient(t)
+	file := filepath.Join(t.TempDir(), "buffer")
+	for _, text := range []string{
+		"two\nlines",
+		"-starts with a dash",
+		`it's "q" \ $HOME ~ #{pane_id} ; {x} %if`,
+		"\r\t\x1b[1m\x01\x7f é ✓",
+	} {
+		if _, err := c.Run("set-buffer -b q -- " + QuoteText(text) + " ; save-buffer -b q " + Quote(file)); err != nil {
+			t.Fatalf("%q: %v", text, err)
+		}
+		if got, _ := os.ReadFile(file); string(got) != text {
+			t.Errorf("round trip of %q = %q", text, got)
+		}
+	}
+	if got := QuoteText("a\x00b"); got != `"ab"` {
+		t.Errorf("NUL not dropped: %s", got)
 	}
 }
 

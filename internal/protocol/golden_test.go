@@ -30,6 +30,7 @@ func goldenClient(t *testing.T) []byte {
 		ScrollbackRequest{ID: 1, Pane: "%1", Start: -50, End: -1},
 		TmuxCommand{ID: 2, Command: `display -p '#{session_name}'`},
 		Ping{ID: 3},
+		Paste{Pane: "%1", Text: "two\nlines ✓"},
 	} {
 		b = mustJSON(t, b, m)
 	}

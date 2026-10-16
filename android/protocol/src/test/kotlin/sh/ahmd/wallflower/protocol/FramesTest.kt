@@ -31,6 +31,7 @@ class FramesTest {
             ScrollbackRequest(1, "%1", -50, -1),
             TmuxCommand(2, "display -p '#{session_name}'"),
             Ping(3),
+            Paste("%1", "two\nlines ✓"),
         ).forEach(w::send)
         w.sendData("%1", "echo héllo ✓\r".encodeToByteArray())
 
