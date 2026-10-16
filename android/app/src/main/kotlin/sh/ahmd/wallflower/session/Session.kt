@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +35,10 @@ import sh.ahmd.wallflower.terminal.Terminal
 sealed interface Status {
     data object Connecting : Status
     data class Connected(val tmux: String) : Status
+    /** Retrying on its own. */
     data class Disconnected(val reason: String) : Status
+    /** Waiting for the user, then [Session.retry]. */
+    data class NeedsUser(val blocked: Blocked) : Status
 }
 
 /**
@@ -69,6 +73,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     private val pings = AtomicInteger()
     private var grid = 80 to 24
     private var job: Job? = null
+    private val retries = Channel<Unit>(Channel.CONFLATED)
 
     fun start(cols: Int, rows: Int) {
         grid = cols to rows
@@ -81,6 +86,10 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                     runOnce()
                     backoff = 500L
                     "connection closed"
+                } catch (b: Blocked) {
+                    _status.value = Status.NeedsUser(b)
+                    retries.receive()
+                    continue
                 } catch (e: Exception) {
                     e.message ?: e.javaClass.simpleName
                 }
@@ -96,6 +105,11 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     fun stop() {
         job?.cancel()
         job = null
+    }
+
+    /** Tries again now, after the user dealt with a [Status.NeedsUser]. */
+    fun retry() {
+        retries.trySend(Unit)
     }
 
     private fun runOnce() {

@@ -1,26 +1,34 @@
 package sh.ahmd.wallflower
 
+import android.hardware.biometrics.BiometricManager.Authenticators
+import android.hardware.biometrics.BiometricPrompt
 import android.os.Bundle
+import android.os.CancellationSignal
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import sh.ahmd.wallflower.session.Session
-import sh.ahmd.wallflower.session.TcpTransport
-import sh.ahmd.wallflower.ui.WallflowerApp
-
-class SessionViewModel : ViewModel() {
-    val session = Session(TcpTransport(), viewModelScope)
-}
+import sh.ahmd.wallflower.ui.WallflowerRoot
 
 class MainActivity : ComponentActivity() {
-    private val vm: SessionViewModel by viewModels()
+    private val model: AppModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { WallflowerApp(vm.session) }
+        setContent { WallflowerRoot(model, ::unlock) }
+    }
+
+    /** Fingerprint or screen lock; unlocks the key for HardwareKey.AUTH_SECONDS. */
+    private fun unlock(onDone: (Boolean) -> Unit) {
+        BiometricPrompt.Builder(this)
+            .setTitle("Unlock wallflower")
+            .setSubtitle("Your SSH key lives in this phone's secure hardware")
+            .setAllowedAuthenticators(Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL)
+            .build()
+            .authenticate(CancellationSignal(), mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) = onDone(true)
+                override fun onAuthenticationError(code: Int, message: CharSequence) = onDone(false)
+            })
     }
 }

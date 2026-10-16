@@ -33,6 +33,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -48,5 +49,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.jsch)
+    implementation(libs.bouncycastle) // Ed25519 host keys, X25519 and chacha20-poly1305 for JSch
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

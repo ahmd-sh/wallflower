@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -48,13 +49,45 @@ import androidx.compose.material3.Text
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import sh.ahmd.wallflower.protocol.Keys
 import sh.ahmd.wallflower.protocol.Window
+import sh.ahmd.wallflower.AppModel
+import sh.ahmd.wallflower.session.Blocked
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Session.Companion.activePane
 import sh.ahmd.wallflower.session.Status
 import sh.ahmd.wallflower.terminal.TerminalView
 
 @Composable
-fun WallflowerApp(session: Session) {
+fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit) {
+    val host by model.host.collectAsStateWithLifecycle()
+    val session by model.session.collectAsStateWithLifecycle()
+    val hasKey by model.hasKey.collectAsStateWithLifecycle()
+    var setup by remember { mutableStateOf(false) }
+    val current = session
+    if (setup || host == null || current == null) {
+        SetupScreen(
+            host = host,
+            hasKey = hasKey,
+            fingerprint = if (hasKey) model.key.fingerprint else null,
+            authorizeCommand = model::authorizeCommand,
+            createKey = model::createKey,
+        ) {
+            model.configure(it)
+            setup = false
+        }
+    } else {
+        key(current) {
+            TerminalScreen(current, model, unlock, onSettings = { setup = true })
+        }
+    }
+}
+
+@Composable
+private fun TerminalScreen(
+    session: Session,
+    model: AppModel,
+    unlock: (onDone: (Boolean) -> Unit) -> Unit,
+    onSettings: () -> Unit,
+) {
     val status by session.status.collectAsStateWithLifecycle()
     val state by session.state.collectAsStateWithLifecycle()
     val terminals by session.terminals.collectAsStateWithLifecycle()
@@ -70,7 +103,24 @@ fun WallflowerApp(session: Session) {
             .systemBarsPadding()
             .imePadding(),
     ) {
-        WindowTabs(windows, window?.id, status) { session.view(it) }
+        WindowTabs(windows, window?.id, status, onSettings) { session.view(it) }
+
+        val blocked = (status as? Status.NeedsUser)?.blocked
+        // Connecting is the moment to ask for the fingerprint, so ask right away.
+        LaunchedEffect(blocked) {
+            if (blocked is Blocked.KeyLocked) unlock { ok -> if (ok) session.retry() }
+        }
+        if (blocked != null) {
+            BlockedCard(
+                blocked = blocked,
+                authorizeCommand = model::authorizeCommand,
+                onUnlock = { unlock { ok -> if (ok) session.retry() } },
+                onTrust = { model.hostKeys.trust(it); session.retry() },
+                onForget = { model.hostKeys.forget(it.host); session.retry() },
+                onRetry = session::retry,
+                onSetup = onSettings,
+            )
+        }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             var view by remember { mutableStateOf<TerminalView?>(null) }
@@ -104,7 +154,7 @@ fun WallflowerApp(session: Session) {
  * immediately; tmux learns about it afterwards.
  */
 @Composable
-private fun WindowTabs(windows: List<Window>, selected: String?, status: Status, onSelect: (Window) -> Unit) {
+private fun WindowTabs(windows: List<Window>, selected: String?, status: Status, onSettings: () -> Unit, onSelect: (Window) -> Unit) {
     val list = rememberLazyListState()
     val index = windows.indexOfFirst { it.id == selected }
     LaunchedEffect(index) {
@@ -122,7 +172,9 @@ private fun WindowTabs(windows: List<Window>, selected: String?, status: Status,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        item(key = "status") { StatusDot(status) }
+        item(key = "status") {
+            Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onSettings).padding(6.dp)) { StatusDot(status) }
+        }
         items(windows, key = { it.id }) { w ->
             val on = w.id == selected
             val agent = w.panes.map { it.agent }.firstOrNull { it.isNotEmpty() }
@@ -162,6 +214,7 @@ private fun StatusDot(status: Status) {
         is Status.Connected -> Palette.green
         Status.Connecting -> Palette.yellow
         is Status.Disconnected -> Palette.red
+        is Status.NeedsUser -> Palette.orange
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(color))

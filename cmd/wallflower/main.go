@@ -8,10 +8,11 @@ import (
 const usage = `usage: wallflower <command> [flags]
 
 commands:
-  serve    speak the wallflower protocol on stdin/stdout (run by the phone over ssh)
-  debug    run a gateway and bridge it to JSON lines, for poking at the protocol
-  listen   serve the protocol over loopback TCP, for developing against an emulator
-  watch    attach to tmux in control mode and print events as JSON lines
+  serve      speak the wallflower protocol on stdin/stdout (run by the phone over ssh)
+  authorize  add a phone's key to authorized_keys, restricted to running serve
+  debug      run a gateway and bridge it to JSON lines, for poking at the protocol
+  listen     serve the protocol over loopback TCP, for developing against an emulator
+  watch      attach to tmux in control mode and print events as JSON lines
 `
 
 func main() {
@@ -19,7 +20,7 @@ func main() {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
-	commands := map[string]func([]string) error{"serve": serve, "debug": debug, "listen": listen, "watch": watch}
+	commands := map[string]func([]string) error{"serve": serve, "authorize": authorize, "debug": debug, "listen": listen, "watch": watch}
 	run, ok := commands[os.Args[1]]
 	if !ok {
 		fmt.Fprint(os.Stderr, usage)
