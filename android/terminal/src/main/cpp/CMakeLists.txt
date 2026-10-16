@@ -14,4 +14,5 @@ set_target_properties(ghostty-vt PROPERTIES
 add_library(wallflower_terminal SHARED terminal.c)
 target_compile_options(wallflower_terminal PRIVATE -Wall -Wextra -Werror -O2)
 target_link_libraries(wallflower_terminal ghostty-vt log)
-target_link_options(wallflower_terminal PRIVATE -Wl,--gc-sections -Wl,--exclude-libs,ALL)
+target_link_options(wallflower_terminal PRIVATE -Wl,--gc-sections -Wl,--exclude-libs,ALL
+  $<$<NOT:$<CONFIG:Debug>>:-Wl,--strip-all>)
