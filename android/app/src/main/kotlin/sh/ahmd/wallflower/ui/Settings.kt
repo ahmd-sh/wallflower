@@ -214,12 +214,14 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
         Body("tmux key names, space-separated (C-a d, Escape :w Enter); anything else is typed as is.")
         var label by remember(ref) { mutableStateOf("") }
         var sends by remember(ref) { mutableStateOf("") }
+        var bound by remember(ref) { mutableStateOf(false) }
         Field("sends", sends) { sends = it }
         Field("label", label) { label = it }
+        Toggle("through tmux's key bindings (C-j to change pane; prefix is your prefix)", bound) { bound = it }
         Button("add key") {
             val keys = sends.split(' ').filter(String::isNotEmpty)
             if (keys.isNotEmpty()) {
-                save(profile.copy(keys = profile.keys + BarKey(label.ifBlank { sends.trim() }, keys)))
+                save(profile.copy(keys = profile.keys + BarKey(label.ifBlank { sends.trim() }, keys, bindings = bound)))
                 label = ""
                 sends = ""
             }

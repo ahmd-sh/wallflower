@@ -21,6 +21,7 @@ import sh.ahmd.wallflower.protocol.ClientHello
 import sh.ahmd.wallflower.protocol.ClientMessage
 import sh.ahmd.wallflower.protocol.Close
 import sh.ahmd.wallflower.protocol.ErrorMessage
+import sh.ahmd.wallflower.protocol.Focus
 import sh.ahmd.wallflower.protocol.Frame
 import sh.ahmd.wallflower.protocol.FrameReader
 import sh.ahmd.wallflower.protocol.FrameWriter
@@ -48,6 +49,9 @@ sealed interface Status {
     data class NeedsUser(val blocked: Blocked) : Status
 }
 
+/** A pane shown instead of its window's active one, until tmux's active pane is no longer [active]. */
+data class PaneChoice(val pane: String, val active: String?)
+
 /** Composed text the gateway never confirmed, so it may not have reached tmux. */
 data class Undelivered(val pane: String, val text: String)
 
@@ -73,6 +77,10 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     /** Terminals of open panes, replaced on every reset. */
     private val _terminals = MutableStateFlow<Map<String, Terminal>>(emptyMap())
     val terminals: StateFlow<Map<String, Terminal>> = _terminals.asStateFlow()
+
+    /** Panes picked on the phone, by window; local, so a swipe shows the pane at once. */
+    private val _chosen = MutableStateFlow<Map<String, PaneChoice>>(emptyMap())
+    val chosen: StateFlow<Map<String, PaneChoice>> = _chosen.asStateFlow()
 
     private val _undelivered = MutableSharedFlow<Undelivered>(extraBufferCapacity = 16)
     val undelivered: SharedFlow<Undelivered> = _undelivered.asSharedFlow()
@@ -223,8 +231,11 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
             is ServerHello -> _status.value = Status.Connected(m.tmux)
             is State -> {
                 _state.value = m
+                // A pane picked on the phone gives way once tmux's active pane moves on (to it, or elsewhere).
+                val chosen = _chosen.value.filter { (w, c) -> m.windows.firstOrNull { it.id == w }?.activePane()?.id == c.active }
+                if (chosen.size != _chosen.value.size) _chosen.value = chosen
                 if (m.windows.none { it.id == _viewing.value }) _viewing.value = m.windows.firstOrNull { it.active }?.id
-                for (w in m.windows) w.activePane()?.let { open(it.id, viewed = w.id == _viewing.value) }
+                for (w in m.windows) w.shownPane(_chosen.value)?.let { open(it.id, viewed = w.id == _viewing.value) }
                 // Panes that no longer exist close quietly; the gateway forgot them already.
                 val live = m.windows.flatMap { w -> w.panes.map { it.id } }.toSet()
                 synchronized(opened) { opened.retainAll(live) }
@@ -277,28 +288,45 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         send(Select(window = window.id))
     }
 
+    /**
+     * Shows the next (1) or previous (-1) pane of a window now, and has tmux
+     * focus it in the background, zoomed so it gets the whole screen.
+     */
+    fun swipe(window: Window, direction: Int) {
+        val panes = window.panes.sortedBy { it.index }
+        val current = window.shownPane(_chosen.value) ?: return
+        if (panes.size < 2) return
+        val next = panes[(panes.indexOfFirst { it.id == current.id } + direction).mod(panes.size)]
+        _chosen.value = _chosen.value + (window.id to PaneChoice(next.id, window.activePane()?.id))
+        open(next.id, viewed = true)
+        send(Focus(next.id))
+    }
+
     fun send(m: ClientMessage) {
         queue?.trySend(Outgoing.Message(m))
     }
 
-    fun type(pane: String, text: String) {
-        queue?.trySend(Outgoing.Data(pane, text.encodeToByteArray()))
+    fun type(pane: String, text: String) = input(pane, text.encodeToByteArray())
+
+    fun input(pane: String, bytes: ByteArray) {
+        queue?.trySend(Outgoing.Data(pane, bytes))
     }
 
     /**
-     * Sends composed text and presses Enter: typed if it's one line, pasted
-     * if it has several, so the app doesn't run each line. Returns false,
-     * sending nothing, while not connected. Text the gateway doesn't confirm
-     * before the connection drops comes back through [undelivered].
+     * Sends composed text and presses Enter, unless not [enter]: typed if
+     * it's one line, pasted if it has several, so the app doesn't run each
+     * line. Returns false, sending nothing, while not connected. Text the
+     * gateway doesn't confirm before the connection drops comes back through
+     * [undelivered].
      */
-    fun submit(pane: String, text: String): Boolean = synchronized(pending) {
+    fun submit(pane: String, text: String, enter: Boolean = true): Boolean = synchronized(pending) {
         val q = queue
         if (q == null || _status.value !is Status.Connected) return false
         val sent = if ('\n' in text) {
             q.trySend(Outgoing.Message(Paste(pane, text))).isSuccess &&
-                q.trySend(Outgoing.Message(Keys(pane, listOf("Enter")))).isSuccess
+                (!enter || q.trySend(Outgoing.Message(Keys(pane, listOf("Enter")))).isSuccess)
         } else {
-            q.trySend(Outgoing.Data(pane, (text + "\r").encodeToByteArray())).isSuccess
+            q.trySend(Outgoing.Data(pane, (if (enter) text + "\r" else text).encodeToByteArray())).isSuccess
         }
         if (sent) pending += Submitted(ping(PONG_TIMEOUT_MS), pane, text)
         sent
@@ -324,5 +352,12 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         const val RESIZE_SETTLE_MS = 120L
 
         fun Window.activePane(): Pane? = panes.firstOrNull { it.active }
+
+        /** The pane the phone shows for a window: one picked on the phone, until tmux moves on. */
+        fun Window.shownPane(chosen: Map<String, PaneChoice>): Pane? {
+            val active = activePane()
+            val choice = chosen[id]?.takeIf { it.active == active?.id }
+            return choice?.let { c -> panes.firstOrNull { it.id == c.pane } } ?: active
+        }
     }
 }

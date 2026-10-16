@@ -7,9 +7,35 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** A key on the bar: what it shows, and the tmux keys it sends (`Escape`, `C-c`, or literal text). */
+/**
+ * A key on the bar: what it shows, and the tmux keys it sends (`Escape`,
+ * `C-c`, or literal text). A [sticky] key waits for the next key, from the
+ * bar or the keyboard, and goes with it. With [bindings], tmux's key bindings
+ * apply, as if typed on a keyboard attached to it; `prefix` is its prefix key.
+ */
 @Serializable
-data class BarKey(val label: String, val keys: List<String>)
+data class BarKey(
+    val label: String,
+    val keys: List<String>,
+    val sticky: Boolean = false,
+    val bindings: Boolean = false,
+) {
+    /** This sticky key with the next one: a modifier (`C-`, `M-`) joins it, anything else goes first. */
+    fun then(next: BarKey): BarKey {
+        val first = keys.firstOrNull().orEmpty()
+        val joined = if (first.endsWith("-") && next.keys.isNotEmpty()) {
+            listOf(first + next.keys[0]) + next.keys.drop(1)
+        } else {
+            keys + next.keys
+        }
+        return BarKey("$label ${next.label}", joined, bindings = bindings || next.bindings)
+    }
+
+    companion object {
+        /** A character typed on the keyboard, as a key. */
+        fun typed(c: Char) = BarKey(c.toString(), listOf(if (c == ' ') "Space" else c.toString()))
+    }
+}
 
 /** The bar for some programs. */
 @Serializable
@@ -50,7 +76,11 @@ data class KeyBar(
             "^t" to "C-t", "^b" to "C-b",
             "y" to "y", "n" to "n", "q" to "q", "1" to "1", "2" to "2", "3" to "3",
             "/" to "/", "|" to "|", "~" to "~", "-" to "-", "`" to "`",
-        ).map { (label, key) -> BarKey(label, listOf(key)) }
+        ).map { (label, key) -> BarKey(label, listOf(key)) } + listOf(
+            BarKey("pfx", listOf("prefix"), sticky = true, bindings = true),
+            BarKey("ctrl", listOf("C-"), sticky = true),
+            BarKey("alt", listOf("M-"), sticky = true),
+        )
 
         /** Held down, these repeat. */
         val repeating = setOf("Up", "Down", "Left", "Right", "BSpace", "PageUp", "PageDown")

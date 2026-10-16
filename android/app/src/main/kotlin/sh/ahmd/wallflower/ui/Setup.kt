@@ -201,7 +201,7 @@ internal fun Field(label: String, value: String, keyboard: KeyboardType = Keyboa
 }
 
 @Composable
-private fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
+internal fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.clickable { onChange(!on) }, verticalAlignment = Alignment.CenterVertically) {
         Text(if (on) "[x] " else "[ ] ", color = Palette.orange, fontFamily = Mono, fontSize = 13.sp)
         Text(label, color = Palette.fg, fontFamily = Mono, fontSize = 12.sp)

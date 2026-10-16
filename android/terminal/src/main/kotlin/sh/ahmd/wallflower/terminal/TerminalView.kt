@@ -6,13 +6,18 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RenderNode
+import android.graphics.Typeface
+import android.graphics.fonts.Font
+import android.graphics.fonts.FontFamily
 import android.os.SystemClock
 import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.OverScroller
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -56,8 +61,8 @@ class TerminalView(context: Context) : View(context) {
             updateMetrics()
         }
 
-    private val regular = context.resources.getFont(R.font.jetbrains_mono_regular)
-    private val bold = context.resources.getFont(R.font.jetbrains_mono_bold)
+    private val regular = withSymbols(R.font.jetbrains_mono_regular)
+    private val bold = withSymbols(R.font.jetbrains_mono_bold)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply { typeface = regular }
     private val fill = Paint()
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -207,7 +212,7 @@ class TerminalView(context: Context) : View(context) {
                 val left = x * cellWidth
                 if (w > room) {
                     c.save()
-                    c.scale(room / w, 1f, left, baseline)
+                    c.scale(room / w, room / w, left + room / 2, cellHeight / 2)
                     c.drawText(run, 0, run.length, left, baseline, text)
                     c.restore()
                 } else {
@@ -358,6 +363,20 @@ class TerminalView(context: Context) : View(context) {
         return if (w > width && width > 0) width / w else 1f
     }
 
+    /**
+     * The font, then symbols it lacks (TUI spinners, ⏺ ⎿ ⏵ ✻), then the
+     * system's fonts. Anything not in the font would otherwise depend on the
+     * phone having it.
+     */
+    private fun withSymbols(font: Int): Typeface {
+        fun family(id: Int) = FontFamily.Builder(Font.Builder(resources, id).build()).build()
+        return Typeface.CustomFallbackBuilder(family(font))
+            .addCustomFallback(family(R.font.symbols_fallback))
+            .addCustomFallback(family(R.font.symbols_fallback2))
+            .setSystemFallback("monospace")
+            .build()
+    }
+
     private fun updateMetrics() {
         text.textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, resources.displayMetrics)
         text.typeface = regular
@@ -377,8 +396,18 @@ class TerminalView(context: Context) : View(context) {
         onGridSize?.invoke(floor(width / cellWidth).toInt(), floor(height / cellHeight).toInt())
     }
 
-    // Scrolling moves the terminal's own viewport through its scrollback; it
-    // never sends anything to the pane.
+    /**
+     * Full-screen apps own their scrolling: a scroll gesture over one sends
+     * a mouse wheel notch per row ([wheel] holds its bytes), or an arrow key
+     * if the app doesn't track the mouse ([wheel] is null).
+     */
+    var onAppScroll: ((up: Boolean, wheel: ByteArray?) -> Unit)? = null
+
+    /** A horizontal swipe: 1 for the next pane, -1 for the previous. */
+    var onSwipe: ((direction: Int) -> Unit)? = null
+
+    // On the primary screen, scrolling moves the terminal's own viewport
+    // through its scrollback and never sends anything to the pane.
     private val scroller = OverScroller(context)
     private var scrollRemainder = 0f
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
@@ -411,12 +440,21 @@ class TerminalView(context: Context) : View(context) {
 
     private fun scrollPixels(dy: Float) {
         val t = terminal ?: return
-        scrollRemainder += dy / (cellHeight * fitScale())
+        val cell = cellHeight * fitScale()
+        scrollRemainder += dy / cell
         val rows = scrollRemainder.toInt()
-        if (rows != 0) {
-            scrollRemainder -= rows
-            t.scrollBy(rows)
-            requestFrame()
+        if (rows == 0) return
+        scrollRemainder -= rows
+        val up = rows < 0 // towards history
+        val col = (touchX / (cellWidth * fitScale())).toInt().coerceIn(0, maxOf(cols - 1, 0))
+        val row = (touchY / cell).toInt().coerceIn(0, maxOf(this.rows - 1, 0))
+        when (val wheel = t.wheel(up, col, row)) {
+            Terminal.Wheel.Local -> {
+                t.scrollBy(rows)
+                requestFrame()
+            }
+            is Terminal.Wheel.Mouse -> repeat(abs(rows)) { onAppScroll?.invoke(up, wheel.bytes) }
+            Terminal.Wheel.Arrows -> repeat(abs(rows)) { onAppScroll?.invoke(up, null) }
         }
     }
 
@@ -426,7 +464,48 @@ class TerminalView(context: Context) : View(context) {
         requestFrame()
     }
 
-    override fun onTouchEvent(event: MotionEvent): Boolean = gestures.onTouchEvent(event) || super.onTouchEvent(event)
+    private val slop = ViewConfiguration.get(context).scaledTouchSlop
+    private var touchX = 0f
+    private var touchY = 0f
+    private var downX = 0f
+    private var downY = 0f
+    private var swiping = false
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        touchX = event.x
+        touchY = event.y
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.x
+                downY = event.y
+                swiping = false
+                animate().cancel()
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = event.x - downX
+                if (!swiping && onSwipe != null && abs(dx) > slop * 2 && abs(dx) > abs(event.y - downY) * 1.5f) {
+                    swiping = true
+                    scroller.forceFinished(true)
+                }
+                if (swiping) {
+                    translationX = dx * 0.4f // follows the finger, reluctantly
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (swiping) {
+                swiping = false
+                val dx = event.x - downX
+                if (event.actionMasked == MotionEvent.ACTION_UP && abs(dx) > width * 0.2f) {
+                    val direction = if (dx < 0) 1 else -1
+                    onSwipe?.invoke(direction)
+                    translationX = direction * width * 0.12f // the next pane comes in from where the finger went
+                }
+                animate().translationX(0f).setDuration(160).start()
+                return true
+            }
+        }
+        return gestures.onTouchEvent(event) || super.onTouchEvent(event)
+    }
 
     private fun Int.orIfDefault(other: Int) = if (this == DEFAULT) other else this
     private fun opaque(rgb: Int) = rgb or (0xFF shl 24)

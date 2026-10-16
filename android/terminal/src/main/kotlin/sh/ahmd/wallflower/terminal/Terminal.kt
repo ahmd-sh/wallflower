@@ -32,6 +32,27 @@ class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
         if (handle != 0L) nativeScroll(handle, mode, delta)
     }
 
+    /** How a scroll gesture reaches this terminal. */
+    sealed interface Wheel {
+        /** The primary screen: scroll the local scrollback. */
+        data object Local : Wheel
+        /** A full-screen app tracking the mouse: send it these bytes. */
+        class Mouse(val bytes: ByteArray) : Wheel
+        /** A full-screen app that doesn't track the mouse: send arrow keys. */
+        data object Arrows : Wheel
+    }
+
+    /** A wheel notch at a cell. */
+    fun wheel(up: Boolean, col: Int, row: Int): Wheel = lock.read {
+        if (handle == 0L) return@read Wheel.Local
+        val out = ByteArray(64)
+        when (val n = nativeWheel(handle, up, col, row, out)) {
+            -1 -> Wheel.Local
+            0 -> Wheel.Arrows
+            else -> Wheel.Mouse(out.copyOf(n))
+        }
+    }
+
     fun setTheme(theme: Theme) = lock.read {
         if (handle != 0L) nativeSetColors(handle, theme.foreground, theme.background, theme.cursor, theme.palette)
     }
@@ -68,6 +89,7 @@ class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
         @JvmStatic external fun nativeResize(handle: Long, cols: Int, rows: Int, cellWidth: Int, cellHeight: Int)
         @JvmStatic external fun nativeScroll(handle: Long, mode: Int, delta: Int)
         @JvmStatic external fun nativeSetColors(handle: Long, fg: Int, bg: Int, cursor: Int, palette: IntArray)
+        @JvmStatic external fun nativeWheel(handle: Long, up: Boolean, col: Int, row: Int, out: ByteArray): Int
         @JvmStatic external fun nativeFrame(handle: Long, buffer: ByteBuffer, force: Boolean): Int
     }
 }

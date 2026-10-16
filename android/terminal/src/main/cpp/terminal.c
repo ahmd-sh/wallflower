@@ -46,6 +46,7 @@ typedef struct {
   int64_t held_since;
   uint8_t* scratch;
   size_t scratch_len;
+  GhosttyMouseEncoder mouse; // created on first wheel event
 } Term;
 
 static int64_t now_ns(void) {
@@ -111,6 +112,7 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeFree(JNIEnv* env, jclass cls, jl
   ghostty_render_state_row_cells_free(t->cells);
   ghostty_render_state_row_iterator_free(t->rows);
   ghostty_render_state_free(t->state);
+  if (t->mouse) ghostty_mouse_encoder_free(t->mouse);
   ghostty_terminal_free(t->term);
   pthread_mutex_destroy(&t->lock);
   free(t->scratch);
@@ -156,6 +158,49 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeScroll(JNIEnv* env, jclass cls, 
   pthread_mutex_lock(&t->lock);
   ghostty_terminal_scroll_viewport(t->term, s);
   pthread_mutex_unlock(&t->lock);
+}
+
+// A wheel notch at a cell, for full-screen apps that own their scrolling.
+// Returns the bytes to send if the app tracks the mouse, 0 if it's on the
+// alternate screen without mouse tracking (send arrows instead), and -1 on
+// the primary screen, where scrollback is local.
+JNIEXPORT jint JNICALL
+Java_sh_ahmd_wallflower_terminal_Terminal_nativeWheel(JNIEnv* env, jclass cls, jlong h, jboolean up, jint col, jint row, jbyteArray out) {
+  (void)cls;
+  Term* t = (Term*)(intptr_t)h;
+  char buf[64];
+  size_t len = 0;
+  jint result = 0;
+  pthread_mutex_lock(&t->lock);
+  bool tracking = false;
+  GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &tracking);
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
+  if (tracking && (t->mouse || ghostty_mouse_encoder_new(NULL, &t->mouse) == GHOSTTY_SUCCESS)) {
+    uint16_t cols = 0, rows = 0;
+    ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_COLS, &cols);
+    ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ROWS, &rows);
+    ghostty_mouse_encoder_setopt_from_terminal(t->mouse, t->term);
+    // Positions are in cells: one pixel per cell.
+    GhosttyMouseEncoderSize size = {
+      .size = sizeof(GhosttyMouseEncoderSize), .screen_width = cols, .screen_height = rows,
+      .cell_width = 1, .cell_height = 1,
+    };
+    ghostty_mouse_encoder_setopt(t->mouse, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
+    GhosttyMouseEvent ev = NULL;
+    if (ghostty_mouse_event_new(NULL, &ev) == GHOSTTY_SUCCESS) {
+      ghostty_mouse_event_set_action(ev, GHOSTTY_MOUSE_ACTION_PRESS);
+      ghostty_mouse_event_set_button(ev, up ? GHOSTTY_MOUSE_BUTTON_FOUR : GHOSTTY_MOUSE_BUTTON_FIVE);
+      ghostty_mouse_event_set_position(ev, (GhosttyMousePosition){ col + 0.5f, row + 0.5f });
+      if (ghostty_mouse_encoder_encode(t->mouse, ev, buf, sizeof buf, &len) == GHOSTTY_SUCCESS) result = (jint)len;
+      ghostty_mouse_event_free(ev);
+    }
+  } else if (screen == GHOSTTY_TERMINAL_SCREEN_PRIMARY) {
+    result = -1;
+  }
+  pthread_mutex_unlock(&t->lock);
+  if (result > 0) (*env)->SetByteArrayRegion(env, out, 0, result, (const jbyte*)buf);
+  return result;
 }
 
 // palette: 16 or 256 ints of 0xRRGGBB; the rest of the 256 keep their defaults.

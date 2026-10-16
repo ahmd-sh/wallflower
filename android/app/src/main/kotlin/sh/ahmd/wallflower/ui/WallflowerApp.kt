@@ -46,7 +46,7 @@ import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.session.Blocked
 import sh.ahmd.wallflower.session.Session
-import sh.ahmd.wallflower.session.Session.Companion.activePane
+import sh.ahmd.wallflower.session.Session.Companion.shownPane
 import sh.ahmd.wallflower.session.Status
 import sh.ahmd.wallflower.terminal.TerminalView
 
@@ -139,10 +139,11 @@ private fun TerminalScreen(
     val state by session.state.collectAsStateWithLifecycle()
     val terminals by session.terminals.collectAsStateWithLifecycle()
     val viewing by session.viewing.collectAsStateWithLifecycle()
+    val chosen by session.chosen.collectAsStateWithLifecycle()
     val bar by model.keyBar.bar.collectAsStateWithLifecycle()
     val windows = state?.windows.orEmpty()
     val window = windows.firstOrNull { it.id == viewing } ?: windows.firstOrNull { it.active }
-    val pane = window?.activePane()
+    val pane = window?.shownPane(chosen)
     LaunchedEffect(pane?.command) { onProgram(pane?.command) }
 
     Column(
@@ -182,8 +183,17 @@ private fun TerminalScreen(
                         view = this
                     }
                 },
-                update = { it.terminal = pane?.let { p -> terminals[p.id] } },
+                update = {
+                    it.terminal = pane?.let { p -> terminals[p.id] }
+                    it.onSwipe = { direction -> window?.let { w -> session.swipe(w, direction) } }
+                    it.onAppScroll = { up, wheel ->
+                        pane?.let { p ->
+                            if (wheel != null) session.input(p.id, wheel) else session.send(Keys(p.id, listOf(if (up) "Up" else "Down")))
+                        }
+                    }
+                },
             )
+            if (window != null && pane != null && window.panes.size > 1) PaneDots(window, pane.id, Modifier.align(Alignment.TopEnd))
             DisposableEffect(view, pane?.id) {
                 val v = view
                 val id = pane?.id
@@ -199,13 +209,26 @@ private fun TerminalScreen(
                 program = pane.command,
                 keys = profile.keys,
                 connected = status is Status.Connected,
-                onKeys = { session.send(Keys(pane.id, it)) },
-                onSend = { text ->
-                    session.submit(pane.id, text).also { sent -> if (sent && '\n' !in text) view?.predict(text) }
+                onKey = { session.send(Keys(pane.id, it.keys, it.bindings)) },
+                onSend = { text, enter ->
+                    session.submit(pane.id, text, enter).also { sent -> if (sent && '\n' !in text) view?.predict(text) }
                 },
                 onStop = { session.send(Keys(pane.id, profile.stop)) },
                 onEditKeys = onEditKeys,
             )
+        }
+    }
+}
+
+/** Which of the window's panes is showing; swipe the terminal sideways for the others. */
+@Composable
+private fun PaneDots(window: Window, shown: String, modifier: Modifier) {
+    Row(
+        modifier.padding(8.dp).clip(RoundedCornerShape(8.dp)).background(Palette.bg1.copy(alpha = 0.85f)).padding(horizontal = 7.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        for (p in window.panes.sortedBy { it.index }) {
+            Box(Modifier.size(6.dp).clip(CircleShape).background(if (p.id == shown) Palette.fg else Palette.bg3))
         }
     }
 }

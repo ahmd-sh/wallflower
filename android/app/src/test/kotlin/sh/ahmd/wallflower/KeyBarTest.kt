@@ -36,7 +36,20 @@ class KeyBarTest {
     }
 
     @Test
+    fun stickyKeysGoWithTheNextKey() {
+        val pfx = KeyBar.common.first { it.label == "pfx" }
+        val ctrl = KeyBar.common.first { it.label == "ctrl" }
+        assertEquals(BarKey("pfx j", listOf("prefix", "j"), bindings = true), pfx.then(BarKey.typed('j')))
+        assertEquals(listOf("C-j"), ctrl.then(BarKey.typed('j')).keys)
+        assertEquals(listOf("C-Up"), ctrl.then(KeyBar.common.first { it.label == "↑" }).keys)
+        assertEquals(listOf("Space"), BarKey.typed(' ').keys)
+    }
+
+    @Test
     fun survivesStorage() {
         assertEquals(bar, Json.decodeFromString<KeyBar>(Json.encodeToString(bar)))
+        // Settings saved before keys could be sticky still load.
+        val old = """{"profiles":[],"default":{"name":"d","keys":[{"label":"pfx","keys":["C-f"]}]}}"""
+        assertEquals(BarKey("pfx", listOf("C-f")), Json.decodeFromString<KeyBar>(old).default.keys[0])
     }
 }
