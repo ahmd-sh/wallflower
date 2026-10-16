@@ -1,3 +1,3 @@
-module github.com/ahmd-sh/tether
+module github.com/ahmd-sh/wallflower
 
 go 1.27.2

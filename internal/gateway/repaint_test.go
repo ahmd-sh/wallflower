@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/ahmd-sh/tether/internal/tmux"
+	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 func TestBackground(t *testing.T) {

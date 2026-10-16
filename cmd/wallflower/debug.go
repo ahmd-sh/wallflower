@@ -10,10 +10,10 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/ahmd-sh/tether/internal/protocol"
+	"github.com/ahmd-sh/wallflower/internal/protocol"
 )
 
-const debugUsage = `usage: tether debug [flags] [server command...]
+const debugUsage = `usage: wallflower debug [flags] [server command...]
 
 Runs a gateway (default: this binary's serve) and bridges it to JSON lines.
 Each stdin line is a client message, e.g.
@@ -69,7 +69,7 @@ func debug(args []string) error {
 		for sc.Scan() {
 			frame, err := encodeLine(sc.Bytes())
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "tether debug:", err)
+				fmt.Fprintln(os.Stderr, "wallflower debug:", err)
 				continue
 			}
 			if _, err := toServer.Write(frame); err != nil {
@@ -85,7 +85,7 @@ func debug(args []string) error {
 		f, err := r.Next()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				fmt.Fprintln(os.Stderr, "tether debug:", err)
+				fmt.Fprintln(os.Stderr, "wallflower debug:", err)
 			}
 			break
 		}

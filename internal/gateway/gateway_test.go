@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ahmd-sh/tether/internal/protocol"
-	"github.com/ahmd-sh/tether/internal/tmux"
-	"github.com/ahmd-sh/tether/internal/tmuxtest"
+	"github.com/ahmd-sh/wallflower/internal/protocol"
+	"github.com/ahmd-sh/wallflower/internal/tmux"
+	"github.com/ahmd-sh/wallflower/internal/tmuxtest"
 )
 
 type client struct {

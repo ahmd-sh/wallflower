@@ -141,7 +141,7 @@ func (c *Client) Command(line string) (Reply, error) {
 		return Reply{}, ErrClosed
 	}
 	c.sent++
-	p := &pending{marker: fmt.Sprintf("tether:sync:%d", c.sent), done: make(chan struct{})}
+	p := &pending{marker: fmt.Sprintf("wallflower:sync:%d", c.sent), done: make(chan struct{})}
 	c.pending = append(c.pending, p)
 	_, err := io.WriteString(c.stdin, line+"\ndisplay-message -p '"+p.marker+"'\n")
 	c.mu.Unlock()

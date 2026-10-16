@@ -5,10 +5,10 @@ import (
 	"os"
 )
 
-const usage = `usage: tether <command> [flags]
+const usage = `usage: wallflower <command> [flags]
 
 commands:
-  serve    speak the tether protocol on stdin/stdout (run by the phone over ssh)
+  serve    speak the wallflower protocol on stdin/stdout (run by the phone over ssh)
   debug    run a gateway and bridge it to JSON lines, for poking at the protocol
   watch    attach to tmux in control mode and print events as JSON lines
 `
@@ -25,7 +25,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err := run(os.Args[2:]); err != nil {
-		fmt.Fprintln(os.Stderr, "tether:", err)
+		fmt.Fprintln(os.Stderr, "wallflower:", err)
 		os.Exit(1)
 	}
 }

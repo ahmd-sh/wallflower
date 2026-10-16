@@ -1,4 +1,4 @@
-// Package gateway serves one client over the tether protocol, backed by a
+// Package gateway serves one client over the wallflower protocol, backed by a
 // tmux control-mode client. It keeps no state that tmux doesn't already
 // hold; everything it sends can be rebuilt from tmux.
 package gateway
@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ahmd-sh/tether/internal/protocol"
-	"github.com/ahmd-sh/tether/internal/tmux"
+	"github.com/ahmd-sh/wallflower/internal/protocol"
+	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 type Options struct {

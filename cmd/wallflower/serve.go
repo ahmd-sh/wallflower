@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/ahmd-sh/tether/internal/gateway"
+	"github.com/ahmd-sh/wallflower/internal/gateway"
 )
 
 // serve speaks the protocol on stdin/stdout for one client; the phone runs

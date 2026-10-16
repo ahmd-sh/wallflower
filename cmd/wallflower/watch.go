@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"unicode/utf8"
 
-	"github.com/ahmd-sh/tether/internal/tmux"
+	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 // subscriptions the gateway will forward: agent state set by hooks, and what

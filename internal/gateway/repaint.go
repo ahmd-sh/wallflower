@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ahmd-sh/tether/internal/tmux"
+	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 var metaFormat = strings.Join([]string{

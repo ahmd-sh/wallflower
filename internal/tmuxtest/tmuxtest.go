@@ -23,7 +23,7 @@ func Server(t *testing.T, cols, rows int) (string, func(args ...string) string) 
 		t.Setenv(v, "")
 		os.Unsetenv(v)
 	}
-	socket := fmt.Sprintf("tether-test-%d-%s", os.Getpid(), strings.ReplaceAll(t.Name(), "/", "-"))
+	socket := fmt.Sprintf("wallflower-test-%d-%s", os.Getpid(), strings.ReplaceAll(t.Name(), "/", "-"))
 	run := func(args ...string) string {
 		t.Helper()
 		cmd := exec.Command("tmux", append([]string{"-L", socket, "-f", "/dev/null"}, args...)...)

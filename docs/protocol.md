@@ -1,6 +1,6 @@
-# tether protocol, version 1
+# wallflower protocol, version 1
 
-The client runs `tether serve` over ssh and talks to it on stdin/stdout. One
+The client runs `wallflower serve` over ssh and talks to it on stdin/stdout. One
 connection is one client session; the gateway exits when the client
 disconnects, and has nothing to clean up beyond undoing the client's zooms.
 

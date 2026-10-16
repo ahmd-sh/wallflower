@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ahmd-sh/tether/internal/tmuxtest"
+	"github.com/ahmd-sh/wallflower/internal/tmuxtest"
 )
 
 func newClient(t *testing.T) (*Client, func(args ...string) string) {
@@ -146,11 +146,11 @@ func TestNotifications(t *testing.T) {
 		t.Errorf("layout has %d panes after split, want 2", got)
 	}
 
-	if _, err := c.Run("send-keys 'echo tether-$((6*7))' Enter"); err != nil {
+	if _, err := c.Run("send-keys 'echo wallflower-$((6*7))' Enter"); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, c, "echo output", func(n Notification) bool {
-		return n.Type == "output" && strings.Contains(string(n.Data), "tether-42")
+		return n.Type == "output" && strings.Contains(string(n.Data), "wallflower-42")
 	})
 
 	if _, err := c.Run("new-window -d -n second"); err != nil {

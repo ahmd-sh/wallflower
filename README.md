@@ -1,11 +1,11 @@
-# tether
+# wallflower
 
 A phone-first shell around your terminal. tmux stays the server; a small
 gateway on the Mac speaks tmux control mode and serves a lean, versioned
 protocol to clients (an Android app first) over SSH.
 
 ```
-phone app ──ssh stdio──▶ tether serve (one per connection) ──tmux -C──▶ tmux server
+phone app ──ssh stdio──▶ wallflower serve (one per connection) ──tmux -C──▶ tmux server
 ```
 
 ## Status
@@ -14,10 +14,10 @@ The gateway works end to end; there is no phone app yet. See
 [docs/protocol.md](docs/protocol.md).
 
 ```sh
-go build -o bin/tether ./cmd/tether
-bin/tether debug -cols 56 -rows 20          # local gateway as JSON lines
-bin/tether debug -- ssh mac "~/go/bin/tether serve"   # through ssh
-bin/tether watch -output=false              # raw control-mode events
+go build -o bin/wallflower ./cmd/wallflower
+bin/wallflower debug -cols 56 -rows 20          # local gateway as JSON lines
+bin/wallflower debug -- ssh mac "~/go/bin/wallflower serve"   # through ssh
+bin/wallflower watch -output=false              # raw control-mode events
 ```
 
 Requires tmux 3.8 (JSON layouts, floating panes).
