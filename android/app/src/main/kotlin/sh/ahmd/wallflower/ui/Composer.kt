@@ -36,6 +36,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.WindowInsets
+import sh.ahmd.wallflower.terminal.InputLine
+import androidx.compose.foundation.text.input.placeCursorAtEnd
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -64,22 +75,36 @@ import sh.ahmd.wallflower.KeyBar
 /**
  * A plain text field, so the keyboard's autocorrect, swipe and voice input
  * all work, with the key bar and send button beneath it. Return is a
- * newline; the button sends (held, it types without Enter), or stops when
- * there's nothing to send. A sticky key on the bar (pfx, ctrl) takes the
- * next key, from the bar or the keyboard.
+ * newline. A sticky key on the bar (pfx, ctrl) takes the next key, from the
+ * bar or the keyboard.
+ *
+ * The app keeps its own input line ([line], when wallflower can read it).
+ * While the box is empty it shows that line, dimmed; a tap brings it into
+ * the box to edit. What's in the box replaces the line when sent, so the box
+ * is exactly what runs. The button sends (held: types it in without Enter),
+ * enters the app's line when only that has text, or stops.
  */
-@OptIn(ExperimentalFoundationApi::class) // the edit's changes, to catch the key typed after a sticky one
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class) // edit changes for sticky keys; whether the keyboard is up
 @Composable
 fun Composer(
     state: TextFieldState,
     program: String,
     keys: List<BarKey>,
     connected: Boolean,
+    line: InputLine?,
     onKey: (BarKey) -> Unit,
     onSend: (text: String, enter: Boolean) -> Boolean,
+    onEnter: () -> Unit,
     onStop: () -> Unit,
     onEditKeys: () -> Unit,
 ) {
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    // Closing the keyboard lets go of the box, so switching panes doesn't bring it back.
+    val imeVisible = WindowInsets.isImeVisible
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(imeVisible) { if (!imeVisible) focusManager.clearFocus() }
+    val pending = line?.text.orEmpty()
     var armed by remember { mutableStateOf<BarKey?>(null) }
     val press: (BarKey) -> Unit = { key ->
         val sticky = armed
@@ -116,37 +141,66 @@ fun Composer(
             .background(Palette.bg1)
             .padding(top = 14.dp, bottom = 8.dp),
     ) {
-        BasicTextField(
-            state = state,
-            inputTransformation = intercept,
-            lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 6),
-            textStyle = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp, lineHeight = 21.sp),
-            cursorBrush = SolidColor(Palette.orange),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.None,
-                autoCorrectEnabled = true,
-                imeAction = ImeAction.Default,
-            ),
-            decorator = { field ->
-                Box {
-                    if (state.text.isEmpty()) {
-                        val hint = armed?.let { "${it.label} + key" } ?: "send to ${program.ifEmpty { "pane" }}"
-                        Text(hint, color = if (armed != null) Palette.orange else Palette.dim, fontFamily = Mono, fontSize = 15.sp)
+        Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
+            BasicTextField(
+                state = state,
+                inputTransformation = intercept,
+                lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 6),
+                textStyle = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp, lineHeight = 21.sp),
+                cursorBrush = SolidColor(Palette.orange),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = true,
+                    imeAction = ImeAction.Default,
+                ),
+                decorator = { field ->
+                    Box {
+                        if (state.text.isEmpty() && (armed != null || pending.isEmpty())) {
+                            val hint = armed?.let { "${it.label} + key" } ?: "send to ${program.ifEmpty { "pane" }}"
+                            Text(hint, color = if (armed != null) Palette.orange else Palette.dim, fontFamily = Mono, fontSize = 15.sp)
+                        }
+                        field()
                     }
-                    field()
-                }
-            },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-        )
+                },
+                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            )
+            if (state.text.isEmpty() && armed == null && pending.isNotEmpty()) {
+                // The app's line, over the empty box: tap to bring it in and edit it.
+                Text(
+                    pending,
+                    color = Palette.grey,
+                    fontFamily = Mono,
+                    fontSize = 15.sp,
+                    lineHeight = 21.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable {
+                            state.edit {
+                                replace(0, length, pending)
+                                placeCursorAtEnd()
+                            }
+                            focus.requestFocus()
+                            keyboard?.show()
+                        },
+                )
+            }
+        }
         Row(
             Modifier.fillMaxWidth().padding(top = 10.dp, start = 8.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             KeyRow(keys, armed, press, onEditKeys, Modifier.weight(1f))
             SendButton(
-                hasText = state.text.isNotEmpty(),
+                action = when {
+                    state.text.isNotEmpty() -> Action.Send
+                    pending.isNotEmpty() -> Action.Enter
+                    else -> Action.Stop
+                },
                 connected = connected,
                 onSend = { enter -> if (onSend(state.text.toString(), enter)) state.clearText() },
+                onEnter = onEnter,
                 onStop = onStop,
             )
         }
@@ -243,18 +297,20 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
     )
 }
 
+private enum class Action { Send, Enter, Stop }
+
 @Composable
-private fun SendButton(hasText: Boolean, connected: Boolean, onSend: (enter: Boolean) -> Unit, onStop: () -> Unit) {
+private fun SendButton(action: Action, connected: Boolean, onSend: (enter: Boolean) -> Unit, onEnter: () -> Unit, onStop: () -> Unit) {
     val view = LocalView.current
     val background = when {
         !connected -> Palette.bg2
-        hasText -> Palette.green
-        else -> Palette.bg3
+        action == Action.Stop -> Palette.bg3
+        else -> Palette.green
     }
     val ink = when {
         !connected -> Palette.dim
-        hasText -> Palette.bg0
-        else -> Palette.fg
+        action == Action.Stop -> Palette.fg
+        else -> Palette.bg0
     }
     Canvas(
         Modifier
@@ -265,28 +321,42 @@ private fun SendButton(hasText: Boolean, connected: Boolean, onSend: (enter: Boo
                 enabled = connected,
                 onLongClick = {
                     // Held: type it in without Enter, to finish with the app's own completion.
-                    if (hasText) {
+                    if (action == Action.Send) {
                         view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                         onSend(false)
                     }
                 },
                 onClick = {
                     view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                    if (hasText) onSend(true) else onStop()
+                    when (action) {
+                        Action.Send -> onSend(true)
+                        Action.Enter -> onEnter()
+                        Action.Stop -> onStop()
+                    }
                 },
             ),
     ) {
         val c = center
-        if (hasText || !connected) {
-            val half = 7.dp.toPx()
-            val width = 2.2.dp.toPx()
-            val tip = Offset(c.x, c.y - half)
-            drawLine(ink, Offset(c.x, c.y + half), tip, width, StrokeCap.Round)
-            drawLine(ink, Offset(c.x - half * 0.8f, c.y - half * 0.2f), tip, width, StrokeCap.Round)
-            drawLine(ink, Offset(c.x + half * 0.8f, c.y - half * 0.2f), tip, width, StrokeCap.Round)
-        } else {
-            val half = 5.5.dp.toPx()
-            drawRoundRect(ink, Offset(c.x - half, c.y - half), Size(half * 2, half * 2), CornerRadius(1.5.dp.toPx()))
+        val h = 7.dp.toPx()
+        val w = 2.2.dp.toPx()
+        fun line(x0: Float, y0: Float, x1: Float, y1: Float) =
+            drawLine(ink, Offset(c.x + x0 * h, c.y + y0 * h), Offset(c.x + x1 * h, c.y + y1 * h), w, StrokeCap.Round)
+        when (action) {
+            Action.Send -> {
+                line(0f, 1f, 0f, -1f)
+                line(-0.8f, -0.2f, 0f, -1f)
+                line(0.8f, -0.2f, 0f, -1f)
+            }
+            Action.Enter -> {
+                line(0.8f, -0.9f, 0.8f, 0.25f)
+                line(0.8f, 0.25f, -0.85f, 0.25f)
+                line(-0.85f, 0.25f, -0.3f, -0.3f)
+                line(-0.85f, 0.25f, -0.3f, 0.8f)
+            }
+            Action.Stop -> {
+                val half = 5.5.dp.toPx()
+                drawRoundRect(ink, Offset(c.x - half, c.y - half), Size(half * 2, half * 2), CornerRadius(1.5.dp.toPx()))
+            }
         }
     }
 }

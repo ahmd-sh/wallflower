@@ -205,6 +205,14 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
             for ((label, keys) in stops) Chip(label, profile.stop == keys) { save(profile.copy(stop = keys)) }
         }
 
+        Section("clear")
+        Body("What empties the app's line, so what's in the box replaces it (sent once per row of the line). Empty: the box adds to the line.")
+        var clear by remember(ref) { mutableStateOf(profile.clearKeys().joinToString(" ")) }
+        Field("tmux keys", clear) {
+            clear = it
+            save(profile.copy(clear = it.split(' ').filter(String::isNotEmpty)))
+        }
+
         Section("add")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             for (k in KeyBar.common) Chip(k.label, false) { save(profile.copy(keys = profile.keys + k)) }

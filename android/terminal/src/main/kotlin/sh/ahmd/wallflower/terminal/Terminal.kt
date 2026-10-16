@@ -53,6 +53,11 @@ class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
         }
     }
 
+    /** The active screen as it stands, or null if the terminal is closed. */
+    fun screen(): Screen? = lock.read {
+        if (handle == 0L) null else nativeScreen(handle)?.let(Screen::parse)
+    }
+
     fun setTheme(theme: Theme) = lock.read {
         if (handle != 0L) nativeSetColors(handle, theme.foreground, theme.background, theme.cursor, theme.palette)
     }
@@ -90,6 +95,7 @@ class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
         @JvmStatic external fun nativeScroll(handle: Long, mode: Int, delta: Int)
         @JvmStatic external fun nativeSetColors(handle: Long, fg: Int, bg: Int, cursor: Int, palette: IntArray)
         @JvmStatic external fun nativeWheel(handle: Long, up: Boolean, col: Int, row: Int, out: ByteArray): Int
+        @JvmStatic external fun nativeScreen(handle: Long): ByteArray?
         @JvmStatic external fun nativeFrame(handle: Long, buffer: ByteBuffer, force: Boolean): Int
     }
 }

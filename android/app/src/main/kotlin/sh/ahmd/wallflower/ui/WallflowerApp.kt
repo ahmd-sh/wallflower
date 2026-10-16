@@ -1,6 +1,21 @@
 package sh.ahmd.wallflower.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.runtime.rememberUpdatedState
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import sh.ahmd.wallflower.protocol.Pane
+import sh.ahmd.wallflower.terminal.InputLine
+import sh.ahmd.wallflower.terminal.Terminal
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -174,6 +189,40 @@ private fun TerminalScreen(
             )
         }
 
+        // Output reaches whichever views show the pane, and rereads the app's input line.
+        val views = remember { ConcurrentHashMap<String, TerminalView>() }
+        val lineTicks = remember { Channel<Unit>(Channel.CONFLATED) }
+        val shownId by rememberUpdatedState(pane?.id)
+        DisposableEffect(session) {
+            session.onOutput = { id ->
+                views[id]?.requestFrame()
+                if (id == shownId) lineTicks.trySend(Unit)
+            }
+            onDispose { session.onOutput = null }
+        }
+        var line by remember { mutableStateOf<InputLine?>(null) }
+        val terminal = pane?.let { terminals[it.id] }
+        LaunchedEffect(terminal) {
+            line = null
+            lineTicks.trySend(Unit)
+            for (tick in lineTicks) {
+                line = withContext(Dispatchers.Default) { terminal?.screen()?.let(InputLine::read) }
+                delay(LINE_EVERY_MS)
+            }
+        }
+
+        var overview by remember { mutableStateOf(false) }
+        LaunchedEffect(window?.id, window?.panes?.size) { if ((window?.panes?.size ?: 0) < 2) overview = false }
+        BackHandler(enabled = overview) { overview = false }
+
+        if (overview && window != null) {
+            PaneOverview(window, pane?.id, terminals, views, Modifier.weight(1f)) { p ->
+                session.show(window, p)
+                overview = false
+            }
+            return@Column
+        }
+
         Box(Modifier.weight(1f).fillMaxWidth()) {
             AndroidView(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp).clipToBounds(),
@@ -184,7 +233,7 @@ private fun TerminalScreen(
                     }
                 },
                 update = {
-                    it.terminal = pane?.let { p -> terminals[p.id] }
+                    it.terminal = terminal
                     it.onSwipe = { direction -> window?.let { w -> session.swipe(w, direction) } }
                     it.onAppScroll = { up, wheel ->
                         pane?.let { p ->
@@ -193,12 +242,17 @@ private fun TerminalScreen(
                     }
                 },
             )
-            if (window != null && pane != null && window.panes.size > 1) PaneDots(window, pane.id, Modifier.align(Alignment.TopEnd))
+            if (window != null && pane != null && window.panes.size > 1) {
+                PaneDots(window, pane.id, Modifier.align(Alignment.TopEnd)) {
+                    session.peek(window)
+                    overview = true
+                }
+            }
             DisposableEffect(view, pane?.id) {
                 val v = view
                 val id = pane?.id
-                session.onOutput = { if (it == id) v?.requestFrame() }
-                onDispose { session.onOutput = null }
+                if (v != null && id != null) views[id] = v
+                onDispose { if (id != null) views.remove(id, v) }
             }
         }
 
@@ -209,10 +263,17 @@ private fun TerminalScreen(
                 program = pane.command,
                 keys = profile.keys,
                 connected = status is Status.Connected,
+                line = line,
                 onKey = { session.send(Keys(pane.id, it.keys, it.bindings)) },
                 onSend = { text, enter ->
-                    session.submit(pane.id, text, enter).also { sent -> if (sent && '\n' !in text) view?.predict(text) }
+                    // The box replaces whatever the app's line holds.
+                    val known = line
+                    val clear = if (known == null) emptyList() else List(known.rows * 2 + 1) { profile.clearKeys() }.flatten()
+                    session.submit(pane.id, text, enter, clear).also { sent ->
+                        if (sent && '\n' !in text && known?.text.isNullOrEmpty()) view?.predict(text)
+                    }
                 },
+                onEnter = { session.send(Keys(pane.id, listOf("Enter"))) },
                 onStop = { session.send(Keys(pane.id, profile.stop)) },
                 onEditKeys = onEditKeys,
             )
@@ -220,11 +281,79 @@ private fun TerminalScreen(
     }
 }
 
-/** Which of the window's panes is showing; swipe the terminal sideways for the others. */
+/**
+ * Every pane of a window as a card with its live contents, in tmux's order;
+ * tap one to show it. Cards fill as many columns as the screen is wide.
+ */
 @Composable
-private fun PaneDots(window: Window, shown: String, modifier: Modifier) {
+private fun PaneOverview(
+    window: Window,
+    shown: String?,
+    terminals: Map<String, Terminal>,
+    views: MutableMap<String, TerminalView>,
+    modifier: Modifier,
+    onPick: (Pane) -> Unit,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 160.dp),
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(window.panes.sortedBy { it.index }, key = { it.id }) { p ->
+            PaneCard(p, p.id == shown, terminals[p.id], views) { onPick(p) }
+        }
+    }
+}
+
+@Composable
+private fun PaneCard(pane: Pane, shown: Boolean, terminal: Terminal?, views: MutableMap<String, TerminalView>, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        Modifier
+            .clip(shape)
+            .background(Palette.bg1)
+            .border(2.dp, if (shown) Palette.orange else Palette.bg1, shape)
+            .clickable(onClick = onClick),
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${pane.index}", color = if (shown) Palette.orange else Palette.dim, fontFamily = Mono, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Text(" ${pane.command}", color = Palette.fg, fontFamily = Mono, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f))
+            if (pane.agent.isNotEmpty()) Box(Modifier.size(6.dp).clip(CircleShape).background(agentColor(pane.agent)))
+        }
+        BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(CARD_RATIO).background(Palette.bg0)) {
+            // Small enough for the pane's whole width to fit the card.
+            val font = (maxWidth.value / (pane.cols.coerceAtLeast(1) * GLYPH_WIDTH)).coerceIn(4f, 11f)
+            var thumb by remember { mutableStateOf<TerminalView?>(null) }
+            AndroidView(
+                modifier = Modifier.fillMaxSize().padding(4.dp).clipToBounds(),
+                factory = { ctx -> TerminalView(ctx).also { thumb = it } },
+                update = {
+                    it.fontSizeSp = font
+                    it.terminal = terminal
+                },
+            )
+            DisposableEffect(thumb, pane.id) {
+                val v = thumb
+                if (v != null) views[pane.id] = v
+                onDispose { views.remove(pane.id, v) }
+            }
+            Box(Modifier.matchParentSize().clickable(onClick = onClick)) // the card takes the tap, not the terminal
+        }
+    }
+}
+
+/** Which of the window's panes is showing: swipe the terminal sideways for the others, tap for all of them. */
+@Composable
+private fun PaneDots(window: Window, shown: String, modifier: Modifier, onClick: () -> Unit) {
     Row(
-        modifier.padding(8.dp).clip(RoundedCornerShape(8.dp)).background(Palette.bg1.copy(alpha = 0.85f)).padding(horizontal = 7.dp, vertical = 6.dp),
+        modifier
+            .padding(8.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Palette.bg1.copy(alpha = 0.85f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         for (p in window.panes.sortedBy { it.index }) {
@@ -307,6 +436,14 @@ private fun StatusDot(status: Status) {
         }
     }
 }
+
+private const val LINE_EVERY_MS = 80L
+
+/** Cards are a phone screen's shape, like a browser's tab grid. */
+private const val CARD_RATIO = 0.75f
+
+/** A JetBrains Mono glyph's width, per point of font size. */
+private const val GLYPH_WIDTH = 0.6f
 
 private fun agentColor(state: String): Color = when (state) {
     "waiting" -> Palette.orange

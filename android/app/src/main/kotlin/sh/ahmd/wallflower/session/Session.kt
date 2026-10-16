@@ -288,18 +288,24 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         send(Select(window = window.id))
     }
 
-    /**
-     * Shows the next (1) or previous (-1) pane of a window now, and has tmux
-     * focus it in the background, zoomed so it gets the whole screen.
-     */
+    /** Shows the next (1) or previous (-1) pane of a window, as [show] does. */
     fun swipe(window: Window, direction: Int) {
         val panes = window.panes.sortedBy { it.index }
         val current = window.shownPane(_chosen.value) ?: return
         if (panes.size < 2) return
-        val next = panes[(panes.indexOfFirst { it.id == current.id } + direction).mod(panes.size)]
-        _chosen.value = _chosen.value + (window.id to PaneChoice(next.id, window.activePane()?.id))
-        open(next.id, viewed = true)
-        send(Focus(next.id))
+        show(window, panes[(panes.indexOfFirst { it.id == current.id } + direction).mod(panes.size)])
+    }
+
+    /** Shows a pane of a window now, and has tmux focus it in the background, zoomed so it gets the whole screen. */
+    fun show(window: Window, pane: Pane) {
+        _chosen.value = _chosen.value + (window.id to PaneChoice(pane.id, window.activePane()?.id))
+        open(pane.id, viewed = true)
+        send(Focus(pane.id))
+    }
+
+    /** Opens every pane of a window, so all of them can be shown at once. */
+    fun peek(window: Window) {
+        for (p in window.panes.sortedBy { it.index }) open(p.id, viewed = false)
     }
 
     fun send(m: ClientMessage) {
@@ -315,13 +321,15 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     /**
      * Sends composed text and presses Enter, unless not [enter]: typed if
      * it's one line, pasted if it has several, so the app doesn't run each
-     * line. Returns false, sending nothing, while not connected. Text the
-     * gateway doesn't confirm before the connection drops comes back through
+     * line, after [clear] keys (whatever empties the app's line first).
+     * Returns false, sending nothing, while not connected. Text the gateway
+     * doesn't confirm before the connection drops comes back through
      * [undelivered].
      */
-    fun submit(pane: String, text: String, enter: Boolean = true): Boolean = synchronized(pending) {
+    fun submit(pane: String, text: String, enter: Boolean = true, clear: List<String> = emptyList()): Boolean = synchronized(pending) {
         val q = queue
         if (q == null || _status.value !is Status.Connected) return false
+        if (clear.isNotEmpty()) q.trySend(Outgoing.Message(Keys(pane, clear)))
         val sent = if ('\n' in text) {
             q.trySend(Outgoing.Message(Paste(pane, text))).isSuccess &&
                 (!enter || q.trySend(Outgoing.Message(Keys(pane, listOf("Enter")))).isSuccess)

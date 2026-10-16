@@ -203,6 +203,84 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeWheel(JNIEnv* env, jclass cls, j
   return result;
 }
 
+// The active screen, for reading what an app's input line holds. Layout:
+// u16 cols, u16 rows, u16 cursor x, u16 cursor y, then per row a flags byte
+// (1: soft-wrapped onto the next row) and per cell an attribute byte and a
+// codepoint count, then that many i32 codepoints. Attributes: bits 0-1 the
+// OSC 133 role (0 output, 1 input, 2 prompt), 4 faint, 8 in palette color 8
+// (autosuggestion grey), 16 the second half of a wide cell.
+JNIEXPORT jbyteArray JNICALL
+Java_sh_ahmd_wallflower_terminal_Terminal_nativeScreen(JNIEnv* env, jclass cls, jlong h) {
+  (void)cls;
+  Term* t = (Term*)(intptr_t)h;
+  pthread_mutex_lock(&t->lock);
+  uint16_t cols = 0, rows = 0, cx = 0, cy = 0;
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_COLS, &cols);
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ROWS, &rows);
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_CURSOR_X, &cx);
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_CURSOR_Y, &cy);
+  size_t cap = 8 + (size_t)rows * (1 + (size_t)cols * 6) + 64, len = 0;
+  uint8_t* out = malloc(cap);
+  if (!out) {
+    pthread_mutex_unlock(&t->lock);
+    return NULL;
+  }
+  uint16_t head[4] = {cols, rows, cx, cy};
+  memcpy(out, head, sizeof head);
+  len = sizeof head;
+  for (uint16_t y = 0; y < rows; y++) {
+    size_t flags_at = len++;
+    out[flags_at] = 0;
+    for (uint16_t x = 0; x < cols; x++) {
+      uint32_t cps[8];
+      size_t n = 0;
+      uint8_t attr = 0;
+      GhosttyPoint pt = {.tag = GHOSTTY_POINT_TAG_ACTIVE, .value = {.coordinate = {.x = x, .y = y}}};
+      GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+      GhosttyCell cell;
+      if (ghostty_terminal_grid_ref(t->term, pt, &ref) == GHOSTTY_SUCCESS && ghostty_grid_ref_cell(&ref, &cell) == GHOSTTY_SUCCESS) {
+        if (x == 0) {
+          GhosttyRow row;
+          bool wrap = false;
+          if (ghostty_grid_ref_row(&ref, &row) == GHOSTTY_SUCCESS) ghostty_row_get(row, GHOSTTY_ROW_DATA_WRAP, &wrap);
+          if (wrap) out[flags_at] |= 1;
+        }
+        GhosttyCellSemanticContent role = GHOSTTY_CELL_SEMANTIC_OUTPUT;
+        GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+        ghostty_cell_get(cell, GHOSTTY_CELL_DATA_SEMANTIC_CONTENT, &role);
+        ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide);
+        attr |= (uint8_t)(role & 3);
+        if (wide == GHOSTTY_CELL_WIDE_SPACER_TAIL || wide == GHOSTTY_CELL_WIDE_SPACER_HEAD) attr |= 16;
+        GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
+        if (ghostty_grid_ref_style(&ref, &style) == GHOSTTY_SUCCESS) {
+          if (style.faint) attr |= 4;
+          if (style.fg_color.tag == GHOSTTY_STYLE_COLOR_PALETTE && style.fg_color.value.palette == 8) attr |= 8;
+        }
+        if (ghostty_grid_ref_graphemes(&ref, cps, 8, &n) != GHOSTTY_SUCCESS) n = 0;
+      }
+      if (len + 2 + n * 4 > cap) {
+        cap = cap * 2 + n * 4;
+        uint8_t* grown = realloc(out, cap);
+        if (!grown) {
+          free(out);
+          pthread_mutex_unlock(&t->lock);
+          return NULL;
+        }
+        out = grown;
+      }
+      out[len++] = attr;
+      out[len++] = (uint8_t)n;
+      memcpy(out + len, cps, n * 4);
+      len += n * 4;
+    }
+  }
+  pthread_mutex_unlock(&t->lock);
+  jbyteArray result = (*env)->NewByteArray(env, (jsize)len);
+  if (result) (*env)->SetByteArrayRegion(env, result, 0, (jsize)len, (const jbyte*)out);
+  free(out);
+  return result;
+}
+
 // palette: 16 or 256 ints of 0xRRGGBB; the rest of the 256 keep their defaults.
 JNIEXPORT void JNICALL
 Java_sh_ahmd_wallflower_terminal_Terminal_nativeSetColors(JNIEnv* env, jclass cls, jlong h, jint fg, jint bg, jint cursor, jintArray palette) {

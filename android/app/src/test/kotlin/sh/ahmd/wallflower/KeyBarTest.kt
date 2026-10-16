@@ -46,6 +46,14 @@ class KeyBarTest {
     }
 
     @Test
+    fun clearKeysFollowTheProgram() {
+        assertEquals(listOf("C-u"), bar.profileFor("claude").clearKeys())
+        assertEquals(listOf("C-x", "C-u"), bar.profileFor("zsh").clearKeys())
+        assertEquals(emptyList<String>(), bar.profileFor("hntui").clearKeys())
+        assertEquals(listOf("Escape", "S"), KeyProfile("vi", listOf("zsh"), emptyList(), clear = listOf("Escape", "S")).clearKeys())
+    }
+
+    @Test
     fun survivesStorage() {
         assertEquals(bar, Json.decodeFromString<KeyBar>(Json.encodeToString(bar)))
         // Settings saved before keys could be sticky still load.

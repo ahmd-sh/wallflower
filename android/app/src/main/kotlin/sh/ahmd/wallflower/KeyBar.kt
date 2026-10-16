@@ -46,7 +46,15 @@ data class KeyProfile(
     val keys: List<BarKey>,
     /** What the send button sends when the box is empty. */
     val stop: List<String> = listOf("C-c"),
-)
+    /** What empties the app's input line, sent once per row it takes and once more; null picks by program. */
+    val clear: List<String>? = null,
+) {
+    fun clearKeys(): List<String> = clear ?: when {
+        programs.any { it.equals("claude", ignoreCase = true) } -> listOf("C-u") // a row at a time
+        programs.any { it.equals("zsh", ignoreCase = true) } -> listOf("C-x", "C-u") // kill-buffer, bound in the zshrc
+        else -> emptyList()
+    }
+}
 
 /**
  * Which keys sit next to the composer. The focused pane's program picks the
