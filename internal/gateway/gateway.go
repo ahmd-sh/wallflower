@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -43,6 +45,7 @@ type gateway struct {
 	session    *tmux.Session    // last snapshot
 	panes      map[string]*pane // panes the client has open
 	zoomed     map[string]bool  // windows the client zoomed -> zoom state before
+	group      string           // the session the client asked for; its own session is grouped with it
 	lastState  []byte
 	dirty      bool
 	exitReason string
@@ -74,11 +77,19 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	if session == "" {
 		session = opts.Session
 	}
+	if g.group, err = sessionName(opts.Socket, session); err != nil {
+		g.send(protocol.Bye{Reason: err.Error()})
+		return err
+	}
 
-	// Not tied to ctx: cleanup still needs tmux after a signal.
+	// The client gets its own session in the target's group: the same
+	// windows, but its own current window, so switching windows on the phone
+	// never moves the desktop. Not tied to ctx: cleanup still needs tmux
+	// after a signal.
 	g.tmux, err = tmux.Start(context.Background(), tmux.Options{
 		Socket:  opts.Socket,
-		Session: session,
+		Session: g.group,
+		Group:   fmt.Sprintf("%s-wallflower-%d", g.group, os.Getpid()),
 		Flags:   []string{"new-layouts", "no-detach-on-destroy"},
 	})
 	if err != nil {
@@ -113,6 +124,21 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 		}
 	}()
 	return g.loop(ctx, frames, readErr)
+}
+
+// sessionName resolves the session to group with: the named one, or the one
+// tmux would pick.
+func sessionName(socket, session string) (string, error) {
+	args := append(tmux.SocketArgs(socket), "-u", "display-message", "-p")
+	if session != "" {
+		args = append(args, "-t", session+":")
+	}
+	out, err := exec.Command(tmux.Binary(), append(args, "#{session_name}")...).CombinedOutput()
+	name := strings.TrimSpace(string(out))
+	if err != nil || name == "" {
+		return "", fmt.Errorf("no tmux session %q: %s", session, name)
+	}
+	return name, nil
 }
 
 func readHello(r *protocol.Reader) (*protocol.ClientHello, error) {
@@ -351,7 +377,9 @@ func (g *gateway) sendState() {
 		return
 	}
 	g.session = s
-	if b, _ := protocol.AppendJSON(nil, stateOf(s)); !bytes.Equal(b, g.lastState) {
+	st := stateOf(s)
+	st.Name = g.group // the client's own session is an implementation detail
+	if b, _ := protocol.AppendJSON(nil, st); !bytes.Equal(b, g.lastState) {
 		g.out.push(b)
 		g.lastState = b
 	}

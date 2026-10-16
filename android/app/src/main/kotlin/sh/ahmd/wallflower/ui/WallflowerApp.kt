@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +15,9 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,9 +47,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.Text
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import sh.ahmd.wallflower.protocol.Keys
-import sh.ahmd.wallflower.protocol.Select
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.session.Session
+import sh.ahmd.wallflower.session.Session.Companion.activePane
 import sh.ahmd.wallflower.session.Status
 import sh.ahmd.wallflower.terminal.TerminalView
 
@@ -53,7 +58,10 @@ fun WallflowerApp(session: Session) {
     val status by session.status.collectAsStateWithLifecycle()
     val state by session.state.collectAsStateWithLifecycle()
     val terminals by session.terminals.collectAsStateWithLifecycle()
-    val pane = state?.let { Session.activePane(it) }
+    val viewing by session.viewing.collectAsStateWithLifecycle()
+    val windows = state?.windows.orEmpty()
+    val window = windows.firstOrNull { it.id == viewing } ?: windows.firstOrNull { it.active }
+    val pane = window?.activePane()
 
     Column(
         Modifier
@@ -62,7 +70,7 @@ fun WallflowerApp(session: Session) {
             .systemBarsPadding()
             .imePadding(),
     ) {
-        WindowTabs(state?.windows.orEmpty(), status) { session.send(Select(window = it.id)) }
+        WindowTabs(windows, window?.id, status) { session.view(it) }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             var view by remember { mutableStateOf<TerminalView?>(null) }
@@ -91,39 +99,54 @@ fun WallflowerApp(session: Session) {
     }
 }
 
+/**
+ * The window strip. Entirely local: it scrolls natively and a tap switches
+ * immediately; tmux learns about it afterwards.
+ */
 @Composable
-private fun WindowTabs(windows: List<Window>, status: Status, onSelect: (Window) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+private fun WindowTabs(windows: List<Window>, selected: String?, status: Status, onSelect: (Window) -> Unit) {
+    val list = rememberLazyListState()
+    val index = windows.indexOfFirst { it.id == selected }
+    LaunchedEffect(index) {
+        if (index >= 0) {
+            val visible = list.layoutInfo.visibleItemsInfo
+            if (visible.none { it.index == index + 1 && it.offset >= 0 && it.offset + it.size <= list.layoutInfo.viewportEndOffset }) {
+                list.animateScrollToItem(index + 1, scrollOffset = -48)
+            }
+        }
+    }
+    LazyRow(
+        state = list,
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StatusDot(status)
-        for (w in windows) {
+        item(key = "status") { StatusDot(status) }
+        items(windows, key = { it.id }) { w ->
+            val on = w.id == selected
             val agent = w.panes.map { it.agent }.firstOrNull { it.isNotEmpty() }
             Row(
                 Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .background(if (w.active) Palette.bg3 else Palette.bg1)
+                    .background(if (on) Palette.bg3 else Palette.bg1)
                     .clickable { onSelect(w) }
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     "${w.index}",
-                    color = if (w.active) Palette.orange else Palette.dim,
+                    color = if (on) Palette.orange else Palette.dim,
                     fontFamily = Mono,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
                     " ${w.name}",
-                    color = if (w.active) Palette.fg else Palette.grey,
+                    color = if (on) Palette.fg else Palette.grey,
                     fontFamily = Mono,
                     fontSize = 12.sp,
+                    maxLines = 1,
                 )
                 if (agent != null) {
                     Box(Modifier.padding(start = 6.dp).size(6.dp).clip(CircleShape).background(agentColor(agent)))
@@ -140,9 +163,11 @@ private fun StatusDot(status: Status) {
         Status.Connecting -> Palette.yellow
         is Status.Disconnected -> Palette.red
     }
-    Box(Modifier.size(8.dp).clip(CircleShape).background(color))
-    if (status is Status.Disconnected) {
-        Text(status.reason, color = Palette.red, fontFamily = Mono, fontSize = 11.sp)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+        if (status is Status.Disconnected) {
+            Text(" ${status.reason}", color = Palette.red, fontFamily = Mono, fontSize = 11.sp, maxLines = 1)
+        }
     }
 }
 

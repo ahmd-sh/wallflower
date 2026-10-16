@@ -18,6 +18,11 @@ type Options struct {
 	Socket  string   // socket name (-L) or path (-S, if it contains a slash); empty uses $TMUX or the default
 	Session string   // target session; empty lets tmux pick
 	Flags   []string // client flags, see attach-session -f
+
+	// Group, if set, names a new session created in Session's group and
+	// attached instead: it shares Session's windows but has its own current
+	// window. tmux destroys it when the client detaches.
+	Group string
 }
 
 // Client is one control-mode client attached to a tmux server.
@@ -98,12 +103,20 @@ func SocketArgs(socket string) []string {
 func Start(ctx context.Context, opts Options) (*Client, error) {
 	// -u: without a UTF-8 locale (ssh may not pass one) tmux replaces tabs
 	// and non-ASCII in replies with "_".
-	args := append(SocketArgs(opts.Socket), "-u", "-C", "attach-session")
-	if opts.Session != "" {
-		args = append(args, "-t", opts.Session)
+	args := append(SocketArgs(opts.Socket), "-u", "-C")
+	if opts.Group != "" {
+		args = append(args, "new-session", "-t", opts.Session, "-s", opts.Group)
+	} else {
+		args = append(args, "attach-session")
+		if opts.Session != "" {
+			args = append(args, "-t", opts.Session)
+		}
 	}
 	if len(opts.Flags) > 0 {
 		args = append(args, "-f", strings.Join(opts.Flags, ","))
+	}
+	if opts.Group != "" {
+		args = append(args, ";", "set-option", "-t", opts.Group, "destroy-unattached", "on")
 	}
 
 	c := &Client{events: newQueue(), done: make(chan struct{})}

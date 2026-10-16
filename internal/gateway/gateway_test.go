@@ -276,13 +276,37 @@ func TestStateFollowsTmux(t *testing.T) {
 	c.tmux("set", "-p", "-t", "t", "@agent_state", "waiting")
 	c.state("agent state", func(s protocol.State) bool { return activePane(s).Agent == "waiting" })
 
+	// A window opened on the desktop shows up, but doesn't take over the
+	// phone's current window.
 	c.tmux("new-window", "-t", "t:", "-n", "second")
 	c.tmux("new-pane", "-t", "t:second", "-x", "20", "-y", "6")
 	s := c.state("floating pane", func(s protocol.State) bool {
-		return len(s.Windows) == 2 && activePane(s).Floating
+		return len(s.Windows) == 2 && len(s.Windows[1].Panes) == 2
 	})
-	if w := activeWindow(s); w.Name != "second" || len(w.Panes) != 2 {
+	if w := s.Windows[1]; w.Name != "second" || w.Active || !w.Panes[1].Floating {
 		t.Errorf("window = %+v", w)
+	}
+	if s.Name != "t" {
+		t.Errorf("state names the client's own session %q, want the group t", s.Name)
+	}
+}
+
+func TestOwnCurrentWindow(t *testing.T) {
+	c := connect(t, 60, 20)
+	c.tmux("new-window", "-d", "-t", "t:", "-n", "second")
+	s := c.state("two windows", func(s protocol.State) bool { return len(s.Windows) == 2 })
+
+	c.send(protocol.Select{Window: s.Windows[1].ID})
+	c.state("phone on second", func(s protocol.State) bool { return activeWindow(s).Name == "second" })
+	if w := c.tmux("display", "-p", "-t", "t:", "#{window_index}"); w != "0" {
+		t.Errorf("desktop session moved to window %s", w)
+	}
+
+	if err := c.disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	if ls := c.tmux("list-sessions", "-F", "#{session_name}"); ls != "t" {
+		t.Errorf("sessions after disconnect = %q, want only t", ls)
 	}
 }
 
@@ -294,7 +318,7 @@ func TestRequests(t *testing.T) {
 	c.send(protocol.Ping{ID: 1})
 	c.expect("pong", func(_ protocol.Frame, m protocol.Message) bool { r, ok := m.(*protocol.Pong); return ok && r.ID == 1 })
 
-	c.send(protocol.TmuxCommand{ID: 2, Command: "display -p '#{session_name}'"})
+	c.send(protocol.TmuxCommand{ID: 2, Command: "display -p '#{session_group}'"})
 	_, m := c.expect("result", func(_ protocol.Frame, m protocol.Message) bool { r, ok := m.(*protocol.Result); return ok && r.ID == 2 })
 	if r := m.(*protocol.Result); r.Error != "" || len(r.Lines) != 1 || r.Lines[0] != "t" {
 		t.Errorf("result = %+v", r)

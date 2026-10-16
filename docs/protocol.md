@@ -27,8 +27,10 @@ don't parse them.
 
 ## Session
 
-1. Client sends `hello`. The gateway attaches to tmux and sizes it to the
-   client.
+1. Client sends `hello`. The gateway gives the client its own tmux session,
+   grouped with the one it asked for (default: the one tmux would pick): same
+   windows, its own current window, destroyed when the client disconnects.
+   Switching windows on the client never moves another client's view.
 2. Gateway sends `hello`, then `state`.
 3. Client sends `open` for the panes it wants to show. For each, the gateway
    sends `reset` and one data frame that repaints the pane, then streams its
@@ -48,7 +50,7 @@ client never has to resync on its own.
 | `open` | `pane`, `history`? | repaint and stream a pane; `history` lines of scrollback (default 1000) |
 | `close` | `pane` | stop streaming a pane |
 | `keys` | `pane`, `keys` | tmux key names: `Enter`, `Escape`, `Up`, `C-c`, `M-Enter`, `BTab`, …; encoded for the pane's modes |
-| `select` | `window` or `pane` | make it current |
+| `select` | `window` or `pane` | make it current in the client's session (sizes it for the client) |
 | `zoom` | `pane` | toggle zoom; zooms are undone when the client disconnects |
 | `scrollback` | `id`, `pane`, `start`, `end` | lines in tmux numbering: 0 is the top visible line, negative is history |
 | `tmux` | `id`, `command` | run a raw tmux command line (escape hatch) |
@@ -61,7 +63,7 @@ Text goes in pane data frames; `keys` is for keys that aren't text.
 | t | fields | |
 |---|--------|---|
 | `hello` | `v`, `tmux` | tmux version |
-| `state` | `session`, `name`, `windows` | everything in the session, see below |
+| `state` | `session`, `name`, `windows` | everything in the session, see below; `name` is the group the client asked for |
 | `reset` | `pane`, `cols`, `rows` | recreate the pane's terminal at this size; the next data frame repaints it |
 | `scrollback` | `id`, `pane`, `history_size`, `lines` | lines keep their SGR escapes |
 | `result` | `id`, `lines`?, `error`? | reply to `tmux`, or a failed `scrollback` |
@@ -82,6 +84,13 @@ A window is `id`, `index`, `name`, `active`, `zoomed`, `cols`, `rows` and
 | `title`, `path`, `command` | |
 
 When a window is zoomed, only its active pane is visible.
+
+## Presentation is the client's
+
+State is pushed whenever it changes and every open pane streams, so a client
+can keep everything it shows local: scroll, switch windows, and draw panes it
+already has open without asking. Messages are for changing tmux, not for
+looking at it.
 
 ## Sizing
 
