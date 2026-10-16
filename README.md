@@ -5,18 +5,19 @@ gateway on the Mac speaks tmux control mode and serves a lean, versioned
 protocol to clients (an Android app first) over SSH.
 
 ```
-phone app ──ssh stdio──▶ tether (gateway, on demand) ──tmux -CC──▶ tmux server
+phone app ──ssh stdio──▶ tether serve (one per connection) ──tmux -C──▶ tmux server
 ```
 
 ## Status
 
-Spike: `tether watch` attaches in control mode and prints a snapshot plus
-every event as JSON lines.
+The gateway works end to end; there is no phone app yet. See
+[docs/protocol.md](docs/protocol.md).
 
 ```sh
 go build -o bin/tether ./cmd/tether
-bin/tether watch -output=false     # default server, current session
-bin/tether watch -L test -t demo   # isolated server
+bin/tether debug -cols 56 -rows 20          # local gateway as JSON lines
+bin/tether debug -- ssh mac "~/go/bin/tether serve"   # through ssh
+bin/tether watch -output=false              # raw control-mode events
 ```
 
 Requires tmux 3.8 (JSON layouts, floating panes).
@@ -33,3 +34,13 @@ Requires tmux 3.8 (JSON layouts, floating panes).
 - `%session-renamed` carries `$id name`, despite the man page.
 - Subscriptions (`refresh-client -B`) report current values on subscribe,
   then changes at most once a second.
+- Each command in a `;` list gets its own reply block, and a parse error is
+  one block for the whole line, so the client ends every line with a marker
+  command. Commands in one line run back to back: an atomic read.
+- Without a UTF-8 locale tmux replaces tabs and non-ASCII in replies with
+  `_`; `-u` forces UTF-8. It assumes UTF-8 whenever `$TMUX` is set.
+- A control client only affects window size after `refresh-client -C`.
+  Re-sending the same size doesn't reclaim a window; `select-window` does.
+- With an alternate screen active, `capture-pane` shows it; `-a` shows the
+  normal screen behind it, and `-S -N -E -1` the normal screen's history.
+- `capture-pane -e` carries attributes across lines.

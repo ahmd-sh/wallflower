@@ -67,12 +67,12 @@ func watch(args []string) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetEscapeHTML(false)
 
-	windows, err := c.Snapshot()
+	snap, err := c.Snapshot()
 	if err != nil {
 		c.Close()
 		return err
 	}
-	enc.Encode(map[string]any{"type": "snapshot", "windows": windows})
+	enc.Encode(map[string]any{"type": "snapshot", "session": snap})
 
 	for _, s := range subscriptions {
 		if _, err := c.Run("refresh-client -B '" + s + "'"); err != nil {

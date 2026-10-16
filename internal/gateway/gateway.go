@@ -1,0 +1,521 @@
+// Package gateway serves one client over the tether protocol, backed by a
+// tmux control-mode client. It keeps no state that tmux doesn't already
+// hold; everything it sends can be rebuilt from tmux.
+package gateway
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/ahmd-sh/tether/internal/protocol"
+	"github.com/ahmd-sh/tether/internal/tmux"
+)
+
+type Options struct {
+	Socket  string // tmux socket, see tmux.Options
+	Session string // default session when the client doesn't ask for one
+}
+
+const (
+	highWater  = 1 << 20   // stop forwarding pane output above this backlog
+	lowWater   = 256 << 10 // repaint stale panes once the backlog is below this
+	stateDelay = 15 * time.Millisecond
+	maxSize    = 1000
+)
+
+// Any change to these re-sends state.
+var paneSubscription = "meta:%*:" + strings.Join([]string{
+	"#{pane_current_command}", "#{pane_title}", "#{pane_current_path}",
+	"#{@agent_state}", "#{alternate_on}",
+}, "\t")
+
+type gateway struct {
+	tmux       *tmux.Client
+	out        *outbox
+	cols, rows int
+	session    *tmux.Session    // last snapshot
+	panes      map[string]*pane // panes the client has open
+	zoomed     map[string]bool  // windows the client zoomed -> zoom state before
+	lastState  []byte
+	dirty      bool
+	exitReason string
+}
+
+type pane struct {
+	openAt     uint64 // output with Seq <= openAt is already in the repaint
+	history    int
+	cols, rows int
+	stale      bool // output dropped under backpressure; repaint when drained
+}
+
+// Serve runs one client session over in and out until the client
+// disconnects or tmux exits.
+func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	g := &gateway{out: newOutbox(out), panes: map[string]*pane{}, zoomed: map[string]bool{}}
+	defer g.out.close(2 * time.Second)
+
+	r := protocol.NewReader(in)
+	hello, err := readHello(r)
+	if err != nil {
+		g.send(protocol.Bye{Reason: err.Error()})
+		return err
+	}
+	g.cols, g.rows = hello.Cols, hello.Rows
+	session := hello.Session
+	if session == "" {
+		session = opts.Session
+	}
+
+	// Not tied to ctx: cleanup still needs tmux after a signal.
+	g.tmux, err = tmux.Start(context.Background(), tmux.Options{
+		Socket:  opts.Socket,
+		Session: session,
+		Flags:   []string{"new-layouts", "no-detach-on-destroy"},
+	})
+	if err != nil {
+		g.send(protocol.Bye{Reason: err.Error()})
+		return err
+	}
+	defer g.cleanup()
+
+	version, err := g.setup()
+	if err != nil {
+		err = g.tmuxErr(err)
+		g.send(protocol.Bye{Reason: err.Error()})
+		return err
+	}
+	g.send(protocol.ServerHello{V: protocol.Version, Tmux: version})
+	g.sendState()
+
+	frames := make(chan protocol.Frame)
+	readErr := make(chan error, 1)
+	go func() {
+		for {
+			f, err := r.Next()
+			if err != nil {
+				readErr <- err
+				return
+			}
+			select {
+			case frames <- f:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return g.loop(ctx, frames, readErr)
+}
+
+func readHello(r *protocol.Reader) (*protocol.ClientHello, error) {
+	f, err := r.Next()
+	if err != nil {
+		return nil, err
+	}
+	if f.Type != protocol.FrameJSON {
+		return nil, errors.New("first message must be hello")
+	}
+	m, err := protocol.DecodeClient(f.Data)
+	if err != nil {
+		return nil, err
+	}
+	hello, ok := m.(*protocol.ClientHello)
+	if !ok {
+		return nil, errors.New("first message must be hello")
+	}
+	if hello.V != protocol.Version {
+		return nil, fmt.Errorf("protocol version %d not supported (gateway speaks %d)", hello.V, protocol.Version)
+	}
+	if !validSize(hello.Cols, hello.Rows) {
+		return nil, fmt.Errorf("bad size %dx%d", hello.Cols, hello.Rows)
+	}
+	return hello, nil
+}
+
+func (g *gateway) setup() (string, error) {
+	r, err := g.tmux.Command(fmt.Sprintf("refresh-client -C %dx%d ; refresh-client -B %s ; display -p '#{version}'",
+		g.cols, g.rows, tmux.Quote(paneSubscription)))
+	if err != nil {
+		return "", err
+	}
+	lines := r.Lines()
+	if len(lines) != 1 {
+		return "", fmt.Errorf("unexpected setup reply %q", lines)
+	}
+	return lines[0], nil
+}
+
+func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readErr <-chan error) error {
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	var stateDue <-chan time.Time
+	for {
+		select {
+		case n, ok := <-g.tmux.Events():
+			if !ok {
+				reason := "tmux exited"
+				if g.exitReason != "" {
+					reason += ": " + g.exitReason
+				}
+				g.send(protocol.Bye{Reason: reason})
+				return g.tmux.Err()
+			}
+			g.notify(n)
+		case f := <-frames:
+			if err := g.handle(f); err != nil {
+				g.send(protocol.Error{Message: err.Error()})
+			}
+		case err := <-readErr:
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		case <-stateDue:
+			stateDue = nil
+			g.sendState()
+		case <-tick.C:
+			g.repaintStale()
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		if g.dirty && stateDue == nil {
+			stateDue = time.After(stateDelay)
+		}
+	}
+}
+
+func (g *gateway) notify(n tmux.Notification) {
+	switch n.Type {
+	case "output", "extended-output":
+		p := g.panes[n.Pane]
+		if p == nil || p.stale || n.Seq <= p.openAt {
+			return
+		}
+		if g.out.buffered() > highWater {
+			p.stale = true
+			return
+		}
+		g.out.push(protocol.AppendData(nil, n.Pane, n.Data))
+	case "layout-change", "window-add", "window-close", "window-renamed", "window-pane-changed",
+		"session-window-changed", "session-changed", "session-renamed", "subscription-changed":
+		g.dirty = true
+	case "exit":
+		g.exitReason = n.Value
+	}
+}
+
+func (g *gateway) handle(f protocol.Frame) error {
+	if f.Type == protocol.FrameData {
+		if err := checkID(paneID, f.Pane); err != nil {
+			return err
+		}
+		g.claimSize()
+		return g.sendText(f.Pane, f.Data)
+	}
+
+	m, err := protocol.DecodeClient(f.Data)
+	if err != nil {
+		return err
+	}
+	switch m := m.(type) {
+	case *protocol.Resize:
+		if !validSize(m.Cols, m.Rows) {
+			return fmt.Errorf("bad size %dx%d", m.Cols, m.Rows)
+		}
+		g.cols, g.rows = m.Cols, m.Rows
+		return g.run(fmt.Sprintf("refresh-client -C %dx%d", m.Cols, m.Rows))
+
+	case *protocol.Open:
+		if err := checkID(paneID, m.Pane); err != nil {
+			return err
+		}
+		return g.open(m.Pane, m.History)
+
+	case *protocol.Close:
+		delete(g.panes, m.Pane)
+		return nil
+
+	case *protocol.Keys:
+		if err := checkID(paneID, m.Pane); err != nil {
+			return err
+		}
+		if len(m.Keys) == 0 {
+			return nil
+		}
+		g.claimSize()
+		cmd := "send-keys -t " + m.Pane
+		for _, k := range m.Keys {
+			cmd += " " + tmux.Quote(k)
+		}
+		return g.run(cmd)
+
+	case *protocol.Select:
+		switch {
+		case m.Pane != "":
+			if err := checkID(paneID, m.Pane); err != nil {
+				return err
+			}
+			return g.run("select-pane -t " + m.Pane)
+		case m.Window != "":
+			if err := checkID(windowID, m.Window); err != nil {
+				return err
+			}
+			return g.run("select-window -t " + m.Window)
+		}
+		return errors.New("select needs a window or pane")
+
+	case *protocol.Zoom:
+		if err := checkID(paneID, m.Pane); err != nil {
+			return err
+		}
+		r, err := g.tmux.Command(fmt.Sprintf("display -p -t %[1]s '#{window_id} #{window_zoomed_flag}' ; resize-pane -Z -t %[1]s", m.Pane))
+		if err != nil {
+			return err
+		}
+		if lines := r.Lines(); len(lines) > 0 {
+			id, was, _ := strings.Cut(lines[0], " ")
+			if _, seen := g.zoomed[id]; !seen {
+				g.zoomed[id] = was == "1"
+			}
+		}
+		return nil
+
+	case *protocol.ScrollbackRequest:
+		g.send(g.scrollback(m))
+		return nil
+
+	case *protocol.TmuxCommand:
+		lines, err := g.tmux.Run(m.Command)
+		res := protocol.Result{ID: m.ID, Lines: lines}
+		if err != nil {
+			res.Error = err.Error()
+		}
+		g.send(res)
+		return nil
+
+	case *protocol.Ping:
+		g.send(protocol.Pong{ID: m.ID})
+		return nil
+
+	case *protocol.ClientHello:
+		return errors.New("already said hello")
+	}
+	return fmt.Errorf("unhandled message %q", m.Type())
+}
+
+// open (re)paints a pane and starts streaming its output.
+func (g *gateway) open(id string, history int) error {
+	if history <= 0 {
+		history = protocol.DefaultHistory
+	}
+	r, err := g.tmux.Command(captureCommand(id, history))
+	if err != nil {
+		return err
+	}
+	c, err := parseCapture(r, history)
+	if err != nil {
+		return err
+	}
+	g.panes[id] = &pane{openAt: r.Seq, history: history, cols: c.cols, rows: c.rows}
+	g.send(protocol.Reset{Pane: id, Cols: c.cols, Rows: c.rows})
+	g.out.push(protocol.AppendData(nil, id, c.repaint()))
+	return nil
+}
+
+func (g *gateway) repaintStale() {
+	if g.out.buffered() > lowWater {
+		return
+	}
+	for id, p := range g.panes {
+		if p.stale {
+			if err := g.open(id, p.history); err != nil {
+				delete(g.panes, id)
+			}
+		}
+	}
+}
+
+func (g *gateway) sendState() {
+	g.dirty = false
+	s, err := g.tmux.Snapshot()
+	if err != nil {
+		g.send(protocol.Error{Message: err.Error()})
+		return
+	}
+	g.session = s
+	if b, _ := protocol.AppendJSON(nil, stateOf(s)); !bytes.Equal(b, g.lastState) {
+		g.out.push(b)
+		g.lastState = b
+	}
+
+	// Panes that closed are forgotten; panes that changed size are repainted,
+	// since the client's terminal would reflow differently from tmux's.
+	sizes := map[string][2]int{}
+	for _, w := range s.Windows {
+		for _, p := range w.Panes {
+			sizes[p.ID] = [2]int{p.Width, p.Height}
+		}
+	}
+	for id, p := range g.panes {
+		size, ok := sizes[id]
+		switch {
+		case !ok:
+			delete(g.panes, id)
+		case size != [2]int{p.cols, p.rows}:
+			if err := g.open(id, p.history); err != nil {
+				delete(g.panes, id)
+			}
+		}
+	}
+}
+
+func stateOf(s *tmux.Session) protocol.State {
+	st := protocol.State{Session: s.ID, Name: s.Name, Windows: []protocol.Window{}}
+	for _, w := range s.Windows {
+		pw := protocol.Window{
+			ID: w.ID, Index: w.Index, Name: w.Name, Active: w.Active, Zoomed: w.Zoomed,
+			Cols: w.Width, Rows: w.Height, Panes: []protocol.Pane{},
+		}
+		for _, p := range w.Panes {
+			pw.Panes = append(pw.Panes, protocol.Pane{
+				ID: p.ID, Index: p.Index, Active: p.Active, X: p.Left, Y: p.Top,
+				Cols: p.Width, Rows: p.Height, Floating: p.Floating, Z: p.Z, Alt: p.AltScreen,
+				Agent: p.Agent, Title: p.Title, Path: p.Path, Command: p.Command,
+			})
+		}
+		st.Windows = append(st.Windows, pw)
+	}
+	return st
+}
+
+// claimSize makes this client the window's size again if another client
+// (the desktop) took it over. tmux sizes a window for the client that last
+// resized or selected it; typing doesn't count, and re-sending the same
+// size is a no-op, but selecting the window again works.
+func (g *gateway) claimSize() {
+	if g.session == nil {
+		return
+	}
+	for _, w := range g.session.Windows {
+		if w.Active && (w.Width != g.cols || w.Height != g.rows) {
+			g.run("select-window -t " + w.ID)
+			return
+		}
+	}
+}
+
+// sendText types data into the pane byte for byte; send-keys -H takes hex,
+// so no quoting is involved.
+func (g *gateway) sendText(pane string, data []byte) error {
+	const perCommand, perLine = 512, 16
+	var cmds []string
+	for len(data) > 0 {
+		n := min(len(data), perCommand)
+		var b strings.Builder
+		b.WriteString("send-keys -t " + pane + " -H")
+		for _, c := range data[:n] {
+			fmt.Fprintf(&b, " %02x", c)
+		}
+		cmds = append(cmds, b.String())
+		data = data[n:]
+		if len(cmds) == perLine || len(data) == 0 {
+			if err := g.run(strings.Join(cmds, " ; ")); err != nil {
+				return err
+			}
+			cmds = cmds[:0]
+		}
+	}
+	return nil
+}
+
+func (g *gateway) scrollback(m *protocol.ScrollbackRequest) protocol.Message {
+	if err := checkID(paneID, m.Pane); err != nil {
+		return protocol.Result{ID: m.ID, Error: err.Error()}
+	}
+	r, err := g.tmux.Command(fmt.Sprintf("display -p -t %[1]s '#{history_size}' ; capture-pane -p -e -t %[1]s -S %[2]d -E %[3]d",
+		m.Pane, m.Start, m.End))
+	if err == nil && (len(r.Blocks) != 2 || len(r.Blocks[0]) != 1) {
+		err = errors.New("unexpected capture reply")
+	}
+	if err != nil {
+		return protocol.Result{ID: m.ID, Error: err.Error()}
+	}
+	return protocol.ScrollbackReply{ID: m.ID, Pane: m.Pane, HistorySize: atoi(r.Blocks[0][0]), Lines: r.Blocks[1]}
+}
+
+// cleanup puts back the zoom state of windows the client zoomed, then
+// detaches.
+func (g *gateway) cleanup() {
+	var cmds []string
+	for w, was := range g.zoomed {
+		cmds = append(cmds, fmt.Sprintf("if -F -t %[1]s '#{!=:#{window_zoomed_flag},%[2]d}' 'resize-pane -Z -t %[1]s'", w, b2i(was)))
+	}
+	if len(cmds) > 0 {
+		g.tmux.Run(strings.Join(cmds, " ; "))
+	}
+	g.tmux.Close()
+}
+
+func (g *gateway) send(m protocol.Message) {
+	b, err := protocol.AppendJSON(nil, m)
+	if err != nil {
+		panic(err) // our own message types always encode
+	}
+	g.out.push(b)
+}
+
+func (g *gateway) run(cmd string) error {
+	_, err := g.tmux.Run(cmd)
+	return err
+}
+
+// tmuxErr prefers tmux's own exit message (no server, no such session) over
+// the generic closed error.
+func (g *gateway) tmuxErr(err error) error {
+	if errors.Is(err, tmux.ErrClosed) {
+		if exitErr := g.tmux.Err(); exitErr != nil {
+			return exitErr
+		}
+		if g.exitReason != "" {
+			return errors.New(g.exitReason)
+		}
+	}
+	return err
+}
+
+var (
+	paneID   = regexp.MustCompile(`^%[0-9]+$`)
+	windowID = regexp.MustCompile(`^@[0-9]+$`)
+)
+
+// checkID guards ids that are spliced into tmux commands unquoted.
+func checkID(re *regexp.Regexp, id string) error {
+	if !re.MatchString(id) {
+		return fmt.Errorf("bad id %q", id)
+	}
+	return nil
+}
+
+func validSize(cols, rows int) bool {
+	return cols > 0 && rows > 0 && cols <= maxSize && rows <= maxSize
+}
+
+func atoi(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}

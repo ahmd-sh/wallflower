@@ -6,11 +6,18 @@ import (
 	"strings"
 )
 
+type Session struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Windows []Window `json:"windows"`
+}
+
 type Window struct {
 	ID     string  `json:"id"`
 	Index  int     `json:"index"`
 	Name   string  `json:"name"`
 	Active bool    `json:"active"`
+	Zoomed bool    `json:"zoomed"`
 	Width  int     `json:"width"`
 	Height int     `json:"height"`
 	Layout *Layout `json:"layout"`
@@ -26,63 +33,89 @@ type Pane struct {
 	Left      int    `json:"left"`
 	Top       int    `json:"top"`
 	Floating  bool   `json:"floating"`
+	Z         int    `json:"z"` // floating panes only; 0 is the front
 	AltScreen bool   `json:"alt_screen"`
-	CursorX   int    `json:"cursor_x"`
-	CursorY   int    `json:"cursor_y"`
+	Agent     string `json:"agent"` // the @agent_state pane option, set by hooks
+	Title     string `json:"title"`
+	Path      string `json:"path"`
 	Command   string `json:"command"`
 }
 
-// Free-text fields go last so they can contain spaces.
-const (
-	windowFormat = "#{window_id} #{window_index} #{window_active} #{window_width} #{window_height} #{window_layout} #{window_name}"
-	paneFormat   = "#{pane_id} #{window_id} #{pane_index} #{pane_active} #{pane_width} #{pane_height} #{pane_left} #{pane_top} #{pane_floating_flag} #{alternate_on} #{cursor_x} #{cursor_y} #{pane_current_command}"
+// Tab-separated so names, titles and paths can contain spaces.
+var (
+	windowFormat = strings.Join([]string{
+		"#{window_id}", "#{window_index}", "#{window_active}", "#{window_zoomed_flag}",
+		"#{window_width}", "#{window_height}", "#{window_layout}", "#{window_name}",
+	}, "\t")
+	paneFormat = strings.Join([]string{
+		"#{pane_id}", "#{window_id}", "#{pane_index}", "#{pane_active}",
+		"#{pane_width}", "#{pane_height}", "#{pane_left}", "#{pane_top}",
+		"#{pane_floating_flag}", "#{alternate_on}", "#{@agent_state}",
+		"#{pane_title}", "#{pane_current_path}", "#{pane_current_command}",
+	}, "\t")
 )
 
-// Snapshot lists the windows and panes of the attached session.
-func (c *Client) Snapshot() ([]Window, error) {
-	wlines, err := c.Run("list-windows -F '" + windowFormat + "'")
+// Snapshot lists the attached session's windows and panes in one atomic
+// read.
+func (c *Client) Snapshot() (*Session, error) {
+	r, err := c.Command("display -p " + Quote("#{session_id}\t#{session_name}") +
+		" ; list-windows -F " + Quote(windowFormat) + " ; list-panes -s -F " + Quote(paneFormat))
 	if err != nil {
 		return nil, err
 	}
-	plines, err := c.Run("list-panes -s -F '" + paneFormat + "'")
-	if err != nil {
-		return nil, err
+	if len(r.Blocks) != 3 || len(r.Blocks[0]) != 1 {
+		return nil, fmt.Errorf("tmux: unexpected snapshot reply %q", r.Blocks)
 	}
+	s := &Session{}
+	s.ID, s.Name, _ = strings.Cut(r.Blocks[0][0], "\t")
 
 	var windows []Window
 	byID := map[string]int{}
-	for _, line := range wlines {
-		f := strings.SplitN(line, " ", 7)
-		if len(f) < 7 {
+	for _, line := range r.Blocks[1] {
+		f := strings.Split(line, "\t")
+		if len(f) != 8 {
 			return nil, fmt.Errorf("tmux: unexpected list-windows line %q", line)
 		}
-		layout, err := ParseLayout(f[5])
+		layout, err := ParseLayout(f[6])
 		if err != nil {
 			return nil, err
 		}
 		byID[f[0]] = len(windows)
 		windows = append(windows, Window{
-			ID: f[0], Index: atoi(f[1]), Active: f[2] == "1",
-			Width: atoi(f[3]), Height: atoi(f[4]), Layout: layout, Name: f[6],
+			ID: f[0], Index: atoi(f[1]), Active: f[2] == "1", Zoomed: f[3] == "1",
+			Width: atoi(f[4]), Height: atoi(f[5]), Layout: layout, Name: f[7],
 		})
 	}
-	for _, line := range plines {
-		f := strings.SplitN(line, " ", 13)
-		if len(f) < 13 {
+	for _, line := range r.Blocks[2] {
+		f := strings.Split(line, "\t")
+		if len(f) != 14 {
 			return nil, fmt.Errorf("tmux: unexpected list-panes line %q", line)
 		}
 		i, ok := byID[f[1]]
 		if !ok {
 			continue
 		}
-		windows[i].Panes = append(windows[i].Panes, Pane{
+		p := Pane{
 			ID: f[0], Index: atoi(f[2]), Active: f[3] == "1",
 			Width: atoi(f[4]), Height: atoi(f[5]), Left: atoi(f[6]), Top: atoi(f[7]),
 			Floating: f[8] == "1", AltScreen: f[9] == "1",
-			CursorX: atoi(f[10]), CursorY: atoi(f[11]), Command: f[12],
-		})
+			Agent: f[10], Title: f[11], Path: f[12], Command: f[13],
+		}
+		for _, cell := range windows[i].Layout.Root.Panes() {
+			if cell.Pane == p.ID && cell.Z != nil {
+				p.Z = *cell.Z
+			}
+		}
+		windows[i].Panes = append(windows[i].Panes, p)
 	}
-	return windows, nil
+	s.Windows = windows
+	return s, nil
+}
+
+// Quote wraps s in single quotes for a tmux command line. tmux has no
+// escapes inside single quotes, so embedded ones close and reopen the quote.
+func Quote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
 }
 
 func atoi(s string) int {

@@ -3,33 +3,16 @@ package tmux
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ahmd-sh/tether/internal/tmuxtest"
 )
 
-// newServer starts an isolated tmux server (own socket, no config) with one
-// 80x24 session and attaches a control client to it.
-func newServer(t *testing.T) (*Client, func(args ...string)) {
+func newClient(t *testing.T) (*Client, func(args ...string) string) {
 	t.Helper()
-	if _, err := exec.LookPath("tmux"); err != nil {
-		t.Skip("tmux not installed")
-	}
-	socket := fmt.Sprintf("tether-test-%d-%s", os.Getpid(), strings.ReplaceAll(t.Name(), "/", "-"))
-	tmux := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("tmux", append([]string{"-L", socket, "-f", "/dev/null"}, args...)...)
-		cmd.Env = append(os.Environ(), "SHELL=/bin/sh", "PS1=$ ")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("tmux %v: %v: %s", args, err, out)
-		}
-	}
-	tmux("new-session", "-d", "-s", "t", "-x", "80", "-y", "24")
-	t.Cleanup(func() { exec.Command("tmux", "-L", socket, "kill-server").Run() })
-
+	socket, tmux := tmuxtest.Server(t, 80, 24)
 	c, err := Start(context.Background(), Options{Socket: socket, Session: "t", Flags: []string{"ignore-size", "new-layouts"}})
 	if err != nil {
 		t.Fatal(err)
@@ -56,8 +39,8 @@ func waitFor(t *testing.T, c *Client, what string, match func(Notification) bool
 	}
 }
 
-func TestRunAndSnapshot(t *testing.T) {
-	c, _ := newServer(t)
+func TestRun(t *testing.T) {
+	c, _ := newClient(t)
 
 	out, err := c.Run("display -p '#{session_name} #{window_width}x#{window_height}'")
 	if err != nil || len(out) != 1 || out[0] != "t 80x24" {
@@ -70,31 +53,86 @@ func TestRunAndSnapshot(t *testing.T) {
 		t.Fatalf("want CommandError for bad command, got %v", err)
 	}
 
-	if _, err := c.Run("split-window -h"); err != nil {
-		t.Fatal(err)
+	// A list answers with one block per command; the client must still line
+	// up later replies.
+	r, err := c.Command("display -p a ; display -p b ; display -p c")
+	if err != nil || len(r.Blocks) != 3 || r.Blocks[2][0] != "c" {
+		t.Fatalf("list reply = %+v, %v", r, err)
 	}
-	if _, err := c.Run("new-pane -x 20 -y 5"); err != nil {
-		t.Fatal(err)
+	if _, err := c.Run("display -p {"); err == nil {
+		t.Fatal("parse error not reported")
 	}
-	windows, err := c.Snapshot()
+	if out, err := c.Run("display -p after"); err != nil || out[0] != "after" {
+		t.Fatalf("reply after errors = %q, %v", out, err)
+	}
+
+	tricky := `it's "q" $HOME ; #x`
+	if out, err := c.Run("display -p " + Quote(tricky)); err != nil || out[0] != tricky {
+		t.Fatalf("Quote round trip = %q, %v", out, err)
+	}
+}
+
+func TestSnapshot(t *testing.T) {
+	c, tmux := newClient(t)
+
+	tmux("split-window", "-h", "-t", "t")
+	tmux("new-pane", "-t", "t", "-x", "20", "-y", "5")
+	tmux("rename-window", "-t", "t", "a name with spaces")
+	tmux("set", "-p", "-t", "t", "@agent_state", "waiting")
+	s, err := c.Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
+	if s.Name != "t" || !strings.HasPrefix(s.ID, "$") {
+		t.Errorf("session = %q %q", s.ID, s.Name)
+	}
+	windows := s.Windows
 	if len(windows) != 1 || len(windows[0].Panes) != 3 {
 		t.Fatalf("want 1 window with 3 panes, got %+v", windows)
 	}
 	w := windows[0]
-	if w.Layout == nil || len(w.Layout.Root.Panes()) != 3 {
-		t.Fatalf("layout doesn't match panes: %+v", w.Layout)
+	if w.Name != "a name with spaces" || w.Layout == nil || len(w.Layout.Root.Panes()) != 3 {
+		t.Fatalf("window = %+v", w)
 	}
 	// new-pane sizes include the floating border, so 20x5 leaves 18x3 for content.
-	if p := w.Panes[2]; !p.Floating || !p.Active || p.Width != 18 || p.Height != 3 {
-		t.Errorf("want active 18x3 floating pane last, got %+v", p)
+	if p := w.Panes[2]; !p.Floating || !p.Active || p.Width != 18 || p.Height != 3 || p.Agent != "waiting" {
+		t.Errorf("want active 18x3 floating pane last with agent state, got %+v", p)
+	}
+	if p := w.Panes[0]; p.Floating || p.Path == "" || p.Command == "" {
+		t.Errorf("tiled pane = %+v", p)
+	}
+}
+
+func TestReplySeq(t *testing.T) {
+	c, _ := newClient(t)
+
+	// Output produced before a reply has a Seq at or below the reply's.
+	if _, err := c.Run("send-keys 'echo before' Enter"); err != nil {
+		t.Fatal(err)
+	}
+	before := waitFor(t, c, "output", func(n Notification) bool {
+		return n.Type == "output" && strings.Contains(string(n.Data), "before\r\n")
+	})
+	r, err := c.Command("display -p x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.Seq > r.Seq {
+		t.Fatalf("earlier output seq %d > reply seq %d", before.Seq, r.Seq)
+	}
+	if _, err := c.Run("send-keys 'echo after' Enter"); err != nil {
+		t.Fatal(err)
+	}
+	after := waitFor(t, c, "output", func(n Notification) bool {
+		return n.Type == "output" && strings.Contains(string(n.Data), "after\r\n")
+	})
+	if after.Seq <= r.Seq {
+		t.Fatalf("later output seq %d <= reply seq %d", after.Seq, r.Seq)
 	}
 }
 
 func TestNotifications(t *testing.T) {
-	c, _ := newServer(t)
+	c, _ := newClient(t)
 
 	if _, err := c.Run("split-window -v"); err != nil {
 		t.Fatal(err)
@@ -122,7 +160,7 @@ func TestNotifications(t *testing.T) {
 }
 
 func TestSubscription(t *testing.T) {
-	c, tmux := newServer(t)
+	c, tmux := newClient(t)
 
 	if _, err := c.Run("refresh-client -B 'agent:%*:#{@agent_state}'"); err != nil {
 		t.Fatal(err)
@@ -138,7 +176,7 @@ func TestSubscription(t *testing.T) {
 }
 
 func TestCloseFailsPending(t *testing.T) {
-	c, _ := newServer(t)
+	c, _ := newClient(t)
 	if err := c.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}

@@ -22,6 +22,7 @@ type Notification struct {
 	WindowFlags   string `json:"window_flags,omitempty"`
 	AgeMs         int    `json:"age_ms,omitempty"`
 	Data          []byte `json:"-"`
+	Seq           uint64 `json:"-"` // position in the client's stream, see Reply.Seq
 }
 
 func parseNotification(line string) (Notification, bool) {

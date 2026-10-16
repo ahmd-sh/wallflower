@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -27,17 +28,35 @@ type Client struct {
 	stderr bytes.Buffer
 
 	mu      sync.Mutex
-	pending []chan result
+	pending []*pending
+	sent    int
 	closed  bool
+	seq     uint64 // notifications read so far; owned by the reader
 
 	events *queue
 	done   chan struct{}
 	err    error
 }
 
-type result struct {
-	lines []string
-	err   error
+// Reply is the output of one command line.
+type Reply struct {
+	Blocks [][]string // one per command in the line (a parse error is one block)
+	Seq    uint64     // notifications with Seq <= this were sent before the reply
+}
+
+func (r Reply) Lines() []string {
+	var out []string
+	for _, b := range r.Blocks {
+		out = append(out, b...)
+	}
+	return out
+}
+
+type pending struct {
+	marker string
+	reply  Reply
+	err    error
+	done   chan struct{}
 }
 
 var ErrClosed = errors.New("tmux: control client closed")
@@ -52,15 +71,34 @@ func (e *CommandError) Error() string {
 	return fmt.Sprintf("tmux: %s: %s", e.Command, strings.Join(e.Output, "; "))
 }
 
-func Start(ctx context.Context, opts Options) (*Client, error) {
-	var args []string
-	switch {
-	case strings.Contains(opts.Socket, "/"):
-		args = append(args, "-S", opts.Socket)
-	case opts.Socket != "":
-		args = append(args, "-L", opts.Socket)
+// Binary finds tmux: $PATH first, then Homebrew's prefixes, since ssh
+// sessions get a minimal PATH.
+func Binary() string {
+	if p, err := exec.LookPath("tmux"); err == nil {
+		return p
 	}
-	args = append(args, "-C", "attach-session")
+	for _, p := range []string{"/opt/homebrew/bin/tmux", "/usr/local/bin/tmux"} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return "tmux"
+}
+
+func SocketArgs(socket string) []string {
+	switch {
+	case strings.Contains(socket, "/"):
+		return []string{"-S", socket}
+	case socket != "":
+		return []string{"-L", socket}
+	}
+	return nil
+}
+
+func Start(ctx context.Context, opts Options) (*Client, error) {
+	// -u: without a UTF-8 locale (ssh may not pass one) tmux replaces tabs
+	// and non-ASCII in replies with "_".
+	args := append(SocketArgs(opts.Socket), "-u", "-C", "attach-session")
 	if opts.Session != "" {
 		args = append(args, "-t", opts.Session)
 	}
@@ -69,7 +107,7 @@ func Start(ctx context.Context, opts Options) (*Client, error) {
 	}
 
 	c := &Client{events: newQueue(), done: make(chan struct{})}
-	c.cmd = exec.CommandContext(ctx, "tmux", args...)
+	c.cmd = exec.CommandContext(ctx, Binary(), args...)
 	c.cmd.Stderr = &c.stderr
 	var err error
 	if c.stdin, err = c.cmd.StdinPipe(); err != nil {
@@ -86,32 +124,46 @@ func Start(ctx context.Context, opts Options) (*Client, error) {
 	return c, nil
 }
 
-// Run sends one command and waits for its output block.
-func (c *Client) Run(command string) ([]string, error) {
-	if strings.ContainsAny(command, "\r\n") {
-		return nil, fmt.Errorf("tmux: command contains a newline: %q", command)
+// Command sends one command line, which may be a ;-separated list, and
+// waits for all of its output. Commands in one line run back to back, so a
+// list is an atomic read of tmux state.
+//
+// Each line is followed by a marker command whose reply ends the line's
+// output; a list produces one block per command, or a single block on a
+// parse error, so blocks alone can't be matched to lines.
+func (c *Client) Command(line string) (Reply, error) {
+	if strings.TrimSpace(line) == "" || strings.ContainsAny(line, "\r\n") {
+		return Reply{}, fmt.Errorf("tmux: invalid command line %q", line)
 	}
-	ch := make(chan result, 1)
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
-		return nil, ErrClosed
+		return Reply{}, ErrClosed
 	}
-	c.pending = append(c.pending, ch)
-	_, err := io.WriteString(c.stdin, command+"\n")
+	c.sent++
+	p := &pending{marker: fmt.Sprintf("tether:sync:%d", c.sent), done: make(chan struct{})}
+	c.pending = append(c.pending, p)
+	_, err := io.WriteString(c.stdin, line+"\ndisplay-message -p '"+p.marker+"'\n")
 	c.mu.Unlock()
 	if err != nil {
-		return nil, err
+		return Reply{}, err
 	}
-	r := <-ch
+	<-p.done
 	var cerr *CommandError
-	if errors.As(r.err, &cerr) {
-		cerr.Command = command
+	if errors.As(p.err, &cerr) {
+		cerr.Command = line
 	}
-	return r.lines, r.err
+	return p.reply, p.err
 }
 
-// Events delivers notifications in order. It is closed when the client exits.
+// Run is Command for callers that only want the output lines.
+func (c *Client) Run(line string) ([]string, error) {
+	r, err := c.Command(line)
+	return r.Lines(), err
+}
+
+// Events delivers notifications in order. It is closed when the client
+// exits, and must be drained.
 func (c *Client) Events() <-chan Notification { return c.events.out }
 
 func (c *Client) Done() <-chan struct{} { return c.done }
@@ -147,11 +199,7 @@ func (c *Client) read(stdout io.Reader) {
 			kind, args, _ := strings.Cut(line, " ")
 			if (kind == "%end" || kind == "%error") && args == guard {
 				if mine {
-					r := result{lines: block}
-					if kind == "%error" {
-						r = result{err: &CommandError{Output: block}}
-					}
-					c.deliver(r)
+					c.endBlock(kind == "%error", block)
 				}
 				block, inBlock = nil, false
 				continue
@@ -167,14 +215,17 @@ func (c *Client) read(stdout io.Reader) {
 			continue
 		}
 		if n, ok := parseNotification(line); ok {
+			c.seq++
+			n.Seq = c.seq
 			c.events.push(n)
 		}
 	}
 
 	c.mu.Lock()
 	c.closed = true
-	for _, ch := range c.pending {
-		ch <- result{err: ErrClosed}
+	for _, p := range c.pending {
+		p.err = ErrClosed
+		close(p.done)
 	}
 	c.pending = nil
 	c.mu.Unlock()
@@ -189,15 +240,23 @@ func (c *Client) read(stdout io.Reader) {
 	close(c.done)
 }
 
-func (c *Client) deliver(r result) {
+func (c *Client) endBlock(failed bool, block []string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if len(c.pending) == 0 {
 		return
 	}
-	ch := c.pending[0]
-	c.pending = c.pending[1:]
-	ch <- r
+	p := c.pending[0]
+	if !failed && len(block) == 1 && block[0] == p.marker {
+		c.pending = c.pending[1:]
+		close(p.done)
+		return
+	}
+	p.reply.Blocks = append(p.reply.Blocks, block)
+	p.reply.Seq = c.seq
+	if failed && p.err == nil {
+		p.err = &CommandError{Output: block}
+	}
 }
 
 // queue is an unbounded FIFO between the reader and Events, so a consumer
