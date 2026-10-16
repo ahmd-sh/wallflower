@@ -281,6 +281,32 @@ func TestFocus(t *testing.T) {
 	}
 }
 
+func TestPaneAndWindowActions(t *testing.T) {
+	c := connect(t, 60, 20)
+	s := c.state("one window", func(s protocol.State) bool { return len(s.Windows) == 1 })
+	first := activePane(s).ID
+
+	c.send(protocol.Split{Pane: first})
+	s = c.state("split, focused and zoomed", func(s protocol.State) bool {
+		w := activeWindow(s)
+		return len(w.Panes) == 2 && activePane(s).ID != first && w.Zoomed
+	})
+	c.send(protocol.Kill{Pane: activePane(s).ID})
+	c.state("back to one pane", func(s protocol.State) bool { return len(activeWindow(s).Panes) == 1 })
+
+	// A new window is current for the phone, not the desktop.
+	c.send(protocol.New{})
+	s = c.state("two windows", func(s protocol.State) bool { return len(s.Windows) == 2 && activeWindow(s).Index == 1 })
+	if w := c.tmux("display", "-p", "-t", "t:", "#{window_index}"); w != "0" {
+		t.Errorf("desktop moved to window %s", w)
+	}
+	added := activeWindow(s).ID
+	c.send(protocol.Rename{Window: added, Name: "logs $HOME ✓"})
+	c.state("renamed", func(s protocol.State) bool { return activeWindow(s).Name == "logs $HOME ✓" })
+	c.send(protocol.Kill{Window: added})
+	c.state("one window again", func(s protocol.State) bool { return len(s.Windows) == 1 })
+}
+
 func TestBoundKeys(t *testing.T) {
 	c := connect(t, 60, 20)
 	c.tmux("split-window", "-t", "t")

@@ -54,6 +54,10 @@ client never has to resync on its own.
 | `select` | `window` or `pane` | make it current in the client's session (sizes it for the client) |
 | `zoom` | `pane` | toggle zoom; zooms are undone when the client disconnects |
 | `focus` | `pane` | make it the window's active pane, zoomed if the window has others (undone on disconnect, like `zoom`) |
+| `split` | `pane` | open a pane beside it, in its directory, and focus it like `focus` |
+| `new` | | open a window, current in the client's session only |
+| `rename` | `window`, `name` | |
+| `kill` | `window` or `pane` | close it; closing a window's last pane closes the window |
 | `scrollback` | `id`, `pane`, `start`, `end` | lines in tmux numbering: 0 is the top visible line, negative is history |
 | `tmux` | `id`, `command` | run a raw tmux command line (escape hatch) |
 | `ping` | `id` | |

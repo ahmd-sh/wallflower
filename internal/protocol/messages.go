@@ -66,6 +66,25 @@ type Focus struct {
 	Pane string `json:"pane"`
 }
 
+// Split opens a new pane beside one, in the same directory, and focuses it.
+type Split struct {
+	Pane string `json:"pane"`
+}
+
+// New opens a new window, current in the client's session only.
+type New struct{}
+
+type Rename struct {
+	Window string `json:"window"`
+	Name   string `json:"name"`
+}
+
+// Kill closes a window or a pane; closing a window's last pane closes it.
+type Kill struct {
+	Window string `json:"window,omitempty"`
+	Pane   string `json:"pane,omitempty"`
+}
+
 type ScrollbackRequest struct {
 	ID    int    `json:"id"`
 	Pane  string `json:"pane"`
@@ -94,6 +113,10 @@ func (TmuxCommand) Type() string       { return "tmux" }
 func (Ping) Type() string              { return "ping" }
 func (Paste) Type() string             { return "paste" }
 func (Focus) Type() string             { return "focus" }
+func (Split) Type() string             { return "split" }
+func (New) Type() string               { return "new" }
+func (Rename) Type() string            { return "rename" }
+func (Kill) Type() string              { return "kill" }
 
 // Gateway to client.
 
@@ -180,7 +203,7 @@ func (Bye) Type() string             { return "bye" }
 
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Select{}, Zoom{},
-	ScrollbackRequest{}, TmuxCommand{}, Ping{}, Paste{}, Focus{},
+	ScrollbackRequest{}, TmuxCommand{}, Ping{}, Paste{}, Focus{}, Split{}, New{}, Rename{}, Kill{},
 )
 
 var serverMessages = registry(

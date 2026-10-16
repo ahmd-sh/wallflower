@@ -70,6 +70,25 @@ data class Zoom(val pane: String) : ClientMessage
 @SerialName("focus")
 data class Focus(val pane: String) : ClientMessage
 
+/** Opens a pane beside this one, in its directory, and focuses it. */
+@Serializable
+@SerialName("split")
+data class Split(val pane: String) : ClientMessage
+
+/** Opens a window, current in the client's session only. */
+@Serializable
+@SerialName("new")
+data object New : ClientMessage
+
+@Serializable
+@SerialName("rename")
+data class Rename(val window: String, val name: String) : ClientMessage
+
+/** Closes a window or a pane; closing a window's last pane closes it. */
+@Serializable
+@SerialName("kill")
+data class Kill(val window: String? = null, val pane: String? = null) : ClientMessage
+
 /** Lines in tmux numbering: 0 is the top visible line, negative is history. */
 @Serializable
 @SerialName("scrollback")

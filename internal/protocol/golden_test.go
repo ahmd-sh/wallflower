@@ -33,6 +33,11 @@ func goldenClient(t *testing.T) []byte {
 		Paste{Pane: "%1", Text: "two\nlines ✓"},
 		Keys{Pane: "%1", Keys: []string{"prefix", "o"}, Bindings: true},
 		Focus{Pane: "%2"},
+		Split{Pane: "%2"},
+		New{},
+		Rename{Window: "@2", Name: "logs ✓"},
+		Kill{Pane: "%2"},
+		Kill{Window: "@2"},
 	} {
 		b = mustJSON(t, b, m)
 	}

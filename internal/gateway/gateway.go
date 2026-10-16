@@ -327,8 +327,45 @@ func (g *gateway) handle(f protocol.Frame) error {
 		if err := checkID(paneID, m.Pane); err != nil {
 			return err
 		}
-		// select-pane -Z keeps a zoomed window zoomed on the new pane.
-		return g.zoom(m.Pane, fmt.Sprintf("select-pane -Z -t %[1]s ; if -F -t %[1]s '#{&&:#{!=:#{window_panes},1},#{!=:#{window_zoomed_flag},1}}' 'resize-pane -Z -t %[1]s'", m.Pane))
+		return g.focus(m.Pane)
+
+	case *protocol.Split:
+		if err := checkID(paneID, m.Pane); err != nil {
+			return err
+		}
+		out, err := g.tmux.Run(fmt.Sprintf("split-window -t %s -c %s -P -F '#{pane_id}'", m.Pane, tmux.Quote("#{pane_current_path}")))
+		if err != nil {
+			return err
+		}
+		if len(out) != 1 || checkID(paneID, out[0]) != nil {
+			return fmt.Errorf("unexpected split reply %q", out)
+		}
+		return g.focus(out[0])
+
+	case *protocol.New:
+		// The client's session is current here, so the window is current only for it.
+		return g.run("new-window -c " + tmux.Quote("#{pane_current_path}"))
+
+	case *protocol.Rename:
+		if err := checkID(windowID, m.Window); err != nil {
+			return err
+		}
+		return g.run("rename-window -t " + m.Window + " -- " + tmux.QuoteText(m.Name))
+
+	case *protocol.Kill:
+		switch {
+		case m.Pane != "":
+			if err := checkID(paneID, m.Pane); err != nil {
+				return err
+			}
+			return g.run("kill-pane -t " + m.Pane)
+		case m.Window != "":
+			if err := checkID(windowID, m.Window); err != nil {
+				return err
+			}
+			return g.run("kill-window -t " + m.Window)
+		}
+		return errors.New("kill needs a window or pane")
 
 	case *protocol.ScrollbackRequest:
 		g.send(g.scrollback(m))
@@ -351,6 +388,12 @@ func (g *gateway) handle(f protocol.Frame) error {
 		return errors.New("already said hello")
 	}
 	return fmt.Errorf("unhandled message %q", m.Type())
+}
+
+// focus makes a pane its window's active one, zoomed if the window has
+// others; select-pane -Z keeps a zoomed window zoomed on the new pane.
+func (g *gateway) focus(pane string) error {
+	return g.zoom(pane, fmt.Sprintf("select-pane -Z -t %[1]s ; if -F -t %[1]s '#{&&:#{!=:#{window_panes},1},#{!=:#{window_zoomed_flag},1}}' 'resize-pane -Z -t %[1]s'", pane))
 }
 
 // zoom runs a command that may change pane's window's zoom, remembering how

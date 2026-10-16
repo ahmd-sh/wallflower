@@ -20,12 +20,14 @@ import sh.ahmd.wallflower.protocol.Bye
 import sh.ahmd.wallflower.protocol.ClientHello
 import sh.ahmd.wallflower.protocol.ClientMessage
 import sh.ahmd.wallflower.protocol.Close
+import sh.ahmd.wallflower.protocol.DEFAULT_HISTORY
 import sh.ahmd.wallflower.protocol.ErrorMessage
 import sh.ahmd.wallflower.protocol.Focus
 import sh.ahmd.wallflower.protocol.Frame
 import sh.ahmd.wallflower.protocol.FrameReader
 import sh.ahmd.wallflower.protocol.FrameWriter
 import sh.ahmd.wallflower.protocol.Keys
+import sh.ahmd.wallflower.protocol.New
 import sh.ahmd.wallflower.protocol.Open
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Paste
@@ -60,8 +62,10 @@ data class Undelivered(val pane: String, val text: String)
  *
  * tmux state arrives pushed and is kept here; presentation is local. The
  * window being viewed is the app's choice and changes instantly, the gateway
- * is told in the background. Every window's active pane is kept open and
- * streaming, so switching to it shows current content without a round trip.
+ * is told in the background. Every pane is kept open and streaming, so
+ * switching to one, or seeing them all, needs no round trip: the panes on
+ * screen (each window's shown pane) with their scrollback, the rest screen
+ * only until they're looked at.
  */
 class Session(private val transport: Transport, private val scope: CoroutineScope) {
     private val _status = MutableStateFlow<Status>(Status.Connecting)
@@ -94,7 +98,8 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     /** When the connection counts as dead unless a pong arrives; 0 if no ping is outstanding. */
     @Volatile private var deadline = 0L
     private val pending = ArrayList<Submitted>() // its lock also guards swapping the queue
-    private val opened = LinkedHashSet<String>() // least recently viewed first
+    private val opened = LinkedHashMap<String, Int>() // pane -> history lines it has; least recently viewed first
+    @Volatile private var awaitingWindow: Set<String>? = null // windows there were when the phone opened one
     private val pings = AtomicInteger()
     private var grid = 80 to 24
     private var job: Job? = null
@@ -235,10 +240,18 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 val chosen = _chosen.value.filter { (w, c) -> m.windows.firstOrNull { it.id == w }?.activePane()?.id == c.active }
                 if (chosen.size != _chosen.value.size) _chosen.value = chosen
                 if (m.windows.none { it.id == _viewing.value }) _viewing.value = m.windows.firstOrNull { it.active }?.id
-                for (w in m.windows) w.shownPane(_chosen.value)?.let { open(it.id, viewed = w.id == _viewing.value) }
+                awaitingWindow?.let { known ->
+                    m.windows.firstOrNull { it.id !in known }?.let { w ->
+                        _viewing.value = w.id
+                        awaitingWindow = null
+                    }
+                }
+                m.windows.firstOrNull { it.id == _viewing.value }?.shownPane(_chosen.value)?.let { open(it.id, viewed = true) }
+                for (w in m.windows) w.shownPane(_chosen.value)?.let { open(it.id, viewed = false, full = true) }
+                for (w in m.windows) for (p in w.panes.sortedBy { it.index }) open(p.id, viewed = false)
                 // Panes that no longer exist close quietly; the gateway forgot them already.
                 val live = m.windows.flatMap { w -> w.panes.map { it.id } }.toSet()
-                synchronized(opened) { opened.retainAll(live) }
+                synchronized(opened) { opened.keys.retainAll(live) }
                 val gone = _terminals.value.filterKeys { it !in live }
                 if (gone.isNotEmpty()) {
                     _terminals.value = _terminals.value - gone.keys
@@ -262,16 +275,20 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         }
     }
 
-    /** Opens a pane if it isn't already, keeping at most [MAX_OPEN], least recently viewed out first. */
-    private fun open(pane: String, viewed: Boolean) {
+    /**
+     * Opens a pane, or reopens it with its scrollback if it only had its
+     * screen. [full] panes get scrollback; the others only open while there
+     * are fewer than [MAX_OPEN], and the least recently viewed go first.
+     */
+    private fun open(pane: String, viewed: Boolean, full: Boolean = viewed) {
+        val history = if (full) DEFAULT_HISTORY else PREVIEW_HISTORY
         val evict = synchronized(opened) {
-            val isNew = pane !in opened
-            if (viewed || isNew) {
-                opened.remove(pane)
-                opened.add(pane)
-            }
-            if (isNew) send(Open(pane))
-            if (opened.size > MAX_OPEN) opened.first().also { opened.remove(it) } else null
+            val had = opened[pane]
+            if (had == null && !full && opened.size >= MAX_OPEN) return
+            if (viewed || had == null) opened.remove(pane)
+            opened[pane] = maxOf(had ?: 0, history)
+            if (had == null || had < history) send(Open(pane, history.takeIf { it != DEFAULT_HISTORY }))
+            if (opened.size > MAX_OPEN) opened.keys.first().also { opened.remove(it) } else null
         }
         if (evict != null) {
             send(Close(evict))
@@ -303,9 +320,10 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         send(Focus(pane.id))
     }
 
-    /** Opens every pane of a window, so all of them can be shown at once. */
-    fun peek(window: Window) {
-        for (p in window.panes.sortedBy { it.index }) open(p.id, viewed = false)
+    /** Opens a window, which the phone then shows; the desktop stays where it is. */
+    fun newWindow() {
+        awaitingWindow = _state.value?.windows?.map { it.id }?.toSet().orEmpty()
+        send(New)
     }
 
     fun send(m: ClientMessage) {
@@ -352,7 +370,8 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     }
 
     companion object {
-        const val MAX_OPEN = 12
+        const val MAX_OPEN = 64
+        const val PREVIEW_HISTORY = 1
         const val TICK_MS = 1_000L
         const val HEARTBEAT_MS = 15_000L
         const val PONG_TIMEOUT_MS = 10_000L

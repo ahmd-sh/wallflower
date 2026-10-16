@@ -1,6 +1,14 @@
 package sh.ahmd.wallflower.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.platform.LocalView
+import android.view.HapticFeedbackConstants
+import sh.ahmd.wallflower.protocol.Kill
+import sh.ahmd.wallflower.protocol.Rename
+import sh.ahmd.wallflower.protocol.Split
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
@@ -73,7 +81,7 @@ private sealed interface Screen {
 }
 
 @Composable
-fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit) {
+fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit, onExit: () -> Unit) {
     val host by model.host.collectAsStateWithLifecycle()
     val session by model.session.collectAsStateWithLifecycle()
     val hasKey by model.hasKey.collectAsStateWithLifecycle()
@@ -108,6 +116,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit)
                 onProgram = { program = it },
                 onSettings = { screen = Screen.Settings },
                 onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program), Screen.Terminal) },
+                onExit = onExit,
             )
         }
         when (val s = screen) {
@@ -117,6 +126,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit)
                 SettingsScreen(
                     host = host,
                     store = model.keyBar,
+                    confirm = model.confirm,
                     program = program,
                     onBack = { screen = Screen.Terminal },
                     onEditHost = { screen = Screen.Setup },
@@ -149,6 +159,7 @@ private fun TerminalScreen(
     onProgram: (String?) -> Unit,
     onSettings: () -> Unit,
     onEditKeys: () -> Unit,
+    onExit: () -> Unit,
 ) {
     val status by session.status.collectAsStateWithLifecycle()
     val state by session.state.collectAsStateWithLifecycle()
@@ -168,7 +179,59 @@ private fun TerminalScreen(
             .systemBarsPadding()
             .imePadding(),
     ) {
-        WindowTabs(windows, window?.id, status, onSettings) { session.view(it) }
+        // Closing asks first, unless "don't ask again" said not to; a window's last pane closes the window.
+        var renaming by remember { mutableStateOf<Window?>(null) }
+        var closing by remember { mutableStateOf<Pair<Window, Pane?>?>(null) }
+        fun close(w: Window, p: Pane?) {
+            val wholeWindow = p == null || w.panes.size == 1
+            val ask = if (wholeWindow) model.confirm.windows.value else model.confirm.panes.value
+            when {
+                ask -> closing = w to p
+                p != null -> session.send(Kill(pane = p.id))
+                else -> session.send(Kill(window = w.id))
+            }
+        }
+        renaming?.let { w ->
+            RenameDialog(w.name, onRename = { session.send(Rename(w.id, it)); renaming = null }, onDismiss = { renaming = null })
+        }
+        closing?.let { (w, p) ->
+            val wholeWindow = p == null || w.panes.size == 1
+            val last = windows.size == 1
+            ConfirmClose(
+                title = if (wholeWindow) "close ${w.name}?" else "close pane ${p.index}?",
+                body = if (wholeWindow) {
+                    (if (w.panes.size == 1) "Its pane, and whatever runs in it," else "Its ${w.panes.size} panes, and whatever runs in them,") +
+                        " will be killed." +
+                        if (last) " It's the last tab, so the tmux session ends too." else ""
+                } else {
+                    "${p.command} in pane ${p.index} will be killed."
+                },
+                action = if (wholeWindow) "close tab" else "close pane",
+                onConfirm = { never ->
+                    if (wholeWindow) {
+                        if (never) model.confirm.askForWindows(false)
+                        session.send(Kill(window = w.id))
+                    } else {
+                        if (never) model.confirm.askForPanes(false)
+                        session.send(Kill(pane = p.id))
+                    }
+                    closing = null
+                },
+                onDismiss = { closing = null },
+            )
+        }
+
+        TabBar(
+            windows = windows,
+            selected = window?.id,
+            status = status,
+            onSelect = { session.view(it) },
+            onNew = { session.newWindow() },
+            onRename = { renaming = it },
+            onClose = { close(it, null) },
+            onSettings = onSettings,
+            onExit = onExit,
+        )
 
         var view by remember { mutableStateOf<TerminalView?>(null) }
 
@@ -212,14 +275,26 @@ private fun TerminalScreen(
         }
 
         var overview by remember { mutableStateOf(false) }
-        LaunchedEffect(window?.id, window?.panes?.size) { if ((window?.panes?.size ?: 0) < 2) overview = false }
+        LaunchedEffect(window == null) { if (window == null) overview = false }
         BackHandler(enabled = overview) { overview = false }
 
         if (overview && window != null) {
-            PaneOverview(window, pane?.id, terminals, views, Modifier.weight(1f)) { p ->
-                session.show(window, p)
-                overview = false
-            }
+            PaneOverview(
+                window = window,
+                shown = pane?.id,
+                terminals = terminals,
+                views = views,
+                modifier = Modifier.weight(1f),
+                onPick = { p ->
+                    session.show(window, p)
+                    overview = false
+                },
+                onNew = {
+                    pane?.let { session.send(Split(it.id)) }
+                    overview = false
+                },
+                onClose = { p -> close(window, p) },
+            )
             return@Column
         }
 
@@ -242,11 +317,8 @@ private fun TerminalScreen(
                     }
                 },
             )
-            if (window != null && pane != null && window.panes.size > 1) {
-                PaneDots(window, pane.id, Modifier.align(Alignment.TopEnd)) {
-                    session.peek(window)
-                    overview = true
-                }
+            if (window != null && pane != null) {
+                PaneDots(window, pane.id, Modifier.align(Alignment.TopEnd)) { overview = true }
             }
             DisposableEffect(view, pane?.id) {
                 val v = view
@@ -282,8 +354,9 @@ private fun TerminalScreen(
 }
 
 /**
- * Every pane of a window as a card with its live contents, in tmux's order;
- * tap one to show it. Cards fill as many columns as the screen is wide.
+ * Every pane of a window as a card with its live contents, in tmux's order,
+ * then one to open a new pane. Tap a card to show it, × to close it. Cards
+ * fill as many columns as the screen is wide.
  */
 @Composable
 private fun PaneOverview(
@@ -293,6 +366,8 @@ private fun PaneOverview(
     views: MutableMap<String, TerminalView>,
     modifier: Modifier,
     onPick: (Pane) -> Unit,
+    onNew: () -> Unit,
+    onClose: (Pane) -> Unit,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 160.dp),
@@ -302,13 +377,21 @@ private fun PaneOverview(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         items(window.panes.sortedBy { it.index }, key = { it.id }) { p ->
-            PaneCard(p, p.id == shown, terminals[p.id], views) { onPick(p) }
+            PaneCard(p, p.id == shown, terminals[p.id], views, onClick = { onPick(p) }, onClose = { onClose(p) })
         }
+        item(key = "new") { NewPaneCard(onNew) }
     }
 }
 
 @Composable
-private fun PaneCard(pane: Pane, shown: Boolean, terminal: Terminal?, views: MutableMap<String, TerminalView>, onClick: () -> Unit) {
+private fun PaneCard(
+    pane: Pane,
+    shown: Boolean,
+    terminal: Terminal?,
+    views: MutableMap<String, TerminalView>,
+    onClick: () -> Unit,
+    onClose: () -> Unit,
+) {
     val shape = RoundedCornerShape(14.dp)
     Column(
         Modifier
@@ -317,10 +400,11 @@ private fun PaneCard(pane: Pane, shown: Boolean, terminal: Terminal?, views: Mut
             .border(2.dp, if (shown) Palette.orange else Palette.bg1, shape)
             .clickable(onClick = onClick),
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${pane.index}", color = if (shown) Palette.orange else Palette.dim, fontFamily = Mono, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Text(" ${pane.command}", color = Palette.fg, fontFamily = Mono, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f))
             if (pane.agent.isNotEmpty()) Box(Modifier.size(6.dp).clip(CircleShape).background(agentColor(pane.agent)))
+            Box(Modifier.clip(CircleShape).clickable(onClick = onClose).padding(10.dp)) { GlyphIcon(Glyph.Close, Palette.grey, size = 14.dp) }
         }
         BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(CARD_RATIO).background(Palette.bg0)) {
             // Small enough for the pane's whole width to fit the card.
@@ -344,6 +428,21 @@ private fun PaneCard(pane: Pane, shown: Boolean, terminal: Terminal?, views: Mut
     }
 }
 
+@Composable
+private fun NewPaneCard(onClick: () -> Unit) {
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(Palette.bg1)
+            .clickable(onClick = onClick),
+    ) {
+        Text("new pane", color = Palette.grey, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
+        Box(Modifier.fillMaxWidth().aspectRatio(CARD_RATIO), contentAlignment = Alignment.Center) {
+            GlyphIcon(Glyph.Plus, Palette.grey, size = 28.dp)
+        }
+    }
+}
+
 /** Which of the window's panes is showing: swipe the terminal sideways for the others, tap for all of them. */
 @Composable
 private fun PaneDots(window: Window, shown: String, modifier: Modifier, onClick: () -> Unit) {
@@ -363,76 +462,102 @@ private fun PaneDots(window: Window, shown: String, modifier: Modifier, onClick:
 }
 
 /**
- * The window strip. Entirely local: it scrolls natively and a tap switches
- * immediately; tmux learns about it afterwards.
+ * The tabs (tmux windows), with new tab first and the connection last. It's
+ * local: it scrolls natively and a tap switches immediately, tmux learns
+ * afterwards. Holding a tab offers rename and close.
  */
 @Composable
-private fun WindowTabs(windows: List<Window>, selected: String?, status: Status, onSettings: () -> Unit, onSelect: (Window) -> Unit) {
+private fun TabBar(
+    windows: List<Window>,
+    selected: String?,
+    status: Status,
+    onSelect: (Window) -> Unit,
+    onNew: () -> Unit,
+    onRename: (Window) -> Unit,
+    onClose: (Window) -> Unit,
+    onSettings: () -> Unit,
+    onExit: () -> Unit,
+) {
+    val view = LocalView.current
     val list = rememberLazyListState()
     val index = windows.indexOfFirst { it.id == selected }
     LaunchedEffect(index) {
         if (index >= 0) {
             val visible = list.layoutInfo.visibleItemsInfo
-            if (visible.none { it.index == index + 1 && it.offset >= 0 && it.offset + it.size <= list.layoutInfo.viewportEndOffset }) {
-                list.animateScrollToItem(index + 1, scrollOffset = -48)
+            if (visible.none { it.index == index && it.offset >= 0 && it.offset + it.size <= list.layoutInfo.viewportEndOffset }) {
+                list.animateScrollToItem(index, scrollOffset = -48)
             }
         }
     }
-    LazyRow(
-        state = list,
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        item(key = "status") {
-            Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onSettings).padding(6.dp)) { StatusDot(status) }
-        }
-        items(windows, key = { it.id }) { w ->
-            val on = w.id == selected
-            val agent = w.panes.map { it.agent }.firstOrNull { it.isNotEmpty() }
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (on) Palette.bg3 else Palette.bg1)
-                    .clickable { onSelect(w) }
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "${w.index}",
-                    color = if (on) Palette.orange else Palette.dim,
-                    fontFamily = Mono,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    " ${w.name}",
-                    color = if (on) Palette.fg else Palette.grey,
-                    fontFamily = Mono,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                )
-                if (agent != null) {
-                    Box(Modifier.padding(start = 6.dp).size(6.dp).clip(CircleShape).background(agentColor(agent)))
+    var menu by remember { mutableStateOf<String?>(null) }
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        BarButton(Glyph.Plus, Palette.fg, Modifier.padding(start = 6.dp), onClick = onNew)
+        LazyRow(
+            state = list,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items(windows, key = { it.id }) { w ->
+                val on = w.id == selected
+                val agent = w.panes.map { it.agent }.firstOrNull { it.isNotEmpty() }
+                Box {
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (on) Palette.bg3 else Palette.bg1)
+                            .combinedClickable(
+                                onClick = { onSelect(w) },
+                                onLongClick = {
+                                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                    menu = w.id
+                                },
+                            )
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("${w.index}", color = if (on) Palette.orange else Palette.dim, fontFamily = Mono, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(" ${w.name}", color = if (on) Palette.fg else Palette.grey, fontFamily = Mono, fontSize = 12.sp, maxLines = 1)
+                        if (agent != null) {
+                            Box(Modifier.padding(start = 6.dp).size(6.dp).clip(CircleShape).background(agentColor(agent)))
+                        }
+                    }
+                    DropdownMenu(expanded = menu == w.id, onDismissRequest = { menu = null }) {
+                        DropdownMenuItem(text = { Text("rename") }, onClick = { menu = null; onRename(w) })
+                        DropdownMenuItem(text = { Text("close", color = Palette.red) }, onClick = { menu = null; onClose(w) })
+                    }
                 }
             }
         }
+        PowerButton(status, onSettings, onExit)
     }
 }
 
 @Composable
-private fun StatusDot(status: Status) {
-    val color = when (status) {
-        is Status.Connected -> Palette.green
-        Status.Connecting -> Palette.yellow
-        is Status.Disconnected -> Palette.red
-        is Status.NeedsUser -> Palette.orange
+private fun BarButton(glyph: Glyph, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(horizontal = 9.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center,
+    ) { GlyphIcon(glyph, color, size = 14.dp) }
+}
+
+/** The connection: its color says how it is; the menu says why, and leaves. */
+@Composable
+private fun PowerButton(status: Status, onSettings: () -> Unit, onExit: () -> Unit) {
+    val (color, what) = when (status) {
+        is Status.Connected -> Palette.green to "connected · tmux ${status.tmux}"
+        Status.Connecting -> Palette.yellow to "connecting…"
+        is Status.Disconnected -> Palette.red to "reconnecting: ${status.reason}"
+        is Status.NeedsUser -> Palette.orange to "waiting for you"
     }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
-        if (status is Status.Disconnected) {
-            Text(" ${status.reason}", color = Palette.red, fontFamily = Mono, fontSize = 11.sp, maxLines = 1)
+    var open by remember { mutableStateOf(false) }
+    Box(Modifier.padding(end = 6.dp)) {
+        BarButton(Glyph.Power, color) { open = true }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text(what, color = color, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            DropdownMenuItem(text = { Text("settings") }, onClick = { open = false; onSettings() })
+            DropdownMenuItem(text = { Text("disconnect", color = Palette.red) }, onClick = { open = false; onExit() })
         }
     }
 }

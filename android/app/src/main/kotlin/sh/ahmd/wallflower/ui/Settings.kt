@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.BarKey
+import sh.ahmd.wallflower.Confirmations
 import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.KeyBarStore
 import sh.ahmd.wallflower.KeyProfile
@@ -59,6 +60,7 @@ fun KeyBar.refFor(program: String?): ProfileRef {
 fun SettingsScreen(
     host: Host?,
     store: KeyBarStore,
+    confirm: Confirmations,
     program: String?,
     onBack: () -> Unit,
     onEditHost: () -> Unit,
@@ -77,6 +79,12 @@ fun SettingsScreen(
                 Text("edit ›", color = Palette.grey, fontFamily = Mono, fontSize = 12.sp)
             }
         }
+
+        Section("closing")
+        val askPanes by confirm.panes.collectAsStateWithLifecycle()
+        val askWindows by confirm.windows.collectAsStateWithLifecycle()
+        Toggle("ask before closing a pane", askPanes) { confirm.askForPanes(it) }
+        Toggle("ask before closing a tab (or its last pane)", askWindows) { confirm.askForWindows(it) }
 
         Section("key bar")
         Body(

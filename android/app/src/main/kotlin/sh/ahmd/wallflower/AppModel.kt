@@ -23,6 +23,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     val hostKeys = HostKeys(prefs)
     val drafts = Drafts(prefs, viewModelScope)
     val keyBar = KeyBarStore(prefs)
+    val confirm = Confirmations(prefs)
     private var undelivered: Job? = null
 
     private val _host = MutableStateFlow(Host.load(prefs))

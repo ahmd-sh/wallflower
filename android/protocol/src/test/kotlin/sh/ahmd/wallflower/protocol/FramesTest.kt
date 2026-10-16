@@ -34,6 +34,11 @@ class FramesTest {
             Paste("%1", "two\nlines ✓"),
             Keys("%1", listOf("prefix", "o"), bindings = true),
             Focus("%2"),
+            Split("%2"),
+            New,
+            Rename("@2", "logs ✓"),
+            Kill(pane = "%2"),
+            Kill(window = "@2"),
         ).forEach(w::send)
         w.sendData("%1", "echo héllo ✓\r".encodeToByteArray())
 
