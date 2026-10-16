@@ -12,7 +12,9 @@ phone app ──ssh stdio──▶ wallflower serve (one per connection) ──t
 
 The gateway works end to end. The Android app (`android/`) renders live panes
 with libghostty-vt, with window tabs, native scrollback and a composer; it
-connects over a development TCP transport for now, SSH is next. The wire format is
+connects over a development TCP transport for now, SSH is next.
+
+<img src="docs/first-light.png" width="300" alt="A tmux pane in wallflower on Android"> The wire format is
 [docs/protocol.md](docs/protocol.md), pinned by golden frames in `testdata/`
 that both the Go and Kotlin tests check.
 
