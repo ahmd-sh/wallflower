@@ -259,6 +259,42 @@ func TestZoomRestoredOnDisconnect(t *testing.T) {
 }
 
 // A signal (ssh hangup) cancels the context; zooms are still undone.
+func TestFocus(t *testing.T) {
+	c := connect(t, 60, 20)
+	c.tmux("split-window", "-t", "t")
+	s := c.state("two panes", func(s protocol.State) bool { return len(activeWindow(s).Panes) == 2 })
+	first := activeWindow(s).Panes[0].ID
+
+	// Focusing another pane selects it and zooms the window; focusing the
+	// next keeps the zoom.
+	c.send(protocol.Focus{Pane: first})
+	c.state("first zoomed", func(s protocol.State) bool { return activeWindow(s).Zoomed && activePane(s).ID == first })
+	second := activeWindow(s).Panes[1].ID
+	c.send(protocol.Focus{Pane: second})
+	c.state("second zoomed", func(s protocol.State) bool { return activeWindow(s).Zoomed && activePane(s).ID == second })
+
+	if err := c.disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	if z := c.tmux("display", "-p", "-t", "t", "#{window_zoomed_flag}"); z != "0" {
+		t.Errorf("window still zoomed after disconnect")
+	}
+}
+
+func TestBoundKeys(t *testing.T) {
+	c := connect(t, 60, 20)
+	c.tmux("split-window", "-t", "t")
+	c.tmux("bind", "-n", "C-k", "select-pane", "-U")
+	s := c.state("two panes", func(s protocol.State) bool { return len(activeWindow(s).Panes) == 2 })
+	bottom := activePane(s).ID
+
+	// A root binding, then the prefix and a prefix binding (C-b o: next pane).
+	c.send(protocol.Keys{Pane: bottom, Keys: []string{"C-k"}, Bindings: true})
+	c.state("top pane", func(s protocol.State) bool { return activePane(s).ID != bottom })
+	c.send(protocol.Keys{Pane: bottom, Keys: []string{"prefix", "o"}, Bindings: true})
+	c.state("bottom again", func(s protocol.State) bool { return activePane(s).ID == bottom })
+}
+
 func TestZoomRestoredOnSignal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := connectCtx(t, ctx, 60, 20)

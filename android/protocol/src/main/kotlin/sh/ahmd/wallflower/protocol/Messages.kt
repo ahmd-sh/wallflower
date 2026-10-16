@@ -1,5 +1,7 @@
 package sh.ahmd.wallflower.protocol
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -36,10 +38,19 @@ data class Open(val pane: String, val history: Int? = null) : ClientMessage
 @SerialName("close")
 data class Close(val pane: String) : ClientMessage
 
-/** tmux key names (Enter, Escape, Up, C-c, M-Enter, BTab, ...); text goes in data frames. */
+/**
+ * tmux key names (Enter, Escape, Up, C-c, M-Enter, BTab, ...); text goes in
+ * data frames. With [bindings], as if typed on a keyboard attached to tmux,
+ * so its key bindings apply; "prefix" stands for the prefix key.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @SerialName("keys")
-data class Keys(val pane: String, val keys: List<String>) : ClientMessage
+data class Keys(
+    val pane: String,
+    val keys: List<String>,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val bindings: Boolean = false,
+) : ClientMessage
 
 /** Pasted as a terminal would: bracketed if the app asked for it, so newlines don't run anything. */
 @Serializable
@@ -53,6 +64,11 @@ data class Select(val window: String? = null, val pane: String? = null) : Client
 @Serializable
 @SerialName("zoom")
 data class Zoom(val pane: String) : ClientMessage
+
+/** Makes a pane its window's active pane, zoomed if the window has others; undone on disconnect. */
+@Serializable
+@SerialName("focus")
+data class Focus(val pane: String) : ClientMessage
 
 /** Lines in tmux numbering: 0 is the top visible line, negative is history. */
 @Serializable

@@ -41,7 +41,7 @@ func TestPaintDropsBackgroundAtBreaks(t *testing.T) {
 
 func TestParseCapture(t *testing.T) {
 	reply := tmux.Reply{Blocks: [][]string{
-		{"10\t3\t4\t1\t1\t0\t2\t0\t2"},
+		{"10\t3\t4\t1\t1\t0\t2\t0\t2\t0\t0\t0\t0\t0"},
 		{"h1", "h2", "h3"}, // tmux returned more than history_size
 		nil,
 		{"a", "b"}, // fewer lines than rows
@@ -58,14 +58,15 @@ func TestParseCapture(t *testing.T) {
 		t.Errorf("repaint = %q\nwant      %q", got, want)
 	}
 
-	reply.Blocks[0][0] = "10\t3\t0\t0\t0\t1\t0\t1\t2"
+	// A full-screen app with the mouse on, as Claude Code runs: any-event tracking, SGR encoding.
+	reply.Blocks[0][0] = "10\t3\t0\t0\t0\t1\t0\t1\t2\t0\t0\t1\t1\t0"
 	reply.Blocks[2] = []string{"n1", "n2", "n3"}
 	reply.Blocks[3] = []string{"x", "y", "z"}
 	c, err = parseCapture(reply, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want = "\x1b[0m\x1b[H\x1b[2Jn1\r\nn2\r\nn3\x1b[0m\x1b[?1049h\x1b[H\x1b[2Jx\r\ny\r\nz\x1b[0m\x1b[2;3r\x1b[1;1H\x1b[?25l"
+	want = "\x1b[0m\x1b[H\x1b[2Jn1\r\nn2\r\nn3\x1b[0m\x1b[?1049h\x1b[H\x1b[2Jx\r\ny\r\nz\x1b[0m\x1b[2;3r\x1b[1;1H\x1b[?25l\x1b[?1003h\x1b[?1006h"
 	if got := string(c.repaint()); got != want {
 		t.Errorf("alt repaint = %q\nwant          %q", got, want)
 	}

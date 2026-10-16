@@ -12,7 +12,12 @@ import (
 var metaFormat = strings.Join([]string{
 	"#{pane_width}", "#{pane_height}", "#{cursor_x}", "#{cursor_y}", "#{cursor_flag}",
 	"#{alternate_on}", "#{history_size}", "#{scroll_region_upper}", "#{scroll_region_lower}",
+	"#{mouse_standard_flag}", "#{mouse_button_flag}", "#{mouse_all_flag}", "#{mouse_sgr_flag}", "#{mouse_utf8_flag}",
 }, "\t")
+
+// The pane's mouse modes, in metaFormat's order: the client needs them to
+// send a full-screen app its scroll wheel.
+var mouseModes = []int{1000, 1002, 1003, 1006, 1005}
 
 // capture is a pane's screen as tmux holds it, read in one atomic command
 // line so it lines up with the pane's output stream.
@@ -22,6 +27,7 @@ type capture struct {
 	cursorHidden bool
 	alt          bool
 	top, bottom  int      // scroll region
+	mouse        []int    // mouse modes the app turned on
 	history      []string // normal screen scrollback, oldest first
 	normal       []string // normal screen; covered by the alternate screen if alt
 	altScreen    []string
@@ -41,13 +47,18 @@ func parseCapture(r tmux.Reply, history int) (*capture, error) {
 		return nil, fmt.Errorf("unexpected capture reply (%d blocks)", len(r.Blocks))
 	}
 	f := strings.Split(r.Blocks[0][0], "\t")
-	if len(f) != 9 {
+	if len(f) != 9+len(mouseModes) {
 		return nil, fmt.Errorf("unexpected pane metadata %q", r.Blocks[0][0])
 	}
 	c := &capture{
 		cols: atoi(f[0]), rows: atoi(f[1]), cx: atoi(f[2]), cy: atoi(f[3]),
 		cursorHidden: f[4] == "0", alt: f[5] == "1",
 		top: atoi(f[7]), bottom: atoi(f[8]),
+	}
+	for i, mode := range mouseModes {
+		if f[9+i] == "1" {
+			c.mouse = append(c.mouse, mode)
+		}
 	}
 
 	// With no history tmux clamps the range onto the screen, so trust
@@ -83,6 +94,9 @@ func (c *capture) repaint() []byte {
 	fmt.Fprintf(&b, "\x1b[%d;%dH", c.cy+1, c.cx+1)
 	if c.cursorHidden {
 		b.WriteString("\x1b[?25l")
+	}
+	for _, mode := range c.mouse {
+		fmt.Fprintf(&b, "\x1b[?%dh", mode)
 	}
 	return b.Bytes()
 }

@@ -49,10 +49,11 @@ client never has to resync on its own.
 | `resize` | `cols`, `rows` | the client's terminal area changed |
 | `open` | `pane`, `history`? | repaint and stream a pane; `history` lines of scrollback (default 1000) |
 | `close` | `pane` | stop streaming a pane |
-| `keys` | `pane`, `keys` | tmux key names: `Enter`, `Escape`, `Up`, `C-c`, `M-Enter`, `BTab`, …; encoded for the pane's modes |
+| `keys` | `pane`, `keys`, `bindings`? | tmux key names: `Enter`, `Escape`, `Up`, `C-c`, `M-Enter`, `BTab`, …; encoded for the pane's modes. With `bindings`, as if typed on a keyboard attached to tmux, so its key bindings apply (`prefix` stands for the prefix key) |
 | `paste` | `pane`, `text` | paste as a terminal would: bracketed if the app asked for it (newlines don't run anything), newlines as Enter |
 | `select` | `window` or `pane` | make it current in the client's session (sizes it for the client) |
 | `zoom` | `pane` | toggle zoom; zooms are undone when the client disconnects |
+| `focus` | `pane` | make it the window's active pane, zoomed if the window has others (undone on disconnect, like `zoom`) |
 | `scrollback` | `id`, `pane`, `start`, `end` | lines in tmux numbering: 0 is the top visible line, negative is history |
 | `tmux` | `id`, `command` | run a raw tmux command line (escape hatch) |
 | `ping` | `id` | |

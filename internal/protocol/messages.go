@@ -39,6 +39,9 @@ type Close struct {
 type Keys struct {
 	Pane string   `json:"pane"`
 	Keys []string `json:"keys"`
+	// Bindings sends the keys as if typed on a keyboard attached to tmux, so
+	// key bindings apply; "prefix" stands for the prefix key.
+	Bindings bool `json:"bindings,omitempty"`
 }
 
 // Paste pastes text the way a terminal does: bracketed if the pane's app
@@ -54,6 +57,12 @@ type Select struct {
 }
 
 type Zoom struct {
+	Pane string `json:"pane"`
+}
+
+// Focus makes a pane its window's active pane, zoomed if the window has
+// others; the zoom is undone when the client disconnects.
+type Focus struct {
 	Pane string `json:"pane"`
 }
 
@@ -84,6 +93,7 @@ func (ScrollbackRequest) Type() string { return "scrollback" }
 func (TmuxCommand) Type() string       { return "tmux" }
 func (Ping) Type() string              { return "ping" }
 func (Paste) Type() string             { return "paste" }
+func (Focus) Type() string             { return "focus" }
 
 // Gateway to client.
 
@@ -170,7 +180,7 @@ func (Bye) Type() string             { return "bye" }
 
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Select{}, Zoom{},
-	ScrollbackRequest{}, TmuxCommand{}, Ping{}, Paste{},
+	ScrollbackRequest{}, TmuxCommand{}, Ping{}, Paste{}, Focus{},
 )
 
 var serverMessages = registry(

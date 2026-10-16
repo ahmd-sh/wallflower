@@ -31,6 +31,8 @@ func goldenClient(t *testing.T) []byte {
 		TmuxCommand{ID: 2, Command: `display -p '#{session_name}'`},
 		Ping{ID: 3},
 		Paste{Pane: "%1", Text: "two\nlines ✓"},
+		Keys{Pane: "%1", Keys: []string{"prefix", "o"}, Bindings: true},
+		Focus{Pane: "%2"},
 	} {
 		b = mustJSON(t, b, m)
 	}

@@ -32,6 +32,8 @@ class FramesTest {
             TmuxCommand(2, "display -p '#{session_name}'"),
             Ping(3),
             Paste("%1", "two\nlines ✓"),
+            Keys("%1", listOf("prefix", "o"), bindings = true),
+            Focus("%2"),
         ).forEach(w::send)
         w.sendData("%1", "echo héllo ✓\r".encodeToByteArray())
 

@@ -48,6 +48,7 @@ type gateway struct {
 	zoomed     map[string]bool   // windows the client zoomed -> zoom state before
 	group      string            // the session the client asked for; its own session is grouped with it
 	programs   map[string]string // tty and versioned command -> the name it was run as
+	client     string            // this control client's name, for keys sent through bindings
 	lastState  []byte
 	dirty      bool
 	exitReason string
@@ -169,7 +170,7 @@ func readHello(r *protocol.Reader) (*protocol.ClientHello, error) {
 }
 
 func (g *gateway) setup() (string, error) {
-	r, err := g.tmux.Command(fmt.Sprintf("refresh-client -C %dx%d ; refresh-client -B %s ; display -p '#{version}'",
+	r, err := g.tmux.Command(fmt.Sprintf("refresh-client -C %dx%d ; refresh-client -B %s ; display -p '#{version}\t#{client_name}'",
 		g.cols, g.rows, tmux.Quote(paneSubscription)))
 	if err != nil {
 		return "", err
@@ -178,7 +179,9 @@ func (g *gateway) setup() (string, error) {
 	if len(lines) != 1 {
 		return "", fmt.Errorf("unexpected setup reply %q", lines)
 	}
-	return lines[0], nil
+	version, client, _ := strings.Cut(lines[0], "\t")
+	g.client = client
+	return version, nil
 }
 
 func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readErr <-chan error) error {
@@ -279,6 +282,9 @@ func (g *gateway) handle(f protocol.Frame) error {
 			return nil
 		}
 		g.claimSize()
+		if m.Bindings {
+			return g.sendBound(m.Keys)
+		}
 		cmd := "send-keys -t " + m.Pane + " --"
 		for _, k := range m.Keys {
 			cmd += " " + tmux.Quote(k)
@@ -315,17 +321,14 @@ func (g *gateway) handle(f protocol.Frame) error {
 		if err := checkID(paneID, m.Pane); err != nil {
 			return err
 		}
-		r, err := g.tmux.Command(fmt.Sprintf("display -p -t %[1]s '#{window_id} #{window_zoomed_flag}' ; resize-pane -Z -t %[1]s", m.Pane))
-		if err != nil {
+		return g.zoom(m.Pane, "resize-pane -Z -t "+m.Pane)
+
+	case *protocol.Focus:
+		if err := checkID(paneID, m.Pane); err != nil {
 			return err
 		}
-		if lines := r.Lines(); len(lines) > 0 {
-			id, was, _ := strings.Cut(lines[0], " ")
-			if _, seen := g.zoomed[id]; !seen {
-				g.zoomed[id] = was == "1"
-			}
-		}
-		return nil
+		// select-pane -Z keeps a zoomed window zoomed on the new pane.
+		return g.zoom(m.Pane, fmt.Sprintf("select-pane -Z -t %[1]s ; if -F -t %[1]s '#{&&:#{!=:#{window_panes},1},#{!=:#{window_zoomed_flag},1}}' 'resize-pane -Z -t %[1]s'", m.Pane))
 
 	case *protocol.ScrollbackRequest:
 		g.send(g.scrollback(m))
@@ -348,6 +351,39 @@ func (g *gateway) handle(f protocol.Frame) error {
 		return errors.New("already said hello")
 	}
 	return fmt.Errorf("unhandled message %q", m.Type())
+}
+
+// zoom runs a command that may change pane's window's zoom, remembering how
+// the window was first so cleanup can put it back.
+func (g *gateway) zoom(pane, cmd string) error {
+	r, err := g.tmux.Command(fmt.Sprintf("display -p -t %s '#{window_id} #{window_zoomed_flag}' ; %s", pane, cmd))
+	if err != nil {
+		return err
+	}
+	if lines := r.Lines(); len(lines) > 0 {
+		id, was, _ := strings.Cut(lines[0], " ")
+		if _, seen := g.zoomed[id]; !seen {
+			g.zoomed[id] = was == "1"
+		}
+	}
+	return nil
+}
+
+// sendBound sends keys through this client's key tables, as if typed on a
+// keyboard attached to tmux, so the prefix and bindings work.
+func (g *gateway) sendBound(keys []string) error {
+	cmd := "send-keys -K -c " + tmux.Quote(g.client) + " --"
+	for _, k := range keys {
+		if k == "prefix" {
+			out, err := g.tmux.Run("show -gv prefix")
+			if err != nil || len(out) != 1 {
+				return fmt.Errorf("no prefix key: %v", err)
+			}
+			k = out[0]
+		}
+		cmd += " " + tmux.Quote(k)
+	}
+	return g.run(cmd)
 }
 
 // open (re)paints a pane and starts streaming its output.
