@@ -38,6 +38,7 @@ android {
 
 dependencies {
     implementation(project(":protocol"))
+    implementation(project(":terminal"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)

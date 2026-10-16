@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "wallflower"
-include(":app", ":protocol")
+include(":app", ":protocol", ":terminal")
