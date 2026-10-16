@@ -32,16 +32,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
+import sh.ahmd.wallflower.Appearance
 import sh.ahmd.wallflower.BarKey
 import sh.ahmd.wallflower.Confirmations
 import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.KeyBarStore
 import sh.ahmd.wallflower.KeyProfile
+import sh.ahmd.wallflower.Look
 import sh.ahmd.wallflower.session.Host
 
 /** A profile of the key bar, by where it sits. */
@@ -61,6 +64,7 @@ fun SettingsScreen(
     host: Host?,
     store: KeyBarStore,
     confirm: Confirmations,
+    appearance: Appearance,
     program: String?,
     onBack: () -> Unit,
     onEditHost: () -> Unit,
@@ -69,6 +73,14 @@ fun SettingsScreen(
     val bar by store.bar.collectAsStateWithLifecycle()
     val focused = bar.refFor(program)
     Page("settings", onBack) {
+        Section("look")
+        val look by appearance.look.collectAsStateWithLifecycle()
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Chip("terminal", look == Look.Terminal) { appearance.use(Look.Terminal) }
+            Chip("bricolage", look == Look.Grotesque, Grotesque) { appearance.use(Look.Grotesque) }
+        }
+        Body("Settings pages only, for now. Keys and values stay in the terminal font.")
+
         Section("mac")
         if (host != null) {
             Row(
@@ -76,7 +88,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("${host.user}@${host.address}:${host.port}", color = Palette.fg, fontFamily = Mono, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text("edit ›", color = Palette.grey, fontFamily = Mono, fontSize = 12.sp)
+                Text("edit ›", color = Palette.grey, fontFamily = words, fontSize = if (grotesque) 14.sp else 12.sp)
             }
         }
 
@@ -126,7 +138,13 @@ private fun ProfileRow(profile: KeyProfile, programs: String, focused: Boolean, 
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(profile.name, color = Palette.fg, fontFamily = Mono, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(
+                profile.name,
+                color = Palette.fg,
+                fontFamily = words,
+                fontSize = if (grotesque) 16.sp else 13.sp,
+                fontWeight = if (grotesque) FontWeight.SemiBold else FontWeight.Bold,
+            )
             if (focused) Box(Modifier.padding(start = 8.dp).size(6.dp).clip(CircleShape).background(Palette.green))
             Text(programs, color = Palette.grey, fontFamily = Mono, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 12.dp))
             Text("›", color = Palette.grey, fontFamily = Mono, fontSize = 14.sp)
@@ -274,7 +292,7 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable () -> U
                 fontSize = 22.sp,
                 modifier = Modifier.clip(CircleShape).clickable(onClick = onBack).padding(horizontal = 14.dp, vertical = 4.dp),
             )
-            Text(title, color = Palette.fg, fontFamily = Mono, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(title, color = Palette.fg, fontFamily = words, fontSize = if (grotesque) 22.sp else 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
@@ -284,10 +302,10 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable () -> U
 }
 
 @Composable
-private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) = Text(
+private fun Chip(label: String, selected: Boolean, font: FontFamily = Mono, onClick: () -> Unit) = Text(
     label,
     color = if (selected) Palette.bg0 else Palette.fg,
-    fontFamily = Mono,
+    fontFamily = font,
     fontSize = 13.sp,
     modifier = Modifier
         .clip(RoundedCornerShape(18.dp))

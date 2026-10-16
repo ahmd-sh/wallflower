@@ -6,12 +6,14 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import sh.ahmd.wallflower.Look
 import sh.ahmd.wallflower.terminal.R
 
 /** Everforest Dark Hard, matching the terminal theme. */
@@ -35,6 +37,19 @@ val Mono = FontFamily(
     Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
     Font(R.font.jetbrains_mono_bold, FontWeight.Bold),
 )
+
+val Grotesque = FontFamily(
+    Font(sh.ahmd.wallflower.R.font.bricolage_regular, FontWeight.Normal),
+    Font(sh.ahmd.wallflower.R.font.bricolage_semibold, FontWeight.SemiBold),
+    Font(sh.ahmd.wallflower.R.font.bricolage_bold, FontWeight.Bold),
+)
+
+val LocalLook = staticCompositionLocalOf { Look.Terminal }
+
+internal val grotesque: Boolean @Composable get() = LocalLook.current == Look.Grotesque
+
+/** The font for a page's words. Keys, symbols and values stay in [Mono]. */
+internal val words: FontFamily @Composable get() = if (grotesque) Grotesque else Mono
 
 /** Material components (menus, dialogs) in the same colors and font. */
 @Composable

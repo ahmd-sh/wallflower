@@ -45,6 +45,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,6 +86,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     val host by model.host.collectAsStateWithLifecycle()
     val session by model.session.collectAsStateWithLifecycle()
     val hasKey by model.hasKey.collectAsStateWithLifecycle()
+    val look by model.appearance.look.collectAsStateWithLifecycle()
     var screen by remember { mutableStateOf<Screen>(Screen.Terminal) }
     var program by remember { mutableStateOf<String?>(null) }
     val focus = LocalFocusManager.current
@@ -123,15 +125,18 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
             Screen.Terminal -> Unit
             Screen.Settings -> {
                 BackHandler { screen = Screen.Terminal }
-                SettingsScreen(
-                    host = host,
-                    store = model.keyBar,
-                    confirm = model.confirm,
-                    program = program,
-                    onBack = { screen = Screen.Terminal },
-                    onEditHost = { screen = Screen.Setup },
-                    onOpen = { screen = Screen.Profile(it, Screen.Settings) },
-                )
+                CompositionLocalProvider(LocalLook provides look) {
+                    SettingsScreen(
+                        host = host,
+                        store = model.keyBar,
+                        confirm = model.confirm,
+                        appearance = model.appearance,
+                        program = program,
+                        onBack = { screen = Screen.Terminal },
+                        onEditHost = { screen = Screen.Setup },
+                        onOpen = { screen = Screen.Profile(it, Screen.Settings) },
+                    )
+                }
             }
             Screen.Setup -> {
                 BackHandler { screen = Screen.Settings }
@@ -139,13 +144,15 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
             }
             is Screen.Profile -> {
                 BackHandler { screen = s.back }
-                ProfileScreen(
-                    store = model.keyBar,
-                    ref = s.ref,
-                    program = program,
-                    onBack = { screen = s.back },
-                    onOpen = { screen = s.copy(ref = it) },
-                )
+                CompositionLocalProvider(LocalLook provides look) {
+                    ProfileScreen(
+                        store = model.keyBar,
+                        ref = s.ref,
+                        program = program,
+                        onBack = { screen = s.back },
+                        onOpen = { screen = s.copy(ref = it) },
+                    )
+                }
             }
         }
     }

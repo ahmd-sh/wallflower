@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import sh.ahmd.wallflower.BuildConfig
@@ -165,15 +168,27 @@ fun BlockedCard(
 }
 
 @Composable
-internal fun Section(label: String) =
-    Text(label, color = Palette.orange, fontFamily = Mono, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+internal fun Section(label: String) = Text(
+    label,
+    color = Palette.orange,
+    fontFamily = words,
+    fontSize = if (grotesque) 15.sp else 12.sp,
+    fontWeight = if (grotesque) FontWeight.SemiBold else FontWeight.Bold,
+    modifier = Modifier.padding(top = 8.dp),
+)
 
 @Composable
 private fun Title(text: String, color: Color = Palette.fg) =
     Text(text, color = color, fontFamily = Mono, fontSize = 14.sp, fontWeight = FontWeight.Bold)
 
 @Composable
-internal fun Body(text: String) = Text(text, color = Palette.grey, fontFamily = Mono, fontSize = 12.sp)
+internal fun Body(text: String) = Text(
+    text,
+    color = Palette.grey,
+    fontFamily = words,
+    fontSize = if (grotesque) 14.sp else 12.sp,
+    lineHeight = if (grotesque) 20.sp else TextUnit.Unspecified,
+)
 
 @Composable
 private fun Code(text: String) = Text(
@@ -187,7 +202,7 @@ private fun Code(text: String) = Text(
 @Composable
 internal fun Field(label: String, value: String, keyboard: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = Palette.dim, fontFamily = Mono, fontSize = 11.sp)
+        Text(label, color = Palette.dim, fontFamily = words, fontSize = if (grotesque) 13.sp else 11.sp)
         BasicTextField(
             value = value,
             onValueChange = onChange,
@@ -202,6 +217,16 @@ internal fun Field(label: String, value: String, keyboard: KeyboardType = Keyboa
 
 @Composable
 internal fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    if (grotesque) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { onChange(!on) }.padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(on, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = Palette.orange, uncheckedColor = Palette.grey, checkmarkColor = Palette.bg0))
+            Text(label, color = Palette.fg, fontFamily = Grotesque, fontSize = 15.sp, lineHeight = 20.sp, modifier = Modifier.padding(start = 14.dp).weight(1f))
+        }
+        return
+    }
     Row(Modifier.clickable { onChange(!on) }, verticalAlignment = Alignment.CenterVertically) {
         Text(if (on) "[x] " else "[ ] ", color = Palette.orange, fontFamily = Mono, fontSize = 13.sp)
         Text(label, color = Palette.fg, fontFamily = Mono, fontSize = 12.sp)
@@ -212,9 +237,9 @@ internal fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
 internal fun Button(label: String, primary: Boolean = false, onClick: () -> Unit) = Text(
     label,
     color = if (primary) Palette.bg0 else Palette.fg,
-    fontFamily = Mono,
-    fontSize = 13.sp,
-    fontWeight = if (primary) FontWeight.Bold else FontWeight.Normal,
+    fontFamily = words,
+    fontSize = if (grotesque) 14.sp else 13.sp,
+    fontWeight = if (!primary) FontWeight.Normal else if (grotesque) FontWeight.SemiBold else FontWeight.Bold,
     modifier = Modifier
         .clip(RoundedCornerShape(8.dp))
         .background(if (primary) Palette.green else Palette.bg3)
