@@ -409,20 +409,19 @@ private fun PaneCard(
         BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(CARD_RATIO).background(Palette.bg0)) {
             // Small enough for the pane's whole width to fit the card.
             val font = (maxWidth.value / (pane.cols.coerceAtLeast(1) * GLYPH_WIDTH)).coerceIn(4f, 11f)
-            var thumb by remember { mutableStateOf<TerminalView?>(null) }
+            // The grid reuses cards' views for other panes as it scrolls, so a view
+            // registers for its pane's output whenever it's given one.
             AndroidView(
                 modifier = Modifier.fillMaxSize().padding(4.dp).clipToBounds(),
-                factory = { ctx -> TerminalView(ctx).also { thumb = it } },
-                update = {
-                    it.fontSizeSp = font
-                    it.terminal = terminal
+                factory = { ctx -> TerminalView(ctx) },
+                onReset = { v -> views.values.remove(v) },
+                onRelease = { v -> views.values.remove(v) },
+                update = { v ->
+                    v.fontSizeSp = font
+                    v.terminal = terminal
+                    views[pane.id] = v
                 },
             )
-            DisposableEffect(thumb, pane.id) {
-                val v = thumb
-                if (v != null) views[pane.id] = v
-                onDispose { views.remove(pane.id, v) }
-            }
             Box(Modifier.matchParentSize().clickable(onClick = onClick)) // the card takes the tap, not the terminal
         }
     }

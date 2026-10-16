@@ -241,6 +241,33 @@ func TestResizeAndReclaim(t *testing.T) {
 	c.state("desktop-sized", func(s protocol.State) bool { return activeWindow(s).Cols == 120 })
 	c.sendText(p, "x")
 	c.state("reclaimed", func(s protocol.State) bool { return activeWindow(s).Cols == 70 })
+
+	// So does the phone resizing (its keyboard opening) after the desktop took over.
+	if _, err := desk.Run("select-window -t " + tmux.Quote("t:"+s.Windows[0].ID)); err != nil {
+		t.Fatal(err)
+	}
+	c.state("desktop-sized again", func(s protocol.State) bool { return activeWindow(s).Cols == 120 })
+	c.send(protocol.Resize{Cols: 70, Rows: 15})
+	c.state("phone keyboard size", func(s protocol.State) bool { w := activeWindow(s); return w.Cols == 70 && w.Rows == 15 })
+	c.send(protocol.Resize{Cols: 70, Rows: 25})
+	c.state("phone size", func(s protocol.State) bool { return activeWindow(s).Rows == 25 })
+
+	// Typing into a window that isn't current for the phone (it shows what it
+	// likes) makes it current, at the phone's size.
+	c.tmux("new-window", "-d", "-t", "t:")
+	s = c.state("second window", func(s protocol.State) bool { return len(s.Windows) == 2 })
+	other := s.Windows[1]
+	if other.Active {
+		t.Fatal("new window is current")
+	}
+	if _, err := desk.Run("select-window -t " + other.ID); err != nil {
+		t.Fatal(err)
+	}
+	c.sendText(other.Panes[0].ID, "x")
+	c.state("typed-into window is the phone's", func(s protocol.State) bool {
+		w := activeWindow(s)
+		return w.ID == other.ID && w.Cols == 70 && w.Rows == 25
+	})
 }
 
 func TestZoomRestoredOnDisconnect(t *testing.T) {

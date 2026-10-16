@@ -22,14 +22,6 @@ class KeyBarTest {
     }
 
     @Test
-    fun zoomedOutWinsOnlyWhenZoomedOutAndSet() {
-        assertEquals("shell", bar.profileFor("zsh", zoomedOut = true).name)
-        val zoomed = bar.copy(zoomedOut = KeyProfile("overview", keys = emptyList()))
-        assertEquals("overview", zoomed.profileFor("zsh", zoomedOut = true).name)
-        assertEquals("shell", zoomed.profileFor("zsh").name)
-    }
-
-    @Test
     fun claudeStopsWithEscapeAndShellsWithCtrlC() {
         assertEquals(listOf("Escape"), bar.profileFor("claude").stop)
         assertEquals(listOf("C-c"), bar.profileFor("zsh").stop)
@@ -56,8 +48,8 @@ class KeyBarTest {
     @Test
     fun survivesStorage() {
         assertEquals(bar, Json.decodeFromString<KeyBar>(Json.encodeToString(bar)))
-        // Settings saved before keys could be sticky still load.
-        val old = """{"profiles":[],"default":{"name":"d","keys":[{"label":"pfx","keys":["C-f"]}]}}"""
-        assertEquals(BarKey("pfx", listOf("C-f")), Json.decodeFromString<KeyBar>(old).default.keys[0])
+        // Settings saved before keys could be sticky, or with the old zoomed-out profile, still load.
+        val old = """{"profiles":[],"default":{"name":"d","keys":[{"label":"pfx","keys":["C-f"]}]},"zoomedOut":null}"""
+        assertEquals(BarKey("pfx", listOf("C-f")), Json { ignoreUnknownKeys = true }.decodeFromString<KeyBar>(old).default.keys[0])
     }
 }

@@ -248,7 +248,7 @@ func (g *gateway) handle(f protocol.Frame) error {
 		if err := checkID(paneID, f.Pane); err != nil {
 			return err
 		}
-		g.claimSize()
+		g.claimSize(f.Pane)
 		return g.sendText(f.Pane, f.Data)
 	}
 
@@ -262,7 +262,17 @@ func (g *gateway) handle(f protocol.Frame) error {
 			return fmt.Errorf("bad size %dx%d", m.Cols, m.Rows)
 		}
 		g.cols, g.rows = m.Cols, m.Rows
-		return g.run(fmt.Sprintf("refresh-client -C %dx%d", m.Cols, m.Rows))
+		if err := g.run(fmt.Sprintf("refresh-client -C %dx%d", m.Cols, m.Rows)); err != nil {
+			return err
+		}
+		// The size only applies to windows this client was last to use;
+		// showing the current window again makes it so.
+		for _, w := range g.windows() {
+			if w.Active {
+				return g.selectWindow(w.ID)
+			}
+		}
+		return nil
 
 	case *protocol.Open:
 		if err := checkID(paneID, m.Pane); err != nil {
@@ -281,7 +291,7 @@ func (g *gateway) handle(f protocol.Frame) error {
 		if len(m.Keys) == 0 {
 			return nil
 		}
-		g.claimSize()
+		g.claimSize(m.Pane)
 		if m.Bindings {
 			return g.sendBound(m.Keys)
 		}
@@ -298,7 +308,7 @@ func (g *gateway) handle(f protocol.Frame) error {
 		if m.Text == "" {
 			return nil
 		}
-		g.claimSize()
+		g.claimSize(m.Pane)
 		buf := fmt.Sprintf("wallflower-%d", os.Getpid())
 		return g.run(fmt.Sprintf("set-buffer -b %[1]s -- %[2]s ; paste-buffer -p -d -b %[1]s -t %[3]s", buf, tmux.QuoteText(m.Text), m.Pane))
 
@@ -313,7 +323,7 @@ func (g *gateway) handle(f protocol.Frame) error {
 			if err := checkID(windowID, m.Window); err != nil {
 				return err
 			}
-			return g.run("select-window -t " + m.Window)
+			return g.selectWindow(m.Window)
 		}
 		return errors.New("select needs a window or pane")
 
@@ -393,6 +403,7 @@ func (g *gateway) handle(f protocol.Frame) error {
 // focus makes a pane its window's active one, zoomed if the window has
 // others; select-pane -Z keeps a zoomed window zoomed on the new pane.
 func (g *gateway) focus(pane string) error {
+	g.claimSize(pane)
 	return g.zoom(pane, fmt.Sprintf("select-pane -Z -t %[1]s ; if -F -t %[1]s '#{&&:#{!=:#{window_panes},1},#{!=:#{window_zoomed_flag},1}}' 'resize-pane -Z -t %[1]s'", pane))
 }
 
@@ -553,18 +564,38 @@ func foreground(tty string) string {
 	return ""
 }
 
-// claimSize makes this client the window's size again if another client
-// (the desktop) took it over. tmux sizes a window for the client that last
-// resized or selected it; typing doesn't count, and re-sending the same
-// size is a no-op, but selecting the window again works.
-func (g *gateway) claimSize() {
+func (g *gateway) windows() []tmux.Window {
 	if g.session == nil {
-		return
+		return nil
 	}
-	for _, w := range g.session.Windows {
-		if w.Active && (w.Width != g.cols || w.Height != g.rows) {
-			g.run("select-window -t " + w.ID)
-			return
+	return g.session.Windows
+}
+
+// selectWindow makes a window current in this client's own session. A bare
+// window id would pick whichever session holding it was active last, which
+// can be the desktop's.
+func (g *gateway) selectWindow(id string) error {
+	if g.session == nil {
+		return errors.New("no session yet")
+	}
+	return g.run("select-window -t " + tmux.Quote(g.session.ID+":"+id))
+}
+
+// claimSize makes the window holding pane current for this client, at its
+// size, if it isn't: another client (the desktop) may have taken the window
+// over, or the client is showing a window its session doesn't have current
+// (it chooses what to show itself). tmux sizes a window for the client that
+// last resized, selected or typed into it, and typing here doesn't count, but
+// selecting the window again does.
+func (g *gateway) claimSize(pane string) {
+	for _, w := range g.windows() {
+		for _, p := range w.Panes {
+			if p.ID == pane {
+				if !w.Active || w.Width != g.cols || w.Height != g.rows {
+					g.selectWindow(w.ID)
+				}
+				return
+			}
 		}
 	}
 }

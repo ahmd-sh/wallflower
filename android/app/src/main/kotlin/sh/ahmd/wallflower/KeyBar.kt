@@ -58,19 +58,15 @@ data class KeyProfile(
 
 /**
  * Which keys sit next to the composer. The focused pane's program picks the
- * profile, first match wins, else [default]; [zoomedOut], if set, wins while
- * looking at a whole window.
+ * profile, first match wins, else [default].
  */
 @Serializable
 data class KeyBar(
     val profiles: List<KeyProfile>,
     val default: KeyProfile,
-    val zoomedOut: KeyProfile? = null,
 ) {
-    fun profileFor(program: String, zoomedOut: Boolean = false): KeyProfile =
-        this.zoomedOut.takeIf { zoomedOut }
-            ?: profiles.firstOrNull { p -> p.programs.any { it.equals(program, ignoreCase = true) } }
-            ?: default
+    fun profileFor(program: String): KeyProfile =
+        profiles.firstOrNull { p -> p.programs.any { it.equals(program, ignoreCase = true) } } ?: default
 
     companion object {
         /** Keys offered when editing a bar. */

@@ -100,6 +100,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     private val pending = ArrayList<Submitted>() // its lock also guards swapping the queue
     private val opened = LinkedHashMap<String, Int>() // pane -> history lines it has; least recently viewed first
     @Volatile private var awaitingWindow: Set<String>? = null // windows there were when the phone opened one
+    @Volatile private var synced = false // this connection's session has the window being viewed current
     private val pings = AtomicInteger()
     private var grid = 80 to 24
     private var job: Job? = null
@@ -153,11 +154,16 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     /**
      * The app is back in front: a connection that went quiet in the
      * background (frozen, asleep, network changed) is checked now instead of
-     * at the next heartbeat, and a waiting reconnect goes right away.
+     * at the next heartbeat, a waiting reconnect goes right away, and the
+     * window on screen is the phone's size again.
      */
     fun probe() {
         when {
-            queue != null -> ping(PROBE_TIMEOUT_MS)
+            queue != null -> {
+                ping(PROBE_TIMEOUT_MS)
+                // The desktop may have taken the window over meanwhile; showing it again takes it back.
+                _viewing.value?.let { send(Select(window = it)) }
+            }
             _status.value is Status.Disconnected -> retries.trySend(Unit)
         }
     }
@@ -180,6 +186,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
             }
             lastPing = SystemClock.elapsedRealtime()
             deadline = 0
+            synced = false
             synchronized(pending) { queue = out }
             val heartbeat = scope.launch(Dispatchers.IO) { heartbeat(conn) }
             try {
@@ -245,6 +252,11 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                         _viewing.value = w.id
                         awaitingWindow = null
                     }
+                }
+                // A new connection's session starts wherever the desktop is; what's shown is the phone's choice.
+                if (!synced) {
+                    synced = true
+                    if (m.windows.none { it.id == _viewing.value && it.active }) _viewing.value?.let { send(Select(window = it)) }
                 }
                 m.windows.firstOrNull { it.id == _viewing.value }?.shownPane(_chosen.value)?.let { open(it.id, viewed = true) }
                 for (w in m.windows) w.shownPane(_chosen.value)?.let { open(it.id, viewed = false, full = true) }
