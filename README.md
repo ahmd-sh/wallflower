@@ -10,17 +10,23 @@ phone app ──ssh stdio──▶ wallflower serve (one per connection) ──t
 
 ## Status
 
-The gateway works end to end; there is no phone app yet. See
-[docs/protocol.md](docs/protocol.md).
+The gateway works end to end. The Android app (`android/`) has its protocol
+module done; the UI is next. The wire format is
+[docs/protocol.md](docs/protocol.md), pinned by golden frames in `testdata/`
+that both the Go and Kotlin tests check.
 
 ```sh
 go build -o bin/wallflower ./cmd/wallflower
-bin/wallflower debug -cols 56 -rows 20          # local gateway as JSON lines
+bin/wallflower debug -cols 56 -rows 20                        # local gateway as JSON lines
 bin/wallflower debug -- ssh mac "~/go/bin/wallflower serve"   # through ssh
-bin/wallflower watch -output=false              # raw control-mode events
+bin/wallflower watch -output=false                            # raw control-mode events
 ```
 
 Requires tmux 3.8 (JSON layouts, floating panes).
+
+```sh
+cd android && ./gradlew :protocol:test :app:assembleDebug
+```
 
 ## tmux control mode notes
 
