@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import sh.ahmd.wallflower.session.HardwareKey
 import sh.ahmd.wallflower.session.Host
 import sh.ahmd.wallflower.session.HostKeys
@@ -19,6 +21,9 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("wallflower", Context.MODE_PRIVATE)
     val key = HardwareKey()
     val hostKeys = HostKeys(prefs)
+    val drafts = Drafts(prefs, viewModelScope)
+    val keyBar = KeyBarStore(prefs)
+    private var undelivered: Job? = null
 
     private val _host = MutableStateFlow(Host.load(prefs))
     val host: StateFlow<Host?> = _host.asStateFlow()
@@ -41,8 +46,15 @@ class AppModel(app: Application) : AndroidViewModel(app) {
 
     private fun connect(host: Host) {
         _session.value?.stop()
+        undelivered?.cancel()
         val transport = if (host.dev) TcpTransport() else SshTransport(host, key, hostKeys)
-        _session.value = Session(transport, viewModelScope)
+        val session = Session(transport, viewModelScope)
+        undelivered = viewModelScope.launch { session.undelivered.collect { drafts.restore(it.pane, it.text) } }
+        _session.value = session
+    }
+
+    fun onForeground() {
+        _session.value?.probe()
     }
 
     /** Creates the key if needed; returns why it couldn't, e.g. no screen lock. */

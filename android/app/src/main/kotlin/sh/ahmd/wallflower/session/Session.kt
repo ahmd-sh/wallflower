@@ -1,16 +1,21 @@
 package sh.ahmd.wallflower.session
 
+import android.os.SystemClock
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import sh.ahmd.wallflower.protocol.Bye
 import sh.ahmd.wallflower.protocol.ClientHello
 import sh.ahmd.wallflower.protocol.ClientMessage
@@ -19,8 +24,10 @@ import sh.ahmd.wallflower.protocol.ErrorMessage
 import sh.ahmd.wallflower.protocol.Frame
 import sh.ahmd.wallflower.protocol.FrameReader
 import sh.ahmd.wallflower.protocol.FrameWriter
+import sh.ahmd.wallflower.protocol.Keys
 import sh.ahmd.wallflower.protocol.Open
 import sh.ahmd.wallflower.protocol.Pane
+import sh.ahmd.wallflower.protocol.Paste
 import sh.ahmd.wallflower.protocol.Ping
 import sh.ahmd.wallflower.protocol.Pong
 import sh.ahmd.wallflower.protocol.Reset
@@ -40,6 +47,9 @@ sealed interface Status {
     /** Waiting for the user, then [Session.retry]. */
     data class NeedsUser(val blocked: Blocked) : Status
 }
+
+/** Composed text the gateway never confirmed, so it may not have reached tmux. */
+data class Undelivered(val pane: String, val text: String)
 
 /**
  * One connection to the gateway, reconnecting until [stop].
@@ -64,24 +74,40 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     private val _terminals = MutableStateFlow<Map<String, Terminal>>(emptyMap())
     val terminals: StateFlow<Map<String, Terminal>> = _terminals.asStateFlow()
 
+    private val _undelivered = MutableSharedFlow<Undelivered>(extraBufferCapacity = 16)
+    val undelivered: SharedFlow<Undelivered> = _undelivered.asSharedFlow()
+
     /** Called on the IO thread after a pane's terminal changes. */
     @Volatile var onOutput: ((pane: String) -> Unit)? = null
 
-    @Volatile private var writer: FrameWriter? = null
-    @Volatile private var lastPong = 0L
+    /** The live connection's outgoing queue; one writer drains it, so messages go out in order. */
+    @Volatile private var queue: Channel<Outgoing>? = null
+    @Volatile private var lastPing = 0L
+    /** When the connection counts as dead unless a pong arrives; 0 if no ping is outstanding. */
+    @Volatile private var deadline = 0L
+    private val pending = ArrayList<Submitted>() // its lock also guards swapping the queue
     private val opened = LinkedHashSet<String>() // least recently viewed first
     private val pings = AtomicInteger()
     private var grid = 80 to 24
     private var job: Job? = null
+    private var resizing: Job? = null
     private val retries = Channel<Unit>(Channel.CONFLATED)
 
+    private sealed interface Outgoing {
+        class Message(val message: ClientMessage) : Outgoing
+        class Data(val pane: String, val bytes: ByteArray) : Outgoing
+    }
+
+    private class Submitted(val ping: Int, val pane: String, val text: String)
+
     fun start(cols: Int, rows: Int) {
-        grid = cols to rows
         if (job != null) return
+        grid = cols to rows
         job = scope.launch(Dispatchers.IO) {
             var backoff = 500L
             while (isActive) {
                 _status.value = Status.Connecting
+                retries.tryReceive() // a retry asked for before this attempt is this attempt
                 val reason = try {
                     runOnce()
                     backoff = 500L
@@ -93,10 +119,9 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 } catch (e: Exception) {
                     e.message ?: e.javaClass.simpleName
                 }
-                writer = null
                 synchronized(opened) { opened.clear() }
                 if (_status.value !is Status.Disconnected) _status.value = Status.Disconnected(reason)
-                delay(backoff)
+                withTimeoutOrNull(backoff) { retries.receive() }
                 backoff = (backoff * 2).coerceAtMost(5_000)
             }
         }
@@ -112,13 +137,37 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         retries.trySend(Unit)
     }
 
+    /**
+     * The app is back in front: a connection that went quiet in the
+     * background (frozen, asleep, network changed) is checked now instead of
+     * at the next heartbeat, and a waiting reconnect goes right away.
+     */
+    fun probe() {
+        when {
+            queue != null -> ping(PROBE_TIMEOUT_MS)
+            _status.value is Status.Disconnected -> retries.trySend(Unit)
+        }
+    }
+
     private fun runOnce() {
         val conn = transport.open()
         conn.use {
             val w = FrameWriter(conn.output)
             w.send(ClientHello(cols = grid.first, rows = grid.second))
-            writer = w
-            lastPong = System.nanoTime()
+            val out = Channel<Outgoing>(Channel.UNLIMITED)
+            val writer = scope.launch(Dispatchers.IO) {
+                try {
+                    for (o in out) when (o) {
+                        is Outgoing.Message -> w.send(o.message)
+                        is Outgoing.Data -> w.sendData(o.pane, o.bytes)
+                    }
+                } catch (e: Exception) {
+                    conn.close()
+                }
+            }
+            lastPing = SystemClock.elapsedRealtime()
+            deadline = 0
+            synchronized(pending) { queue = out }
             val heartbeat = scope.launch(Dispatchers.IO) { heartbeat(conn) }
             try {
                 val r = FrameReader(conn.input)
@@ -134,20 +183,39 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 }
             } finally {
                 heartbeat.cancel()
+                val lost = synchronized(pending) {
+                    queue = null
+                    out.close()
+                    pending.toList().also { pending.clear() }
+                }
+                writer.cancel()
+                lost.forEach { _undelivered.tryEmit(Undelivered(it.pane, it.text)) }
             }
         }
     }
 
-    /** Mobile connections die silently; a missed pong closes the socket so we reconnect. */
+    /** Mobile connections die silently; an unanswered ping closes the socket so we reconnect. */
     private suspend fun heartbeat(conn: Connection) {
         while (true) {
-            delay(HEARTBEAT_MS)
-            if (System.nanoTime() - lastPong > (HEARTBEAT_MS + PONG_TIMEOUT_MS) * 1_000_000) {
+            delay(TICK_MS)
+            val now = SystemClock.elapsedRealtime() // counts time asleep, unlike nanoTime
+            val d = deadline
+            if (d != 0L && now > d) {
                 conn.close()
                 return
             }
-            runCatching { writer?.send(Ping(pings.incrementAndGet())) }
+            if (now - lastPing >= HEARTBEAT_MS) ping(PONG_TIMEOUT_MS)
         }
+    }
+
+    private fun ping(timeoutMs: Long): Int {
+        val id = pings.incrementAndGet()
+        val now = SystemClock.elapsedRealtime()
+        lastPing = now
+        val d = now + timeoutMs
+        if (deadline == 0L || d < deadline) deadline = d
+        queue?.trySend(Outgoing.Message(Ping(id)))
+        return id
     }
 
     private fun handle(m: ServerMessage) {
@@ -172,7 +240,11 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 _terminals.value = _terminals.value + (m.pane to term)
                 old?.close()
             }
-            is Pong -> lastPong = System.nanoTime()
+            is Pong -> {
+                if (m.id == pings.get()) deadline = 0
+                // Messages are handled in order: everything sent before this ping arrived.
+                synchronized(pending) { pending.removeAll { it.ping <= m.id } }
+            }
             is Bye -> _status.value = Status.Disconnected(m.reason)
             is ErrorMessage -> android.util.Log.w("wallflower", "gateway: ${m.message}")
             else -> Unit
@@ -206,24 +278,50 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     }
 
     fun send(m: ClientMessage) {
-        scope.launch(Dispatchers.IO) { runCatching { writer?.send(m) } }
+        queue?.trySend(Outgoing.Message(m))
     }
 
     fun type(pane: String, text: String) {
-        val bytes = text.encodeToByteArray()
-        scope.launch(Dispatchers.IO) { runCatching { writer?.sendData(pane, bytes) } }
+        queue?.trySend(Outgoing.Data(pane, text.encodeToByteArray()))
     }
 
+    /**
+     * Sends composed text and presses Enter: typed if it's one line, pasted
+     * if it has several, so the app doesn't run each line. Returns false,
+     * sending nothing, while not connected. Text the gateway doesn't confirm
+     * before the connection drops comes back through [undelivered].
+     */
+    fun submit(pane: String, text: String): Boolean = synchronized(pending) {
+        val q = queue
+        if (q == null || _status.value !is Status.Connected) return false
+        val sent = if ('\n' in text) {
+            q.trySend(Outgoing.Message(Paste(pane, text))).isSuccess &&
+                q.trySend(Outgoing.Message(Keys(pane, listOf("Enter")))).isSuccess
+        } else {
+            q.trySend(Outgoing.Data(pane, (text + "\r").encodeToByteArray())).isSuccess
+        }
+        if (sent) pending += Submitted(ping(PONG_TIMEOUT_MS), pane, text)
+        sent
+    }
+
+    /** Tells tmux the size once it settles: the keyboard animates the view through every size in between. */
     fun resize(cols: Int, rows: Int) {
         if (grid == cols to rows) return
         grid = cols to rows
-        send(Resize(cols, rows))
+        resizing?.cancel()
+        resizing = scope.launch {
+            delay(RESIZE_SETTLE_MS)
+            send(Resize(cols, rows))
+        }
     }
 
     companion object {
         const val MAX_OPEN = 12
+        const val TICK_MS = 1_000L
         const val HEARTBEAT_MS = 15_000L
         const val PONG_TIMEOUT_MS = 10_000L
+        const val PROBE_TIMEOUT_MS = 5_000L
+        const val RESIZE_SETTLE_MS = 120L
 
         fun Window.activePane(): Pane? = panes.firstOrNull { it.active }
     }

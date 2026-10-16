@@ -19,6 +19,11 @@ class MainActivity : ComponentActivity() {
         setContent { WallflowerRoot(model, ::unlock) }
     }
 
+    override fun onStart() {
+        super.onStart()
+        model.onForeground()
+    }
+
     /** Fingerprint or screen lock; unlocks the key for HardwareKey.AUTH_SECONDS. */
     private fun unlock(onDone: (Boolean) -> Unit) {
         BiometricPrompt.Builder(this)

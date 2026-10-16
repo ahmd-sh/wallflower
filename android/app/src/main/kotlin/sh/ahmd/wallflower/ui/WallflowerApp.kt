@@ -1,16 +1,16 @@
 package sh.ahmd.wallflower.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,12 +18,9 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,15 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.material3.Text
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import sh.ahmd.wallflower.protocol.Keys
 import sh.ahmd.wallflower.protocol.Window
@@ -56,14 +50,24 @@ import sh.ahmd.wallflower.session.Session.Companion.activePane
 import sh.ahmd.wallflower.session.Status
 import sh.ahmd.wallflower.terminal.TerminalView
 
+private sealed interface Screen {
+    data object Terminal : Screen
+    data object Settings : Screen
+    data object Setup : Screen
+    data class Profile(val ref: ProfileRef, val back: Screen) : Screen
+}
+
 @Composable
 fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit) {
     val host by model.host.collectAsStateWithLifecycle()
     val session by model.session.collectAsStateWithLifecycle()
     val hasKey by model.hasKey.collectAsStateWithLifecycle()
-    var setup by remember { mutableStateOf(false) }
+    var screen by remember { mutableStateOf<Screen>(Screen.Terminal) }
+    var program by remember { mutableStateOf<String?>(null) }
+    val focus = LocalFocusManager.current
+    LaunchedEffect(screen) { if (screen != Screen.Terminal) focus.clearFocus() } // the composer's keyboard goes away
     val current = session
-    if (setup || host == null || current == null) {
+    val setup = @Composable {
         SetupScreen(
             host = host,
             hasKey = hasKey,
@@ -72,11 +76,52 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit)
             createKey = model::createKey,
         ) {
             model.configure(it)
-            setup = false
+            screen = Screen.Terminal
         }
-    } else {
+    }
+    if (host == null || current == null) {
+        setup()
+        return
+    }
+    // Pages draw over the terminal, which keeps its place underneath.
+    Box(Modifier.fillMaxSize()) {
         key(current) {
-            TerminalScreen(current, model, unlock, onSettings = { setup = true })
+            TerminalScreen(
+                current,
+                model,
+                unlock,
+                onProgram = { program = it },
+                onSettings = { screen = Screen.Settings },
+                onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program), Screen.Terminal) },
+            )
+        }
+        when (val s = screen) {
+            Screen.Terminal -> Unit
+            Screen.Settings -> {
+                BackHandler { screen = Screen.Terminal }
+                SettingsScreen(
+                    host = host,
+                    store = model.keyBar,
+                    program = program,
+                    onBack = { screen = Screen.Terminal },
+                    onEditHost = { screen = Screen.Setup },
+                    onOpen = { screen = Screen.Profile(it, Screen.Settings) },
+                )
+            }
+            Screen.Setup -> {
+                BackHandler { screen = Screen.Settings }
+                Box(Modifier.pointerInput(Unit) { detectTapGestures { } }) { setup() }
+            }
+            is Screen.Profile -> {
+                BackHandler { screen = s.back }
+                ProfileScreen(
+                    store = model.keyBar,
+                    ref = s.ref,
+                    program = program,
+                    onBack = { screen = s.back },
+                    onOpen = { screen = s.copy(ref = it) },
+                )
+            }
         }
     }
 }
@@ -86,15 +131,19 @@ private fun TerminalScreen(
     session: Session,
     model: AppModel,
     unlock: (onDone: (Boolean) -> Unit) -> Unit,
+    onProgram: (String?) -> Unit,
     onSettings: () -> Unit,
+    onEditKeys: () -> Unit,
 ) {
     val status by session.status.collectAsStateWithLifecycle()
     val state by session.state.collectAsStateWithLifecycle()
     val terminals by session.terminals.collectAsStateWithLifecycle()
     val viewing by session.viewing.collectAsStateWithLifecycle()
+    val bar by model.keyBar.bar.collectAsStateWithLifecycle()
     val windows = state?.windows.orEmpty()
     val window = windows.firstOrNull { it.id == viewing } ?: windows.firstOrNull { it.active }
     val pane = window?.activePane()
+    LaunchedEffect(pane?.command) { onProgram(pane?.command) }
 
     Column(
         Modifier
@@ -144,11 +193,19 @@ private fun TerminalScreen(
         }
 
         if (pane != null) {
-            KeyRow { keys -> session.send(Keys(pane.id, keys)) }
-            Composer { text ->
-                view?.predict(text)
-                session.type(pane.id, text + "\r")
-            }
+            val profile = bar.profileFor(pane.command)
+            Composer(
+                state = model.drafts.of(pane.id),
+                program = pane.command,
+                keys = profile.keys,
+                connected = status is Status.Connected,
+                onKeys = { session.send(Keys(pane.id, it)) },
+                onSend = { text ->
+                    session.submit(pane.id, text).also { sent -> if (sent && '\n' !in text) view?.predict(text) }
+                },
+                onStop = { session.send(Keys(pane.id, profile.stop)) },
+                onEditKeys = onEditKeys,
+            )
         }
     }
 }
@@ -234,92 +291,4 @@ private fun agentColor(state: String): Color = when (state) {
     "done" -> Palette.green
     "error" -> Palette.red
     else -> Palette.grey
-}
-
-private val keys = listOf(
-    "esc" to listOf("Escape"),
-    "tab" to listOf("Tab"),
-    "⇧tab" to listOf("BTab"),
-    "^c" to listOf("C-c"),
-    "↑" to listOf("Up"),
-    "↓" to listOf("Down"),
-    "←" to listOf("Left"),
-    "→" to listOf("Right"),
-    "⏎" to listOf("Enter"),
-)
-
-@Composable
-private fun KeyRow(onKeys: (List<String>) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        for ((label, k) in keys) {
-            Text(
-                label,
-                color = Palette.fg,
-                fontFamily = Mono,
-                fontSize = 13.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Palette.bg2)
-                    .clickable { onKeys(k) }
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
-            )
-        }
-    }
-}
-
-/**
- * A plain text field, so the keyboard's autocorrect, swipe and voice input
- * all work. Send types the text and presses Enter.
- */
-@Composable
-private fun Composer(onSend: (String) -> Unit) {
-    var text by remember { mutableStateOf("") }
-    val send = {
-        onSend(text)
-        text = ""
-    }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(start = 8.dp, end = 8.dp, bottom = 8.dp, top = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        BasicTextField(
-            value = text,
-            onValueChange = { text = it },
-            textStyle = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp),
-            cursorBrush = SolidColor(Palette.orange),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.None,
-                autoCorrectEnabled = true,
-                imeAction = ImeAction.Send,
-            ),
-            keyboardActions = KeyboardActions(onSend = { send() }),
-            maxLines = 6,
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Palette.bg1)
-                .heightIn(min = 44.dp)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-        )
-        Text(
-            "⏎",
-            color = Palette.bg0,
-            fontFamily = Mono,
-            fontSize = 18.sp,
-            modifier = Modifier
-                .padding(start = 8.dp)
-                .clip(CircleShape)
-                .background(Palette.green)
-                .clickable { send() }
-                .padding(horizontal = 14.dp, vertical = 9.dp),
-        )
-    }
 }

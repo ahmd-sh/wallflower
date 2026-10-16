@@ -165,7 +165,7 @@ fun BlockedCard(
 }
 
 @Composable
-private fun Section(label: String) =
+internal fun Section(label: String) =
     Text(label, color = Palette.orange, fontFamily = Mono, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
 
 @Composable
@@ -173,7 +173,7 @@ private fun Title(text: String, color: Color = Palette.fg) =
     Text(text, color = color, fontFamily = Mono, fontSize = 14.sp, fontWeight = FontWeight.Bold)
 
 @Composable
-private fun Body(text: String) = Text(text, color = Palette.grey, fontFamily = Mono, fontSize = 12.sp)
+internal fun Body(text: String) = Text(text, color = Palette.grey, fontFamily = Mono, fontSize = 12.sp)
 
 @Composable
 private fun Code(text: String) = Text(
@@ -185,7 +185,7 @@ private fun Code(text: String) = Text(
 )
 
 @Composable
-private fun Field(label: String, value: String, keyboard: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit) {
+internal fun Field(label: String, value: String, keyboard: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, color = Palette.dim, fontFamily = Mono, fontSize = 11.sp)
         BasicTextField(
@@ -209,7 +209,7 @@ private fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
 }
 
 @Composable
-private fun Button(label: String, primary: Boolean = false, onClick: () -> Unit) = Text(
+internal fun Button(label: String, primary: Boolean = false, onClick: () -> Unit) = Text(
     label,
     color = if (primary) Palette.bg0 else Palette.fg,
     fontFamily = Mono,
