@@ -105,6 +105,8 @@ private fun TerminalScreen(
     ) {
         WindowTabs(windows, window?.id, status, onSettings) { session.view(it) }
 
+        var view by remember { mutableStateOf<TerminalView?>(null) }
+
         val blocked = (status as? Status.NeedsUser)?.blocked
         // Connecting is the moment to ask for the fingerprint, so ask right away.
         LaunchedEffect(blocked) {
@@ -123,7 +125,6 @@ private fun TerminalScreen(
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            var view by remember { mutableStateOf<TerminalView?>(null) }
             AndroidView(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp).clipToBounds(),
                 factory = { ctx ->
@@ -144,7 +145,10 @@ private fun TerminalScreen(
 
         if (pane != null) {
             KeyRow { keys -> session.send(Keys(pane.id, keys)) }
-            Composer { text -> session.type(pane.id, text) }
+            Composer { text ->
+                view?.predict(text)
+                session.type(pane.id, text + "\r")
+            }
         }
     }
 }
@@ -277,7 +281,7 @@ private fun KeyRow(onKeys: (List<String>) -> Unit) {
 private fun Composer(onSend: (String) -> Unit) {
     var text by remember { mutableStateOf("") }
     val send = {
-        onSend(text + "\r")
+        onSend(text)
         text = ""
     }
     Row(

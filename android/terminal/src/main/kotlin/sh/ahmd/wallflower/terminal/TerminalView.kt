@@ -6,6 +6,7 @@ import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RenderNode
+import android.os.SystemClock
 import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -85,8 +86,27 @@ class TerminalView(context: Context) : View(context) {
     private val frameRequested = AtomicBoolean()
     private val pull = Runnable { pullFrame() }
 
+    private val predictions = Predictions()
+    private val expirePredictions = Runnable { if (predictions.expire(SystemClock.uptimeMillis())) invalidate() }
+
     init {
         updateMetrics()
+    }
+
+    /**
+     * Shows [text] at the cursor right away, in grey, until the pane echoes
+     * it. Call on the UI thread just before sending it.
+     */
+    fun predict(text: String) {
+        if (!cursorVisible || cols == 0) return
+        predictions.add(text, cursorX, cursorY, cols, rows, SystemClock.uptimeMillis())
+        scheduleExpiry()
+        invalidate()
+    }
+
+    private fun scheduleExpiry() {
+        removeCallbacks(expirePredictions)
+        if (!predictions.isEmpty) postDelayed(expirePredictions, Predictions.TIMEOUT_MS + 16)
     }
 
     /** Safe from any thread; coalesces to one pull per vsync. */
@@ -107,6 +127,7 @@ class TerminalView(context: Context) : View(context) {
             nodes = Array(rows) { RenderNode("row$it") }
             codepoints = IntArray(cols * rows)
             cellFg = IntArray(cols * rows)
+            predictions.clear()
             if (!frame.full) {
                 forceFull = true
                 requestFrame()
@@ -121,8 +142,11 @@ class TerminalView(context: Context) : View(context) {
         cursorY = frame.cursorY
         cursorStyle = frame.cursorStyle
         cursorColor = frame.cursorColor
+        if (!predictions.isEmpty && predictions.confirm(::codepointAt, SystemClock.uptimeMillis())) scheduleExpiry()
         invalidate()
     }
+
+    private fun codepointAt(x: Int, y: Int) = if (x < cols && y < rows) codepoints[y * cols + x] else 0
 
     private fun record(i: Int) {
         val y = frame.rowY(i)
@@ -277,11 +301,29 @@ class TerminalView(context: Context) : View(context) {
         canvas.save()
         canvas.scale(scale, scale)
         for (node in nodes) if (node.hasDisplayList()) canvas.drawRenderNode(node)
-        if (cursorVisible && cursorX < cols && cursorY < rows) drawCursor(canvas)
+        drawPredictions(canvas)
+        // The cursor runs ahead with the predictions, so typing feels local.
+        val (cx, cy) = predictions.cursorAfter(cols) ?: (cursorX to cursorY)
+        if (cursorVisible && cx < cols && cy < rows) drawCursor(canvas, cx, cy)
         canvas.restore()
     }
 
-    private fun drawCursor(canvas: Canvas) {
+    private fun drawPredictions(canvas: Canvas) {
+        if (predictions.isEmpty) return
+        text.typeface = regular
+        text.textSkewX = 0f
+        text.color = (foreground and 0xFFFFFF) or (0x70 shl 24)
+        fill.color = opaque(background)
+        for (p in predictions.cells) {
+            val left = p.x * cellWidth
+            val top = p.y * cellHeight
+            // Cover whatever is there now, e.g. a shell's autosuggestion.
+            canvas.drawRect(left, top, left + p.width * cellWidth, top + cellHeight, fill)
+            canvas.drawText(p.text, left, top + baseline, text)
+        }
+    }
+
+    private fun drawCursor(canvas: Canvas, cursorX: Int, cursorY: Int) {
         val left = cursorX * cellWidth
         val top = cursorY * cellHeight
         val color = opaque(cursorColor.orIfDefault(theme.cursor))
@@ -297,7 +339,7 @@ class TerminalView(context: Context) : View(context) {
             }
             else -> {
                 canvas.drawRect(left, top, left + cellWidth, top + cellHeight, fill)
-                val cp = codepoints[cursorY * cols + cursorX]
+                val cp = codepointAt(cursorX, cursorY)
                 if (cp > 0x20) {
                     run.setLength(0)
                     run.appendCodePoint(cp)

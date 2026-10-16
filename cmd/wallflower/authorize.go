@@ -118,7 +118,7 @@ func hasKey(authorized string, k pubkey) bool {
 
 func fingerprint(k pubkey) string {
 	cmd := exec.Command("ssh-keygen", "-l", "-f", "-")
-	cmd.Stdin = strings.NewReader(k.typ + " " + k.data + "\n")
+	cmd.Stdin = strings.NewReader(strings.TrimSpace(k.typ+" "+k.data+" "+k.comment) + "\n")
 	out, _ := cmd.Output()
 	return strings.TrimSpace(string(out))
 }
