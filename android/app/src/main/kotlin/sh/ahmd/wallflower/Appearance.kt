@@ -5,11 +5,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** How settings pages look: the terminal's font with [x] marks, or Bricolage Grotesque with checkboxes. */
+/** How wallflower's own words look: in the terminal's font with [x] marks, or Bricolage Grotesque with checkboxes. */
 enum class Look { Terminal, Grotesque }
 
 class Appearance(private val prefs: SharedPreferences) {
-    private val _look = MutableStateFlow(Look.entries.firstOrNull { it.name == prefs.getString(LOOK, null) } ?: Look.Terminal)
+    private val _look = MutableStateFlow(Look.entries.firstOrNull { it.name == prefs.getString(LOOK, null) } ?: Look.Grotesque)
     val look: StateFlow<Look> = _look.asStateFlow()
 
     fun use(look: Look) {

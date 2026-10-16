@@ -8,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import sh.ahmd.wallflower.ui.WallflowerRoot
 import sh.ahmd.wallflower.ui.WallflowerTheme
 
@@ -17,7 +19,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { WallflowerTheme { WallflowerRoot(model, ::unlock, onExit = ::finish) } }
+        setContent {
+            val look by model.appearance.look.collectAsStateWithLifecycle()
+            WallflowerTheme(look) { WallflowerRoot(model, ::unlock, onExit = ::finish) }
+        }
     }
 
     override fun onStart() {

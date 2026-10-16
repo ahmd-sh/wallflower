@@ -45,7 +45,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -86,7 +85,6 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     val host by model.host.collectAsStateWithLifecycle()
     val session by model.session.collectAsStateWithLifecycle()
     val hasKey by model.hasKey.collectAsStateWithLifecycle()
-    val look by model.appearance.look.collectAsStateWithLifecycle()
     var screen by remember { mutableStateOf<Screen>(Screen.Terminal) }
     var program by remember { mutableStateOf<String?>(null) }
     val focus = LocalFocusManager.current
@@ -125,18 +123,16 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
             Screen.Terminal -> Unit
             Screen.Settings -> {
                 BackHandler { screen = Screen.Terminal }
-                CompositionLocalProvider(LocalLook provides look) {
-                    SettingsScreen(
-                        host = host,
-                        store = model.keyBar,
-                        confirm = model.confirm,
-                        appearance = model.appearance,
-                        program = program,
-                        onBack = { screen = Screen.Terminal },
-                        onEditHost = { screen = Screen.Setup },
-                        onOpen = { screen = Screen.Profile(it, Screen.Settings) },
-                    )
-                }
+                SettingsScreen(
+                    host = host,
+                    store = model.keyBar,
+                    confirm = model.confirm,
+                    appearance = model.appearance,
+                    program = program,
+                    onBack = { screen = Screen.Terminal },
+                    onEditHost = { screen = Screen.Setup },
+                    onOpen = { screen = Screen.Profile(it, Screen.Settings) },
+                )
             }
             Screen.Setup -> {
                 BackHandler { screen = Screen.Settings }
@@ -144,15 +140,13 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
             }
             is Screen.Profile -> {
                 BackHandler { screen = s.back }
-                CompositionLocalProvider(LocalLook provides look) {
-                    ProfileScreen(
-                        store = model.keyBar,
-                        ref = s.ref,
-                        program = program,
-                        onBack = { screen = s.back },
-                        onOpen = { screen = s.copy(ref = it) },
-                    )
-                }
+                ProfileScreen(
+                    store = model.keyBar,
+                    ref = s.ref,
+                    program = program,
+                    onBack = { screen = s.back },
+                    onOpen = { screen = s.copy(ref = it) },
+                )
             }
         }
     }
@@ -408,8 +402,8 @@ private fun PaneCard(
             .clickable(onClick = onClick),
     ) {
         Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${pane.index}", color = if (shown) Palette.orange else Palette.dim, fontFamily = Mono, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text(" ${pane.command}", color = Palette.fg, fontFamily = Mono, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f))
+            Text("${pane.index}", color = if (shown) Palette.orange else Palette.dim, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), fontWeight = FontWeight.Bold)
+            Text(" ${pane.command}", color = Palette.fg, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), maxLines = 1, modifier = Modifier.weight(1f))
             if (pane.agent.isNotEmpty()) Box(Modifier.size(6.dp).clip(CircleShape).background(agentColor(pane.agent)))
             Box(Modifier.clip(CircleShape).clickable(onClick = onClose).padding(10.dp)) { GlyphIcon(Glyph.Close, Palette.grey, size = 14.dp) }
         }
@@ -442,7 +436,7 @@ private fun NewPaneCard(onClick: () -> Unit) {
             .background(Palette.bg1)
             .clickable(onClick = onClick),
     ) {
-        Text("new pane", color = Palette.grey, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
+        Text("new pane", color = Palette.grey, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
         Box(Modifier.fillMaxWidth().aspectRatio(CARD_RATIO), contentAlignment = Alignment.Center) {
             GlyphIcon(Glyph.Plus, Palette.grey, size = 28.dp)
         }
@@ -523,8 +517,8 @@ private fun TabBar(
                             .padding(horizontal = 10.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("${w.index}", color = if (on) Palette.orange else Palette.dim, fontFamily = Mono, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text(" ${w.name}", color = if (on) Palette.fg else Palette.grey, fontFamily = Mono, fontSize = 12.sp, maxLines = 1)
+                        Text("${w.index}", color = if (on) Palette.orange else Palette.dim, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), fontWeight = FontWeight.Bold)
+                        Text(" ${w.name}", color = if (on) Palette.fg else Palette.grey, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), maxLines = 1)
                         if (agent != null) {
                             Box(Modifier.padding(start = 6.dp).size(6.dp).clip(CircleShape).background(agentColor(agent)))
                         }
@@ -561,7 +555,7 @@ private fun PowerButton(status: Status, onSettings: () -> Unit, onExit: () -> Un
     Box(Modifier.padding(end = 6.dp)) {
         BarButton(Glyph.Power, color) { open = true }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            Text(what, color = color, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            Text(what, color = color, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             DropdownMenuItem(text = { Text("settings") }, onClick = { open = false; onSettings() })
             DropdownMenuItem(text = { Text("disconnect", color = Palette.red) }, onClick = { open = false; onExit() })
         }

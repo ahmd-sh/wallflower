@@ -38,6 +38,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -80,25 +81,25 @@ fun ConfirmClose(title: String, body: String, action: String, onConfirm: (dontAs
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Palette.bg1,
-        title = { Text(title, color = Palette.fg, fontFamily = Mono, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+        title = { DialogTitle(title) },
         text = {
             Column {
-                Text(body, color = Palette.grey, fontFamily = Mono, fontSize = 13.sp)
+                Text(body, color = Palette.grey, fontFamily = words, fontSize = wordSize(13.sp, 15.sp), lineHeight = wordSize(TextUnit.Unspecified, 21.sp))
                 Row(
-                    Modifier.padding(top = 12.dp).clip(RoundedCornerShape(8.dp)).clickable { never = !never }.padding(end = 8.dp),
+                    Modifier.padding(top = 8.dp).clip(RoundedCornerShape(8.dp)).clickable { never = !never }.padding(vertical = 6.dp).padding(end = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Checkbox(
                         checked = never,
-                        onCheckedChange = { never = it },
+                        onCheckedChange = null,
                         colors = CheckboxDefaults.colors(checkedColor = Palette.orange, uncheckedColor = Palette.grey, checkmarkColor = Palette.bg0),
                     )
-                    Text("don't ask again", color = Palette.fg, fontFamily = Mono, fontSize = 13.sp)
+                    Text("don't ask again", color = Palette.fg, fontFamily = words, fontSize = wordSize(13.sp, 15.sp), modifier = Modifier.padding(start = 12.dp))
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onConfirm(never) }) { Text(action, color = Palette.red, fontFamily = Mono) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("cancel", color = Palette.fg, fontFamily = Mono) } },
+        confirmButton = { TextButton(onClick = { onConfirm(never) }) { Text(action, color = Palette.red, fontFamily = words) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("cancel", color = Palette.fg, fontFamily = words) } },
     )
 }
 
@@ -111,12 +112,12 @@ fun RenameDialog(name: String, onRename: (String) -> Unit, onDismiss: () -> Unit
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Palette.bg1,
-        title = { Text("rename tab", color = Palette.fg, fontFamily = Mono, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+        title = { DialogTitle("rename tab") },
         text = {
             BasicTextField(
                 state = state,
                 lineLimits = TextFieldLineLimits.SingleLine,
-                textStyle = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp),
+                textStyle = TextStyle(color = Palette.fg, fontFamily = words, fontSize = wordSize(15.sp, 16.sp)),
                 cursorBrush = SolidColor(Palette.orange),
                 onKeyboardAction = { rename() },
                 modifier = Modifier
@@ -127,7 +128,11 @@ fun RenameDialog(name: String, onRename: (String) -> Unit, onDismiss: () -> Unit
                     .padding(12.dp),
             )
         },
-        confirmButton = { TextButton(onClick = { rename() }) { Text("rename", color = Palette.green, fontFamily = Mono) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("cancel", color = Palette.fg, fontFamily = Mono) } },
+        confirmButton = { TextButton(onClick = { rename() }) { Text("rename", color = Palette.green, fontFamily = words) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("cancel", color = Palette.fg, fontFamily = words) } },
     )
 }
+
+@Composable
+private fun DialogTitle(text: String) =
+    Text(text, color = Palette.fg, fontFamily = words, fontSize = wordSize(16.sp, 20.sp), fontWeight = if (grotesque) FontWeight.SemiBold else FontWeight.Bold)

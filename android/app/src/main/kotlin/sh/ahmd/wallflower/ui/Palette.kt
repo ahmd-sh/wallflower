@@ -9,6 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -44,18 +45,22 @@ val Grotesque = FontFamily(
     Font(sh.ahmd.wallflower.R.font.bricolage_bold, FontWeight.Bold),
 )
 
-val LocalLook = staticCompositionLocalOf { Look.Terminal }
+val LocalLook = staticCompositionLocalOf { Look.Grotesque }
 
 internal val grotesque: Boolean @Composable get() = LocalLook.current == Look.Grotesque
 
-/** The font for a page's words. Keys, symbols and values stay in [Mono]. */
+/** The font for wallflower's own words. The terminal, what's typed for it, keys and values stay in [Mono]. */
 internal val words: FontFamily @Composable get() = if (grotesque) Grotesque else Mono
 
-/** Material components (menus, dialogs) in the same colors and font. */
+/** Grotesque reads smaller than mono at the same size. */
 @Composable
-fun WallflowerTheme(content: @Composable () -> Unit) {
+internal fun wordSize(mono: TextUnit, sans: TextUnit): TextUnit = if (grotesque) sans else mono
+
+/** Material components (menus, dialogs) in the same colors and fonts. */
+@Composable
+fun WallflowerTheme(look: Look = Look.Grotesque, content: @Composable () -> Unit) {
     val base = Typography()
-    fun TextStyle.mono() = copy(fontFamily = Mono, letterSpacing = 0.sp)
+    fun TextStyle.words() = copy(fontFamily = if (look == Look.Grotesque) Grotesque else Mono, letterSpacing = 0.sp)
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = Palette.green,
@@ -73,14 +78,14 @@ fun WallflowerTheme(content: @Composable () -> Unit) {
             error = Palette.red,
         ),
         typography = Typography(
-            titleLarge = base.titleLarge.mono(),
-            titleMedium = base.titleMedium.mono(),
-            bodyLarge = base.bodyLarge.mono(),
-            bodyMedium = base.bodyMedium.mono(),
-            labelLarge = base.labelLarge.mono(),
+            titleLarge = base.titleLarge.words(),
+            titleMedium = base.titleMedium.words(),
+            bodyLarge = base.bodyLarge.words(),
+            bodyMedium = base.bodyMedium.words(),
+            labelLarge = base.labelLarge.words().let { if (look == Look.Grotesque) it.copy(fontSize = 16.sp) else it },
         ),
     ) {
         // Text outside Material components keeps the plain style it was designed with.
-        CompositionLocalProvider(LocalTextStyle provides TextStyle.Default, content = content)
+        CompositionLocalProvider(LocalTextStyle provides TextStyle.Default, LocalLook provides look, content = content)
     }
 }

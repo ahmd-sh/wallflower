@@ -79,7 +79,7 @@ fun SettingsScreen(
             Chip("terminal", look == Look.Terminal) { appearance.use(Look.Terminal) }
             Chip("bricolage", look == Look.Grotesque, Grotesque) { appearance.use(Look.Grotesque) }
         }
-        Body("Settings pages only, for now. Keys and values stay in the terminal font.")
+        Body("The terminal, what you type for it, keys and values stay in the terminal font.")
 
         Section("mac")
         if (host != null) {
@@ -88,7 +88,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("${host.user}@${host.address}:${host.port}", color = Palette.fg, fontFamily = Mono, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text("edit ›", color = Palette.grey, fontFamily = words, fontSize = if (grotesque) 14.sp else 12.sp)
+                Text("edit ›", color = Palette.grey, fontFamily = words, fontSize = wordSize(12.sp, 14.sp))
             }
         }
 
@@ -142,7 +142,7 @@ private fun ProfileRow(profile: KeyProfile, programs: String, focused: Boolean, 
                 profile.name,
                 color = Palette.fg,
                 fontFamily = words,
-                fontSize = if (grotesque) 16.sp else 13.sp,
+                fontSize = wordSize(13.sp, 16.sp),
                 fontWeight = if (grotesque) FontWeight.SemiBold else FontWeight.Bold,
             )
             if (focused) Box(Modifier.padding(start = 8.dp).size(6.dp).clip(CircleShape).background(Palette.green))
@@ -292,7 +292,7 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable () -> U
                 fontSize = 22.sp,
                 modifier = Modifier.clip(CircleShape).clickable(onClick = onBack).padding(horizontal = 14.dp, vertical = 4.dp),
             )
-            Text(title, color = Palette.fg, fontFamily = words, fontSize = if (grotesque) 22.sp else 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(title, color = Palette.fg, fontFamily = words, fontSize = wordSize(16.sp, 22.sp), fontWeight = FontWeight.Bold, maxLines = 1)
         }
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 24.dp),

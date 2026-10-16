@@ -72,8 +72,8 @@ fun SetupScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("wallflower", color = Palette.fg, fontFamily = Mono, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text("Your Mac's tmux, over Tailscale and ssh.", color = Palette.grey, fontFamily = Mono, fontSize = 13.sp)
+        Text("wallflower", color = Palette.fg, fontFamily = words, fontSize = wordSize(22.sp, 28.sp), fontWeight = FontWeight.Bold)
+        Text("Your Mac's tmux, over Tailscale and ssh.", color = Palette.grey, fontFamily = words, fontSize = wordSize(13.sp, 15.sp))
 
         Section("mac")
         Field("host", address) { address = it }
@@ -85,9 +85,9 @@ fun SetupScreen(
 
         Section("this phone's key")
         if (hasKey && fingerprint != null) {
-            Text("ecdsa p-256 · in secure hardware · unlocks with fingerprint", color = Palette.grey, fontFamily = Mono, fontSize = 12.sp)
+            Body("ecdsa p-256 · in secure hardware · unlocks with fingerprint")
             Text(fingerprint, color = Palette.aqua, fontFamily = Mono, fontSize = 12.sp)
-            Text("Authorize it on the Mac (restricted to running wallflower, from Tailscale):", color = Palette.fg, fontFamily = Mono, fontSize = 12.sp)
+            Text("Authorize it on the Mac (restricted to running wallflower, from Tailscale):", color = Palette.fg, fontFamily = words, fontSize = wordSize(12.sp, 14.sp))
             val command = authorizeCommand()
             Code(command)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -96,7 +96,7 @@ fun SetupScreen(
             }
         } else {
             Button("create key") { keyError = createKey() }
-            keyError?.let { Text(it, color = Palette.red, fontFamily = Mono, fontSize = 12.sp) }
+            keyError?.let { Text(it, color = Palette.red, fontFamily = words, fontSize = wordSize(12.sp, 14.sp)) }
         }
 
         Spacer(Modifier.height(4.dp))
@@ -172,21 +172,21 @@ internal fun Section(label: String) = Text(
     label,
     color = Palette.orange,
     fontFamily = words,
-    fontSize = if (grotesque) 15.sp else 12.sp,
+    fontSize = wordSize(12.sp, 15.sp),
     fontWeight = if (grotesque) FontWeight.SemiBold else FontWeight.Bold,
     modifier = Modifier.padding(top = 8.dp),
 )
 
 @Composable
 private fun Title(text: String, color: Color = Palette.fg) =
-    Text(text, color = color, fontFamily = Mono, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    Text(text, color = color, fontFamily = words, fontSize = wordSize(14.sp, 17.sp), fontWeight = if (grotesque) FontWeight.SemiBold else FontWeight.Bold)
 
 @Composable
 internal fun Body(text: String) = Text(
     text,
     color = Palette.grey,
     fontFamily = words,
-    fontSize = if (grotesque) 14.sp else 12.sp,
+    fontSize = wordSize(12.sp, 14.sp),
     lineHeight = if (grotesque) 20.sp else TextUnit.Unspecified,
 )
 
@@ -202,7 +202,7 @@ private fun Code(text: String) = Text(
 @Composable
 internal fun Field(label: String, value: String, keyboard: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = Palette.dim, fontFamily = words, fontSize = if (grotesque) 13.sp else 11.sp)
+        Text(label, color = Palette.dim, fontFamily = words, fontSize = wordSize(11.sp, 13.sp))
         BasicTextField(
             value = value,
             onValueChange = onChange,
@@ -238,7 +238,7 @@ internal fun Button(label: String, primary: Boolean = false, onClick: () -> Unit
     label,
     color = if (primary) Palette.bg0 else Palette.fg,
     fontFamily = words,
-    fontSize = if (grotesque) 14.sp else 13.sp,
+    fontSize = wordSize(13.sp, 14.sp),
     fontWeight = if (!primary) FontWeight.Normal else if (grotesque) FontWeight.SemiBold else FontWeight.Bold,
     modifier = Modifier
         .clip(RoundedCornerShape(8.dp))
