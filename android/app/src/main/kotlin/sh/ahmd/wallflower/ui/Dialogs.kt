@@ -32,6 +32,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -43,7 +44,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-enum class Glyph { Plus, Close, Power, Chat, Terminal }
+enum class Glyph { Plus, Close, Power, Chat, Terminal, Spark }
 
 /** Line icons, drawn to match the send button rather than pulled from an icon set. */
 @Composable
@@ -86,6 +87,17 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
                 drawLine(color, Offset(c.x - r * 0.35f, c.y), Offset(c.x - r, c.y + r * 0.6f), w, StrokeCap.Round)
                 drawLine(color, Offset(c.x + r * 0.05f, c.y + r * 0.7f), Offset(c.x + r, c.y + r * 0.7f), w, StrokeCap.Round)
             }
+            Glyph.Spark -> drawPath(
+                Path().apply {
+                    moveTo(c.x, c.y - r)
+                    quadraticTo(c.x, c.y, c.x + r, c.y)
+                    quadraticTo(c.x, c.y, c.x, c.y + r)
+                    quadraticTo(c.x, c.y, c.x - r, c.y)
+                    quadraticTo(c.x, c.y, c.x, c.y - r)
+                    close()
+                },
+                color,
+            )
         }
     }
 }

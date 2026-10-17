@@ -6,10 +6,11 @@ import sh.ahmd.wallflower.terminal.Screen.Companion.PROMPT
 
 /**
  * What an app's input line holds, read off its screen, and how many rows it
- * takes. Two apps are read: a shell that marks its prompt (OSC 133), and
- * Claude Code's prompt box. Anything else has no line wallflower can see.
+ * takes; while it's empty, what the app suggests typing there. Two apps are
+ * read: a shell that marks its prompt (OSC 133), and Claude Code's prompt
+ * box. Anything else has no line wallflower can see.
  */
-data class InputLine(val text: String, val rows: Int) {
+data class InputLine(val text: String, val rows: Int, val suggestion: String = "") {
     companion object {
         fun read(s: Screen): InputLine? = shell(s) ?: claude(s)
 
@@ -46,7 +47,8 @@ data class InputLine(val text: String, val rows: Int) {
          * `❯ ` (or `! ` in shell mode) and rows indented to match. Claude
          * wraps long lines itself, at words, so a row that couldn't fit the
          * next one's first word was wrapped rather than ended. Faint text is
-         * the placeholder or a suggestion, not input.
+         * the placeholder or a suggestion, not input: in an empty box, it's
+         * the suggestion (the placeholder's `Try "…"` suggests what's quoted).
          */
         internal fun claude(s: Screen): InputLine? {
             for (y in s.rows - 2 downTo 1) {
@@ -55,12 +57,22 @@ data class InputLine(val text: String, val rows: Int) {
                 val end = (y + 1 until s.rows).firstOrNull { rule(s, it) } ?: continue
                 val width = s.cols - 2
                 val out = StringBuilder(if (mark == "!") "!" else "")
+                val ghost = StringBuilder()
                 var previous: String? = null
                 for (r in y until end) {
                     val row = StringBuilder()
                     for (x in 2 until s.cols) {
-                        if (!s.spacer(x, r) && !s.faint(x, r)) row.append(s.text(x, r).ifEmpty { " " })
+                        if (s.spacer(x, r)) continue
+                        val c = s.text(x, r)
+                        // Blanks go with both: apps draw the spaces between faint words plain.
+                        if (c.isBlank()) {
+                            row.append(' ')
+                            ghost.append(' ')
+                        } else {
+                            (if (s.faint(x, r)) ghost else row).append(c)
+                        }
                     }
+                    ghost.append(' ')
                     val line = row.trimEnd().toString()
                     if (previous != null) {
                         val word = line.substringBefore(' ').length
@@ -75,10 +87,15 @@ data class InputLine(val text: String, val rows: Int) {
                     out.append(line)
                     previous = line
                 }
-                return InputLine(out.toString().trimEnd(), end - y)
+                val text = out.toString().trimEnd()
+                val suggestion = if (text.isEmpty()) ghost.trim().replace(spaces, " ").let { tried.matchEntire(it)?.groupValues?.get(1) ?: it } else ""
+                return InputLine(text, end - y, suggestion)
             }
             return null
         }
+
+        private val spaces = Regex(" {2,}")
+        private val tried = Regex("^Try \"(.+)\"$")
 
         private fun rule(s: Screen, y: Int) =
             s.text(0, y) == "─" && (0 until s.cols).count { s.text(it, y) == "─" } >= s.cols / 2

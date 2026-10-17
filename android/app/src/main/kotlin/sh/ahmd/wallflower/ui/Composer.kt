@@ -85,11 +85,14 @@ import sh.ahmd.wallflower.KeyBar
  * newline. A sticky key on the bar (pfx, ctrl) takes the next key, from the
  * bar or the keyboard.
  *
- * The app keeps its own input line ([line], when wallflower can read it).
- * While the box is empty it shows that line, dimmed; a tap brings it into
- * the box to edit. What's in the box replaces the line when sent, so the box
- * is exactly what runs. The button sends (held: types it in without Enter),
- * enters the app's line when only that has text, or stops.
+ * The box is the phone's own: nothing the app does writes into it, so a
+ * draft stays put until sent. The app keeps its own input line ([line], when
+ * wallflower can read it). While the box is empty it shows that line dimmed,
+ * with × to clear it in the app ([onClear]), or else what the app suggests
+ * typing; a tap brings either into the box to edit. What's in the box
+ * replaces the line when sent, so the box is exactly what runs. The button
+ * sends (held: types it in without Enter), enters the app's line when only
+ * that has text, or stops.
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class) // edit changes for sticky keys; whether the keyboard is up
 @Composable
@@ -99,6 +102,7 @@ fun Composer(
     keys: List<BarKey>,
     connected: Boolean,
     line: InputLine?,
+    onClear: (() -> Unit)?,
     onKey: (BarKey) -> Unit,
     onSend: (text: String, enter: Boolean) -> Boolean,
     onEnter: () -> Unit,
@@ -112,6 +116,8 @@ fun Composer(
     val focusManager = LocalFocusManager.current
     LaunchedEffect(imeVisible) { if (!imeVisible) focusManager.clearFocus() }
     val pending = line?.text.orEmpty()
+    val ghost = pending.ifEmpty { line?.suggestion.orEmpty() }
+    val haptics = haptics()
     var armed by remember { mutableStateOf<BarKey?>(null) }
     val press: (BarKey) -> Unit = { key ->
         val sticky = armed
@@ -162,7 +168,7 @@ fun Composer(
                 ),
                 decorator = { field ->
                     Box {
-                        if (state.text.isEmpty() && (armed != null || pending.isEmpty())) {
+                        if (state.text.isEmpty() && (armed != null || ghost.isEmpty())) {
                             val hint = armed?.let { "${it.label} + key" } ?: "send to ${program.ifEmpty { "pane" }}"
                             Text(hint, color = if (armed != null) Palette.orange else Palette.dim, fontFamily = Mono, fontSize = 15.sp)
                         }
@@ -171,27 +177,45 @@ fun Composer(
                 },
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
-            if (state.text.isEmpty() && armed == null && pending.isNotEmpty()) {
-                // The app's line, over the empty box: tap to bring it in and edit it.
-                Text(
-                    pending,
-                    color = Palette.grey,
-                    fontFamily = Mono,
-                    fontSize = 15.sp,
-                    lineHeight = 21.sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable {
-                            state.edit {
-                                replace(0, length, pending)
-                                placeCursorAtEnd()
-                            }
-                            focus.requestFocus()
-                            keyboard?.show()
-                        },
-                )
+            if (state.text.isEmpty() && armed == null && ghost.isNotEmpty()) {
+                // The app's line or its suggestion, over the empty box: tap to bring it in and edit it.
+                val suggested = pending.isEmpty()
+                Row(verticalAlignment = Alignment.Top) {
+                    if (suggested) GlyphIcon(Glyph.Spark, Palette.dim, Modifier.padding(top = 5.dp, end = 8.dp), size = 11.dp)
+                    Text(
+                        ghost,
+                        color = if (suggested) Palette.dim else Palette.grey,
+                        fontFamily = Mono,
+                        fontSize = 15.sp,
+                        lineHeight = 21.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable {
+                                haptics.tick()
+                                state.edit {
+                                    replace(0, length, ghost)
+                                    placeCursorAtEnd()
+                                }
+                                focus.requestFocus()
+                                keyboard?.show()
+                            },
+                    )
+                    if (!suggested && onClear != null) {
+                        Box(
+                            Modifier
+                                .padding(start = 6.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    haptics.confirm()
+                                    onClear()
+                                }
+                                .padding(4.dp),
+                        ) { GlyphIcon(Glyph.Close, Palette.grey, size = 13.dp) }
+                    }
+                }
             }
         }
         Row(

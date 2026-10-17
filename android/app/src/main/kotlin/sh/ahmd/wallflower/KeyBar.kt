@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import sh.ahmd.wallflower.terminal.InputLine
 
 /**
  * A key on the bar: what it shows, and the tmux keys it sends (`Escape`,
@@ -54,6 +55,9 @@ data class KeyProfile(
         programs.any { it.equals("zsh", ignoreCase = true) } -> listOf("C-x", "C-u") // kill-buffer, bound in the zshrc
         else -> emptyList()
     }
+
+    /** Keys that empty [line], as last read, row by row. */
+    fun clear(line: InputLine): List<String> = List(line.rows * 2 + 1) { clearKeys() }.flatten()
 }
 
 /**

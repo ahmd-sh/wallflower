@@ -559,11 +559,17 @@ private fun TerminalScreen(
                             keys = profile.keys,
                             connected = status is Status.Connected,
                             line = line,
+                            onClear = if (profile.clearKeys().isEmpty()) null else {
+                                {
+                                    line?.let { session.send(Keys(pane.id, profile.clear(it))) }
+                                    line = null // gone at once; the next read says what's there now
+                                }
+                            },
                             onKey = { session.send(Keys(pane.id, it.keys, it.bindings)) },
                             onSend = { text, enter ->
                                 // The box replaces whatever the app's line holds.
                                 val known = line
-                                val clear = if (known == null) emptyList() else List(known.rows * 2 + 1) { profile.clearKeys() }.flatten()
+                                val clear = known?.let(profile::clear).orEmpty()
                                 session.submit(pane.id, text, enter, clear).also { sent ->
                                     if (sent && '\n' !in text && known?.text.isNullOrEmpty()) view?.predict(text)
                                 }

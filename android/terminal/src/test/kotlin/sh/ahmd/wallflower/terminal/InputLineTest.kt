@@ -83,13 +83,33 @@ class InputLineTest {
     private val rule = "─".repeat(24)
 
     @Test
-    fun claudeBoxIgnoresThePlaceholder() {
+    fun claudeBoxSuggestsWhatItsPlaceholderQuotes() {
         val s = screen(
             listOf("● Done.", rule, "❯ Try \"fix the tests\"", rule, "  -- INSERT --"),
-            listOf("", "", "  fffffffffffffffffff"),
+            listOf("", "", "  fff ffff fff ffffff"),
             cursor = 2 to 2,
         )
-        assertEquals(InputLine("", 1), InputLine.read(s))
+        assertEquals(InputLine("", 1, "fix the tests"), InputLine.read(s))
+    }
+
+    @Test
+    fun claudeBoxSuggestsWhatsNextAcrossRows() {
+        val s = screen(
+            listOf(rule, "❯ ask the fruit and size", "  questions again", rule),
+            listOf("", "  ffffffffffffffffffffff", "  ffffffffffffffff"),
+            cursor = 2 to 1,
+        )
+        assertEquals(InputLine("", 2, "ask the fruit and size questions again"), InputLine.read(s))
+    }
+
+    @Test
+    fun claudeBoxSuggestsNothingOnceTyped() {
+        val s = screen(
+            listOf(rule, "❯ fix the tests", rule),
+            listOf("", "  iiiiiiiifffff"),
+            cursor = 11 to 1,
+        )
+        assertEquals(InputLine("fix the", 1), InputLine.read(s))
     }
 
     @Test
