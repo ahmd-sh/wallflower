@@ -166,12 +166,17 @@ fun ConversationView(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 48.dp, bottom = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        if (conversation.context > 0) {
+                        // How full the context is goes beside the last reply's copy; with no copy to go beside, on its own.
+                        val newest = items.lastOrNull()
+                        val context: (@Composable () -> Unit)? =
+                            if (conversation.context > 0) ({ ContextButton(conversation.context, onCompact) }) else null
+                        val besideCopy = newest?.copies(ongoing = status != null) == true
+                        if (context != null && !besideCopy) {
                             item(key = "context") {
                                 Box(
                                     Modifier.fillMaxWidth().animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect()),
                                     contentAlignment = Alignment.CenterEnd,
-                                ) { ContextButton(conversation.context, onCompact) }
+                                ) { context() }
                             }
                         }
                         if (status != null) {
@@ -193,10 +198,9 @@ fun ConversationView(
                                 }
                             }
                         }
-                        val newest = items.lastOrNull()
                         items(items.asReversed(), key = { it.key }) {
                             Box(Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())) {
-                                ItemView(it, ongoing = status != null && it === newest)
+                                ItemView(it, ongoing = status != null && it === newest, beside = context.takeIf { _ -> it === newest })
                             }
                         }
                         if (conversation.more) item(key = "more") { Note("earlier messages are in the terminal") }
@@ -275,9 +279,13 @@ private fun items(entries: List<Entry>): List<Item> {
     return out
 }
 
-/** [ongoing]: the newest item of a turn still going, whose reply isn't the last word yet. */
+/** Whether [this] ends with a copy button: the reply that ends a turn, once the turn is done. */
+private fun Item.copies(ongoing: Boolean) =
+    this is Item.Said && last && !ongoing && entry.role != "user" && entry.kind != "image" && entry.kind != "note"
+
+/** [ongoing]: the newest item of a turn still going, whose reply isn't the last word yet. [beside]: on its copy row's right. */
 @Composable
-private fun ItemView(item: Item, ongoing: Boolean) {
+private fun ItemView(item: Item, ongoing: Boolean, beside: (@Composable () -> Unit)? = null) {
     when (item) {
         is Item.Steps -> Steps(item.entries)
         is Item.Said -> {
@@ -286,7 +294,7 @@ private fun ItemView(item: Item, ongoing: Boolean) {
                 e.kind == "image" -> Picture(e)
                 e.kind == "note" -> Note(e.text)
                 e.role == "user" -> Prompt(e.text)
-                else -> Reply(e.text, copyable = item.last && !ongoing)
+                else -> Reply(e.text, copyable = item.copies(ongoing), beside)
             }
         }
     }
@@ -312,7 +320,7 @@ private fun Prompt(text: String) {
 }
 
 @Composable
-private fun Reply(text: String, copyable: Boolean) {
+private fun Reply(text: String, copyable: Boolean, beside: (@Composable () -> Unit)? = null) {
     val context = LocalContext.current
     val haptics = haptics()
     var copied by remember { mutableStateOf(false) }
@@ -324,7 +332,7 @@ private fun Reply(text: String, copyable: Boolean) {
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         MarkdownText(text)
-        if (copyable) {
+        if (copyable) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
                     .clip(RoundedCornerShape(6.dp))
@@ -339,6 +347,7 @@ private fun Reply(text: String, copyable: Boolean) {
                     Text(if (it) "copied" else "copy", color = Palette.dim, fontFamily = words, fontSize = wordSize(11.sp, 13.sp))
                 }
             }
+            beside?.invoke()
         }
     }
 }
