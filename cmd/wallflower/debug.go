@@ -97,7 +97,7 @@ func debug(args []string) error {
 		if *preview > 0 && len(text) > *preview {
 			text = text[:*preview]
 		}
-		enc.Encode(map[string]any{"t": "data", "pane": f.Pane, "bytes": len(f.Data), "text": string(text)})
+		enc.Encode(map[string]any{"t": "data", "pane": f.ID, "bytes": len(f.Data), "text": string(text)})
 	}
 	return cmd.Wait()
 }

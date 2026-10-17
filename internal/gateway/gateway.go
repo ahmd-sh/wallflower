@@ -26,13 +26,15 @@ type Options struct {
 	Socket      string              // tmux socket, see tmux.Options
 	Session     string              // default session when the client doesn't ask for one
 	Transcripts []transcript.Source // CLIs whose conversations panes can show
+	Uploads     string              // where files the client sends are saved; UploadDir() if empty
 }
 
 const (
-	highWater  = 1 << 20   // stop forwarding pane output above this backlog
-	lowWater   = 256 << 10 // repaint stale panes once the backlog is below this
-	stateDelay = 15 * time.Millisecond
-	maxSize    = 1000
+	highWater    = 1 << 20   // stop forwarding pane output above this backlog
+	lowWater     = 256 << 10 // repaint stale panes once the backlog is below this
+	stateDelay   = 15 * time.Millisecond
+	uploadSettle = 150 * time.Millisecond
+	maxSize      = 1000
 )
 
 // Any change to these re-sends state.
@@ -55,6 +57,7 @@ type gateway struct {
 	sources    []transcript.Source
 	ttys       map[int]string                // pid -> its tty, to find the pane a transcript's process runs in
 	following  map[string]context.CancelFunc // pane -> the follower sending its conversation
+	uploads    uploads
 	lastState  []byte
 	dirty      bool
 	exitReason string
@@ -75,7 +78,12 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	g := &gateway{
 		out: newOutbox(out), panes: map[string]*pane{}, zoomed: map[string]bool{}, programs: map[string]string{},
 		ctx: ctx, sources: opts.Transcripts, ttys: map[int]string{}, following: map[string]context.CancelFunc{},
+		uploads: uploads{dir: opts.Uploads, open: map[string]*upload{}},
 	}
+	if g.uploads.dir == "" {
+		g.uploads.dir = UploadDir()
+	}
+	defer g.uploads.close()
 	defer g.out.close(2 * time.Second)
 
 	r := protocol.NewReader(in)
@@ -116,7 +124,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 		g.send(protocol.Bye{Reason: err.Error()})
 		return err
 	}
-	g.send(protocol.ServerHello{V: protocol.Version, Tmux: version})
+	g.send(protocol.ServerHello{V: protocol.Version, Tmux: version, Uploads: g.uploads.dir})
 	g.sendState()
 
 	frames := make(chan protocol.Frame)
@@ -254,11 +262,18 @@ func (g *gateway) notify(n tmux.Notification) {
 
 func (g *gateway) handle(f protocol.Frame) error {
 	if f.Type == protocol.FrameData {
-		if err := checkID(paneID, f.Pane); err != nil {
+		if err := checkID(paneID, f.ID); err != nil {
 			return err
 		}
-		g.claimSize(f.Pane)
-		return g.sendText(f.Pane, f.Data)
+		g.claimSize(f.ID)
+		return g.sendText(f.ID, f.Data)
+	}
+	if f.Type == protocol.FrameUpload {
+		path, err := g.uploads.write(f.ID, f.Data)
+		if err != nil || path != "" {
+			g.sendUploaded(f.ID, path, err)
+		}
+		return nil
 	}
 
 	m, err := protocol.DecodeClient(f.Data)
@@ -310,6 +325,13 @@ func (g *gateway) handle(f protocol.Frame) error {
 		}
 		return g.run(cmd)
 
+	case *protocol.Upload:
+		path, err := g.uploads.begin(m)
+		if err != nil || path != "" {
+			g.sendUploaded(m.ID, path, err)
+		}
+		return nil
+
 	case *protocol.Paste:
 		if err := checkID(paneID, m.Pane); err != nil {
 			return err
@@ -319,7 +341,13 @@ func (g *gateway) handle(f protocol.Frame) error {
 		}
 		g.claimSize(m.Pane)
 		buf := fmt.Sprintf("wallflower-%d", os.Getpid())
-		return g.run(fmt.Sprintf("set-buffer -b %[1]s -- %[2]s ; paste-buffer -p -d -b %[1]s -t %[3]s", buf, tmux.QuoteText(m.Text), m.Pane))
+		err := g.run(fmt.Sprintf("set-buffer -b %[1]s -- %[2]s ; paste-buffer -p -d -b %[1]s -t %[3]s", buf, tmux.QuoteText(m.Text), m.Pane))
+		// An upload pasted on its own may be taken in as a file (Claude Code attaches an image), which
+		// takes the app a moment; keys right behind it, like Enter, would be lost meanwhile.
+		if err == nil && filepath.Dir(m.Text) == g.uploads.dir {
+			time.Sleep(uploadSettle)
+		}
+		return err
 
 	case *protocol.Select:
 		switch {
@@ -739,6 +767,14 @@ func (g *gateway) cleanup() {
 		g.tmux.Run(strings.Join(cmds, " ; "))
 	}
 	g.tmux.Close()
+}
+
+func (g *gateway) sendUploaded(id, path string, err error) {
+	if err != nil {
+		g.send(protocol.Uploaded{ID: id, Error: err.Error()})
+		return
+	}
+	g.send(protocol.Uploaded{ID: id, Path: path})
 }
 
 func (g *gateway) send(m protocol.Message) {

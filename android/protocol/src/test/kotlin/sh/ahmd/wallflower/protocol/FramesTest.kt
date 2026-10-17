@@ -41,8 +41,10 @@ class FramesTest {
             Kill(window = "@2"),
             Transcript("%2", on = true),
             Transcript("%2", on = false),
+            Upload("u1", "PXL 1 ✓.jpg", 3),
         ).forEach(w::send)
         w.sendData("%1", "echo héllo ✓\r".encodeToByteArray())
+        w.sendUpload("u1", byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0), length = 3)
 
         val want = golden("client.bin")
         assertEquals(want.decodeToString(), out.toByteArray().decodeToString())
@@ -54,7 +56,7 @@ class FramesTest {
         val r = FrameReader(ByteArrayInputStream(golden("server.bin")))
         fun message() = assertIs<Frame.Message>(r.next()).message
 
-        assertEquals(ServerHello(1, "3.8"), message())
+        assertEquals(ServerHello(1, "3.8", uploads = "/Users/me/Library/Caches/wallflower/uploads"), message())
         val state = assertIs<State>(message())
         assertEquals("o", state.name)
         val (claude, floating) = state.windows.single().panes
@@ -88,6 +90,8 @@ class FramesTest {
         assertEquals(Entries("%2", entries = listOf(Entry("n1", "user", "note", "[Request interrupted by user]"))), message())
         assertEquals(Entries("%2", state = Entries.WAITING, since = 1792209270006), message())
         assertEquals(Entries("%2", reset = true, error = "the conversation ended"), message())
+        assertEquals(Uploaded("u1", path = "/Users/me/Library/Caches/wallflower/uploads/PXL-1.jpg"), message())
+        assertEquals(Uploaded("u2", error = "too big"), message())
         assertEquals(Bye("tmux exited"), message())
         assertNull(r.next())
     }

@@ -13,6 +13,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 const val FRAME_JSON: Int = 1
 const val FRAME_DATA: Int = 2
+const val FRAME_UPLOAD: Int = 3
 
 /** Bounds a frame's length field, so a corrupt stream can't make a reader allocate without limit. */
 const val MAX_FRAME = 16 shl 20
@@ -84,14 +85,19 @@ class FrameWriter(output: OutputStream) {
         out.flush()
     }
 
+    fun sendData(pane: String, bytes: ByteArray) = sendBytes(FRAME_DATA, pane, bytes, bytes.size)
+
+    /** The next [length] of upload [id]'s bytes. */
+    fun sendUpload(id: String, bytes: ByteArray, length: Int = bytes.size) = sendBytes(FRAME_UPLOAD, id, bytes, length)
+
     @Synchronized
-    fun sendData(pane: String, bytes: ByteArray) {
-        val id = pane.encodeToByteArray()
-        require(id.size <= 255) { "pane id longer than 255 bytes" }
-        header(2 + id.size + bytes.size, FRAME_DATA)
-        out.write(id.size)
-        out.write(id)
-        out.write(bytes)
+    private fun sendBytes(type: Int, id: String, bytes: ByteArray, length: Int) {
+        val idBytes = id.encodeToByteArray()
+        require(idBytes.size <= 255) { "id longer than 255 bytes" }
+        header(2 + idBytes.size + length, type)
+        out.write(idBytes.size)
+        out.write(idBytes)
+        out.write(bytes, 0, length)
         out.flush()
     }
 

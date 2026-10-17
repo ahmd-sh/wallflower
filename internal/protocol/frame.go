@@ -15,8 +15,9 @@ import (
 const Version = 1
 
 const (
-	FrameJSON byte = 1
-	FrameData byte = 2
+	FrameJSON   byte = 1
+	FrameData   byte = 2
+	FrameUpload byte = 3
 )
 
 // MaxFrame bounds a frame's length field, so a corrupt stream can't make a
@@ -25,8 +26,8 @@ const MaxFrame = 16 << 20
 
 type Frame struct {
 	Type byte
-	Pane string // FrameData only
-	Data []byte // FrameJSON: the JSON object; FrameData: the pane bytes
+	ID   string // FrameData: the pane; FrameUpload: the upload
+	Data []byte // FrameJSON: the JSON object; otherwise the bytes
 }
 
 type Reader struct {
@@ -53,11 +54,11 @@ func (r *Reader) Next() (Frame, error) {
 	switch f.Type {
 	case FrameJSON:
 		f.Data = buf
-	case FrameData:
+	case FrameData, FrameUpload:
 		if len(buf) < 1 || int(buf[0]) > len(buf)-1 {
-			return Frame{}, errors.New("protocol: truncated pane id")
+			return Frame{}, errors.New("protocol: truncated id")
 		}
-		f.Pane = string(buf[1 : 1+buf[0]])
+		f.ID = string(buf[1 : 1+buf[0]])
 		f.Data = buf[1+buf[0]:]
 	default:
 		return Frame{}, fmt.Errorf("protocol: unknown frame type %d", f.Type)
@@ -74,12 +75,21 @@ func unexpected(err error) error {
 
 // AppendData appends a pane data frame.
 func AppendData(dst []byte, pane string, data []byte) []byte {
-	if len(pane) > 255 {
-		panic("protocol: pane id longer than 255 bytes")
+	return appendBytes(dst, FrameData, pane, data)
+}
+
+// AppendUpload appends an upload frame: the next of an upload's bytes.
+func AppendUpload(dst []byte, upload string, data []byte) []byte {
+	return appendBytes(dst, FrameUpload, upload, data)
+}
+
+func appendBytes(dst []byte, typ byte, id string, data []byte) []byte {
+	if len(id) > 255 {
+		panic("protocol: id longer than 255 bytes")
 	}
-	dst = binary.BigEndian.AppendUint32(dst, uint32(2+len(pane)+len(data)))
-	dst = append(dst, FrameData, byte(len(pane)))
-	dst = append(dst, pane...)
+	dst = binary.BigEndian.AppendUint32(dst, uint32(2+len(id)+len(data)))
+	dst = append(dst, typ, byte(len(id)))
+	dst = append(dst, id...)
 	return append(dst, data...)
 }
 

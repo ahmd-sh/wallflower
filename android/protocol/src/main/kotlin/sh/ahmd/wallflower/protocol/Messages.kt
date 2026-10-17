@@ -99,6 +99,11 @@ data class Transcript(val pane: String, val on: Boolean) : ClientMessage
 @SerialName("scrollback")
 data class ScrollbackRequest(val id: Int, val pane: String, val start: Int, val end: Int) : ClientMessage
 
+/** Starts sending a file: [size] bytes follow in upload frames with [id]; [Uploaded] says where it was saved. */
+@Serializable
+@SerialName("upload")
+data class Upload(val id: String, val name: String, val size: Long) : ClientMessage
+
 @Serializable
 @SerialName("tmux")
 data class TmuxCommand(val id: Int, val command: String) : ClientMessage
@@ -112,7 +117,12 @@ sealed interface ServerMessage
 
 @Serializable
 @SerialName("hello")
-data class ServerHello(val v: Int, val tmux: String) : ServerMessage
+data class ServerHello(
+    val v: Int,
+    val tmux: String,
+    /** Where uploads are saved: paths under it are uploads. */
+    val uploads: String? = null,
+) : ServerMessage
 
 @Serializable
 @SerialName("state")
@@ -225,3 +235,8 @@ data class Pong(val id: Int) : ServerMessage
 @Serializable
 @SerialName("bye")
 data class Bye(val reason: String = "") : ServerMessage
+
+/** Where an upload was saved, once all of it arrived, or why it wasn't. */
+@Serializable
+@SerialName("uploaded")
+data class Uploaded(val id: String, val path: String? = null, val error: String? = null) : ServerMessage

@@ -136,7 +136,7 @@ func (c *client) state(what string, match func(protocol.State) bool) protocol.St
 func (c *client) output(pane, contains string) {
 	c.t.Helper()
 	c.expect("output "+contains, func(f protocol.Frame, _ protocol.Message) bool {
-		return f.Type == protocol.FrameData && f.Pane == pane && bytes.Contains(f.Data, []byte(contains))
+		return f.Type == protocol.FrameData && f.ID == pane && bytes.Contains(f.Data, []byte(contains))
 	})
 }
 
@@ -517,4 +517,77 @@ func TestTmuxExit(t *testing.T) {
 	c.state("state", func(s protocol.State) bool { return true })
 	c.tmux("kill-server")
 	c.expect("bye", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Bye); return ok })
+}
+
+func TestUpload(t *testing.T) {
+	dir := t.TempDir()
+	c := connectOpts(t, context.Background(), 60, 20, Options{Uploads: dir})
+	_, m := c.expect("hello", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.ServerHello); return ok })
+	if got := m.(*protocol.ServerHello).Uploads; got != dir {
+		t.Errorf("hello says uploads go in %q, want %q", got, dir)
+	}
+
+	uploaded := func(id string) protocol.Uploaded {
+		t.Helper()
+		_, m := c.expect("uploaded "+id, func(_ protocol.Frame, m protocol.Message) bool {
+			u, ok := m.(*protocol.Uploaded)
+			return ok && u.ID == id
+		})
+		return *m.(*protocol.Uploaded)
+	}
+
+	// Its bytes arrive in pieces, and it's saved under a name a shell takes as is.
+	c.send(protocol.Upload{ID: "a", Name: "PXL 1 (2).jpg", Size: 6})
+	c.w.Write(protocol.AppendUpload(nil, "a", []byte("abc")))
+	c.w.Write(protocol.AppendUpload(nil, "a", []byte("def")))
+	u := uploaded("a")
+	if want := filepath.Join(dir, "PXL-1-2-.jpg"); u.Path != want || u.Error != "" {
+		t.Fatalf("uploaded %+v, want %s", u, want)
+	}
+	if data, _ := os.ReadFile(u.Path); string(data) != "abcdef" {
+		t.Errorf("saved %q", data)
+	}
+
+	// The same name again gets a name of its own.
+	c.send(protocol.Upload{ID: "b", Name: "PXL 1 (2).jpg", Size: 1})
+	c.w.Write(protocol.AppendUpload(nil, "b", []byte("x")))
+	if u := uploaded("b"); u.Path != filepath.Join(dir, "PXL-1-2--2.jpg") {
+		t.Errorf("second upload saved as %q", u.Path)
+	}
+
+	// More than it said is an error, and nothing is left behind.
+	c.send(protocol.Upload{ID: "c", Name: "short.txt", Size: 1})
+	c.w.Write(protocol.AppendUpload(nil, "c", []byte("xy")))
+	if u := uploaded("c"); u.Error == "" {
+		t.Errorf("an upload longer than it said was saved: %+v", u)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "short.txt")); err == nil {
+		t.Error("a failed upload was left behind")
+	}
+
+	// One the client leaves partway is removed when it goes.
+	c.send(protocol.Upload{ID: "d", Name: "half.bin", Size: 10})
+	c.w.Write(protocol.AppendUpload(nil, "d", []byte("12345")))
+	c.send(protocol.Ping{ID: 9})
+	c.expect("pong", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Pong); return ok })
+	c.disconnect()
+	if _, err := os.Stat(filepath.Join(dir, "half.bin")); err == nil {
+		t.Error("an unfinished upload outlived the client")
+	}
+}
+
+func TestSafeName(t *testing.T) {
+	for in, want := range map[string]string{
+		"PXL_20261017_101010123.jpg":            "PXL_20261017_101010123.jpg",
+		"Screenshot 2026-10-17 at 10.01.15.png": "Screenshot-2026-10-17-at-10.01.15.png",
+		"../../etc/passwd":                      "passwd",
+		".hidden":                               "hidden",
+		"résumé ✓.pdf":                          "r-sum-.pdf",
+		"":                                      "upload",
+		"   ":                                   "upload",
+	} {
+		if got := safeName(in); got != want {
+			t.Errorf("safeName(%q) = %q, want %q", in, got, want)
+		}
+	}
 }

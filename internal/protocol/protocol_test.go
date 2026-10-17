@@ -19,14 +19,16 @@ func TestRoundTrip(t *testing.T) {
 	buf, _ = AppendJSON(buf, Keys{Pane: "%3", Keys: []string{"C-c", "Up"}})
 	buf, _ = AppendJSON(buf, Bye{})
 	buf = AppendData(buf, "%1", nil)
+	buf = AppendUpload(buf, "u1", []byte{0, 0xff, 'j'})
 
 	r := NewReader(bytes.NewReader(buf))
 	want := []any{
 		&ClientHello{V: 1, Cols: 56, Rows: 40},
-		Frame{Type: FrameData, Pane: "%12", Data: []byte("ls\r\x1b[A ✓")},
+		Frame{Type: FrameData, ID: "%12", Data: []byte("ls\r\x1b[A ✓")},
 		&Keys{Pane: "%3", Keys: []string{"C-c", "Up"}},
 		nil, // Bye: server message, checked below
-		Frame{Type: FrameData, Pane: "%1", Data: []byte{}},
+		Frame{Type: FrameData, ID: "%1", Data: []byte{}},
+		Frame{Type: FrameUpload, ID: "u1", Data: []byte{0, 0xff, 'j'}},
 	}
 	for i, w := range want {
 		f, err := r.Next()

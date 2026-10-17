@@ -18,6 +18,7 @@ uint8   type
 |------|---------|
 | 1 | a JSON object; its `"t"` field names the message |
 | 2 | pane data: `uint8 n`, `n` bytes of pane id, then raw bytes |
+| 3 | upload data: `uint8 n`, `n` bytes of upload id, then the upload's next bytes |
 
 Pane data from the gateway is output for an open pane. Pane data from the
 client is typed into the pane, byte for byte.
@@ -60,6 +61,7 @@ client never has to resync on its own.
 | `kill` | `window` or `pane` | close it; closing a window's last pane closes the window |
 | `scrollback` | `id`, `pane`, `start`, `end` | lines in tmux numbering: 0 is the top visible line, negative is history |
 | `transcript` | `pane`, `on` | start or stop the pane's conversation arriving as `entries`; for panes whose `transcript` is set |
+| `upload` | `id`, `name`, `size` | send a file: `size` bytes follow in upload frames with this `id`, see below |
 | `tmux` | `id`, `command` | run a raw tmux command line (escape hatch) |
 | `ping` | `id` | |
 
@@ -74,7 +76,7 @@ Messages are handled in order, so a `pong` means everything sent before its
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `tmux` | tmux version |
+| `hello` | `v`, `tmux`, `uploads`? | tmux version; the directory uploads are saved in |
 | `state` | `session`, `name`, `windows` | everything in the session, see below; `name` is the group the client asked for |
 | `reset` | `pane`, `cols`, `rows` | recreate the pane's terminal at this size; the next data frame repaints it |
 | `scrollback` | `id`, `pane`, `history_size`, `lines` | lines keep their SGR escapes |
@@ -82,6 +84,7 @@ Messages are handled in order, so a `pong` means everything sent before its
 | `error` | `message` | a message failed |
 | `pong` | `id` | |
 | `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `state`?, `since`? | a pane's conversation, see below |
+| `uploaded` | `id`, `path`?, `error`? | where an upload was saved, or why it wasn't |
 | `bye` | `reason` | the gateway is exiting |
 
 A window is `id`, `index`, `name`, `active`, `zoomed`, `cols`, `rows` and
@@ -152,3 +155,20 @@ The client's size applies to windows it resizes or selects, and stays until
 another client does the same. tmux doesn't count typing, so the gateway
 reclaims the current window when the client types and the window has a
 different size.
+
+## Uploads
+
+A client sends a file to the Mac with `upload`, then its bytes in upload
+frames, in order, as many as it likes (they're interleaved with everything
+else, so a big file doesn't hold up typing). Once `size` bytes have arrived
+the gateway replies `uploaded` with the file's path, or with an `error` (too
+big, more bytes than it said); an unfinished upload is removed when the
+client disconnects.
+
+Uploads are saved in the directory `hello` names, under the name the client
+gave, cut down to letters, digits, `.`, `-` and `_` so the path needs no
+quoting, and made unique there. They're removed after two weeks.
+
+The path is the client's to use: put in what it sends a pane, it lets the
+pane's program find the file. Pasted on its own, an image's path is attached
+by Claude Code as an image.

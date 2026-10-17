@@ -79,6 +79,15 @@ type Rename struct {
 	Name   string `json:"name"`
 }
 
+// Upload starts sending a file: Size bytes follow in upload frames with its
+// ID. The gateway saves it among its uploads, named after Name, and says
+// where in Uploaded.
+type Upload struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
 // Kill closes a window or a pane; closing a window's last pane closes it.
 type Kill struct {
 	Window string `json:"window,omitempty"`
@@ -125,12 +134,16 @@ func (New) Type() string               { return "new" }
 func (Rename) Type() string            { return "rename" }
 func (Kill) Type() string              { return "kill" }
 func (Transcript) Type() string        { return "transcript" }
+func (Upload) Type() string            { return "upload" }
 
 // Gateway to client.
 
 type ServerHello struct {
 	V    int    `json:"v"`
 	Tmux string `json:"tmux"`
+	// Uploads is the directory uploads are saved in, so a client can tell
+	// their paths from others in what it sends.
+	Uploads string `json:"uploads,omitempty"`
 }
 
 type State struct {
@@ -236,6 +249,14 @@ type Pong struct {
 	ID int `json:"id"`
 }
 
+// Uploaded says where an upload was saved, once all of it arrived, or why it
+// wasn't.
+type Uploaded struct {
+	ID    string `json:"id"`
+	Path  string `json:"path,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
 type Bye struct {
 	Reason string `json:"reason"`
 }
@@ -249,15 +270,16 @@ func (Error) Type() string           { return "error" }
 func (Pong) Type() string            { return "pong" }
 func (Bye) Type() string             { return "bye" }
 func (Entries) Type() string         { return "entries" }
+func (Uploaded) Type() string        { return "uploaded" }
 
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Select{}, Zoom{},
 	ScrollbackRequest{}, TmuxCommand{}, Ping{}, Paste{}, Focus{}, Split{}, New{}, Rename{}, Kill{},
-	Transcript{},
+	Transcript{}, Upload{},
 )
 
 var serverMessages = registry(
-	ServerHello{}, State{}, Reset{}, ScrollbackReply{}, Result{}, Error{}, Pong{}, Bye{}, Entries{},
+	ServerHello{}, State{}, Reset{}, ScrollbackReply{}, Result{}, Error{}, Pong{}, Bye{}, Entries{}, Uploaded{},
 )
 
 // DecodeClient decodes a message sent by a client. It returns a pointer to
