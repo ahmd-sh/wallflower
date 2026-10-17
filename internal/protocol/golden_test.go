@@ -72,6 +72,7 @@ func goldenServer(t *testing.T) []byte {
 		{ID: "a3", Role: "assistant", Kind: "text", Text: "**Done.** All `3` pass."},
 	}})
 	b = mustJSON(t, b, Entries{Pane: "%2", Entries: []Entry{{ID: "n1", Role: "user", Kind: "note", Text: "[Request interrupted by user]"}}})
+	b = mustJSON(t, b, Entries{Pane: "%2", State: StateWaiting, Since: 1792209270006})
 	b = mustJSON(t, b, Entries{Pane: "%2", Reset: true, Error: "the conversation ended"})
 	return mustJSON(t, b, Bye{Reason: "tmux exited"})
 }

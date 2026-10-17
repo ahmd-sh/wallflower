@@ -17,15 +17,15 @@ import (
 // whose lines are {"id","text"} entries.
 type lines struct {
 	mu      sync.Mutex
-	running map[int]string
+	running map[int]transcript.Session
 }
 
 func (l *lines) Name() string { return "lines" }
 
-func (l *lines) Running() map[int]string {
+func (l *lines) Running() map[int]transcript.Session {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	r := map[int]string{}
+	r := map[int]transcript.Session{}
 	for k, v := range l.running {
 		r[k] = v
 	}
@@ -35,7 +35,7 @@ func (l *lines) Running() map[int]string {
 func (l *lines) set(pid int, path string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.running[pid] = path
+	l.running[pid] = transcript.Session{Path: path}
 }
 
 func (l *lines) Parser() transcript.Parser { return linesParser{} }
@@ -60,7 +60,7 @@ func (c *client) entries(what string, match func(protocol.Entries) bool) protoco
 }
 
 func TestTranscript(t *testing.T) {
-	src := &lines{running: map[int]string{}}
+	src := &lines{running: map[int]transcript.Session{}}
 	c := connectOpts(t, context.Background(), 56, 20, Options{Transcripts: []transcript.Source{src}})
 	p := activePane(c.state("state", func(protocol.State) bool { return true }))
 	if p.Transcript != "" {

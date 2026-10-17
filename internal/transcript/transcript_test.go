@@ -18,15 +18,15 @@ import (
 // id seen before changes that entry.
 type fake struct {
 	mu      sync.Mutex
-	running map[int]string
+	running map[int]Session
 }
 
 func (f *fake) Name() string { return "fake" }
 
-func (f *fake) Running() map[int]string {
+func (f *fake) Running() map[int]Session {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	r := map[int]string{}
+	r := map[int]Session{}
 	for k, v := range f.running {
 		r[k] = v
 	}
@@ -39,8 +39,16 @@ func (f *fake) set(pid int, path string) {
 	if path == "" {
 		delete(f.running, pid)
 	} else {
-		f.running[pid] = path
+		f.running[pid] = Session{Path: path}
 	}
+}
+
+func (f *fake) state(pid int, state string, since int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s := f.running[pid]
+	s.State, s.Since = state, since
+	f.running[pid] = s
 }
 
 func (f *fake) Parser() Parser { return fakeParser{} }
@@ -108,7 +116,7 @@ func TestFollow(t *testing.T) {
 	dir := t.TempDir()
 	one, two := filepath.Join(dir, "one.jsonl"), filepath.Join(dir, "two.jsonl")
 	appendTo(t, one, line("a", "hi")+line("b", "there")+`{"id":"c","te`) // a line still being written
-	src := &fake{running: map[int]string{7: one}}
+	src := &fake{running: map[int]Session{7: {Path: one}}}
 	got, done := follow(t, src, 7)
 
 	if e := next(t, got); !e.Reset || e.More || texts(e) != "a=hi b=there" {
@@ -117,6 +125,16 @@ func TestFollow(t *testing.T) {
 	appendTo(t, one, `xt":"!"}`+"\n"+line("b", "there, again"))
 	if e := next(t, got); e.Reset || texts(e) != "c=! b=there, again" {
 		t.Fatalf("appended: %+v", e)
+	}
+
+	// What the CLI is doing comes as it changes.
+	src.state(7, protocol.StateWorking, 1000)
+	if e := next(t, got); e.Reset || len(e.Entries) > 0 || e.State != protocol.StateWorking || e.Since != 1000 {
+		t.Fatalf("working: %+v", e)
+	}
+	src.state(7, protocol.StateIdle, 2000)
+	if e := next(t, got); e.State != protocol.StateIdle || e.Since != 2000 {
+		t.Fatalf("idle: %+v", e)
 	}
 
 	// A cleared conversation is a new file, which starts the client over.
@@ -137,7 +155,7 @@ func TestFollow(t *testing.T) {
 
 func TestFollowWaitsForTheFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "new.jsonl")
-	got, _ := follow(t, &fake{running: map[int]string{7: path}}, 7)
+	got, _ := follow(t, &fake{running: map[int]Session{7: {Path: path}}}, 7)
 	time.Sleep(2 * poll)
 	appendTo(t, path, line("a", "first"))
 	if e := next(t, got); !e.Reset || texts(e) != "a=first" {
@@ -153,7 +171,7 @@ func TestRecentOfALongTranscript(t *testing.T) {
 		fmt.Fprintf(&b, `{"id":"%d","text":"%d","pad":"%s"}`+"\n", i, i, pad)
 	}
 	appendTo(t, path, b.String())
-	got, _ := follow(t, &fake{running: map[int]string{7: path}}, 7)
+	got, _ := follow(t, &fake{running: map[int]Session{7: {Path: path}}}, 7)
 	e := next(t, got)
 	if !e.Reset || !e.More || len(e.Entries) != Recent || e.Entries[0].ID != "50" || e.Entries[Recent-1].ID != fmt.Sprint(Recent+49) {
 		t.Fatalf("got more=%v n=%d first=%s", e.More, len(e.Entries), e.Entries[0].ID)

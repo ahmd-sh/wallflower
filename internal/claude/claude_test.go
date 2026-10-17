@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/ahmd-sh/wallflower/internal/protocol"
+	"github.com/ahmd-sh/wallflower/internal/transcript"
 )
 
 // Lines shaped like Claude Code's transcripts, trimmed to the fields read.
@@ -65,6 +66,18 @@ func TestBigImagesAndOutputs(t *testing.T) {
 	}
 }
 
+func TestPlans(t *testing.T) {
+	p := New("").Parser()
+	got := p.Line([]byte(`{"type":"assistant","uuid":"a","message":{"content":[{"type":"tool_use","id":"t","name":"Write","input":{"file_path":"/Users/me/.claude/plans/fix-it.md","content":"# Plan\n\n1. fix it\n"}}]}}`))
+	if len(got) != 2 || got[0].Kind != "tool" || got[1].Kind != "text" || got[1].Text != "# Plan\n\n1. fix it" || got[1].ID != "a.0.plan" {
+		t.Errorf("plan: %+v", got)
+	}
+	got = p.Line([]byte(`{"type":"assistant","uuid":"b","message":{"content":[{"type":"tool_use","id":"u","name":"Write","input":{"file_path":"/Users/me/dev/plans/notes.md","content":"not a plan"}}]}}`))
+	if len(got) != 1 {
+		t.Errorf("any other write: %+v", got)
+	}
+}
+
 func TestRunning(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, body string) {
@@ -78,7 +91,7 @@ func TestRunning(t *testing.T) {
 	}
 	me := os.Getpid()
 	parent := os.Getppid()
-	write("sessions/"+strconv.Itoa(me)+".json", `{"pid":`+strconv.Itoa(me)+`,"sessionId":"aaaa-1","cwd":"/Users/me/dev/x"}`)
+	write("sessions/"+strconv.Itoa(me)+".json", `{"pid":`+strconv.Itoa(me)+`,"sessionId":"aaaa-1","cwd":"/Users/me/dev/x","status":"waiting","statusUpdatedAt":1792209270006}`)
 	write("sessions/"+strconv.Itoa(parent)+".json", `{"pid":`+strconv.Itoa(parent)+`,"sessionId":"bbbb-2","cwd":"/Users/me/my.dir"}`)
 	write("sessions/1.key", `{}`)
 	write("sessions/999999.json", `{"pid":999999,"sessionId":"cccc-3","cwd":"/"}`) // no such process
@@ -86,9 +99,9 @@ func TestRunning(t *testing.T) {
 	write("projects/-Users-me-dev-x-moved/aaaa-1.jsonl", "")
 
 	got := New(dir).Running()
-	want := map[int]string{
-		me:     filepath.Join(dir, "projects/-Users-me-dev-x-moved/aaaa-1.jsonl"), // where it is
-		parent: filepath.Join(dir, "projects/-Users-me-my-dir/bbbb-2.jsonl"),      // where it will be
+	want := map[int]transcript.Session{
+		me:     {Path: filepath.Join(dir, "projects/-Users-me-dev-x-moved/aaaa-1.jsonl"), State: protocol.StateWaiting, Since: 1792209270006}, // where it is
+		parent: {Path: filepath.Join(dir, "projects/-Users-me-my-dir/bbbb-2.jsonl")},                                                          // where it will be; no status said
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v\nwant %v", got, want)

@@ -86,6 +86,7 @@ class FramesTest {
             message(),
         )
         assertEquals(Entries("%2", entries = listOf(Entry("n1", "user", "note", "[Request interrupted by user]"))), message())
+        assertEquals(Entries("%2", state = Entries.WAITING, since = 1792209270006), message())
         assertEquals(Entries("%2", reset = true, error = "the conversation ended"), message())
         assertEquals(Bye("tmux exited"), message())
         assertNull(r.next())

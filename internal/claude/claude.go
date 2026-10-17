@@ -44,18 +44,29 @@ func (s *Source) Name() string { return "claude" }
 
 var sessionID = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
-func (s *Source) Running() map[int]string {
+// states are what claude says it's doing: busy on a turn, running a
+// shell command (!), waiting on a prompt or question mid-turn, or idle.
+var states = map[string]string{
+	"busy":    protocol.StateWorking,
+	"shell":   protocol.StateWorking,
+	"waiting": protocol.StateWaiting,
+	"idle":    protocol.StateIdle,
+}
+
+func (s *Source) Running() map[int]transcript.Session {
 	files, _ := filepath.Glob(filepath.Join(s.dir, "sessions", "*.json"))
-	running := map[int]string{}
+	running := map[int]transcript.Session{}
 	for _, name := range files {
 		b, err := os.ReadFile(name)
 		if err != nil {
 			continue
 		}
 		var sess struct {
-			PID       int    `json:"pid"`
-			SessionID string `json:"sessionId"`
-			CWD       string `json:"cwd"`
+			PID             int    `json:"pid"`
+			SessionID       string `json:"sessionId"`
+			CWD             string `json:"cwd"`
+			Status          string `json:"status"`
+			StatusUpdatedAt int64  `json:"statusUpdatedAt"`
 		}
 		if json.Unmarshal(b, &sess) != nil || sess.PID <= 0 || !sessionID.MatchString(sess.SessionID) {
 			continue
@@ -63,7 +74,11 @@ func (s *Source) Running() map[int]string {
 		if syscall.Kill(sess.PID, 0) != nil {
 			continue // left behind by a claude that crashed
 		}
-		running[sess.PID] = s.transcript(sess.SessionID, sess.CWD)
+		t := transcript.Session{Path: s.transcript(sess.SessionID, sess.CWD), State: states[sess.Status]}
+		if t.State != "" {
+			t.Since = sess.StatusUpdatedAt
+		}
+		running[sess.PID] = t
 	}
 	return running
 }
@@ -159,6 +174,9 @@ func (p *parser) Line(b []byte) []protocol.Entry {
 			e := protocol.Entry{ID: id, Role: "assistant", Kind: "tool", Name: bl.Name, Text: brief(bl.Input)}
 			p.tools[bl.ID] = e
 			out = append(out, e)
+			if plan := planOf(bl); plan != "" {
+				out = append(out, protocol.Entry{ID: id + ".plan", Role: "assistant", Kind: "text", Text: plan})
+			}
 		case "tool_result":
 			if e, ok := p.tools[bl.ToolUseID]; ok {
 				delete(p.tools, bl.ToolUseID)
@@ -198,8 +216,25 @@ func (p *parser) said(r record, i int, text string) (protocol.Entry, bool) {
 	return e, true
 }
 
+// planOf is the plan in a plan mode write, which claude keeps in
+// plans/<name>.md, for reading as a reply rather than a tool's input.
+func planOf(b block) string {
+	if b.Name != "Write" {
+		return ""
+	}
+	var in struct {
+		FilePath string `json:"file_path"`
+		Content  string `json:"content"`
+	}
+	if json.Unmarshal(b.Input, &in) != nil || filepath.Base(filepath.Dir(in.FilePath)) != "plans" ||
+		filepath.Base(filepath.Dir(filepath.Dir(in.FilePath))) != ".claude" || !strings.HasSuffix(in.FilePath, ".md") {
+		return ""
+	}
+	return strings.TrimSpace(in.Content)
+}
+
 // briefKeys are tool inputs that say what a call does, best first.
-var briefKeys = []string{"command", "file_path", "path", "pattern", "url", "query", "description", "prompt", "skill"}
+var briefKeys = []string{"command", "file_path", "path", "pattern", "url", "query", "description", "prompt", "skill", "plan"}
 
 func brief(input json.RawMessage) string {
 	var m map[string]any

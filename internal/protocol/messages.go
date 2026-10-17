@@ -181,14 +181,25 @@ type Reset struct {
 // Entries carries a pane's conversation. With Reset, its latest entries
 // replace any before (More says earlier ones weren't sent); otherwise these
 // entries are new, or replace the ones with their IDs. Error says why there
-// is no conversation (any more).
+// is no conversation (any more). State says what the CLI is doing, when it
+// says and whenever that changes (with no entries), and Since when it began.
 type Entries struct {
 	Pane    string  `json:"pane"`
 	Reset   bool    `json:"reset,omitempty"`
 	More    bool    `json:"more,omitempty"`
 	Entries []Entry `json:"entries,omitempty"`
 	Error   string  `json:"error,omitempty"`
+	State   string  `json:"state,omitempty"` // StateWorking, StateWaiting or StateIdle
+	Since   int64   `json:"since,omitempty"` // Unix milliseconds
 }
+
+// What a CLI is doing: working on a turn (its tools included), waiting for
+// the user to answer it mid-turn, or done until the next message.
+const (
+	StateWorking = "working"
+	StateWaiting = "waiting"
+	StateIdle    = "idle"
+)
 
 // Entry is one part of a conversation.
 type Entry struct {

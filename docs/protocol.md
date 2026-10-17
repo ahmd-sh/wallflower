@@ -81,7 +81,7 @@ Messages are handled in order, so a `pong` means everything sent before its
 | `result` | `id`, `lines`?, `error`? | reply to `tmux`, or a failed `scrollback` |
 | `error` | `message` | a message failed |
 | `pong` | `id` | |
-| `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`? | a pane's conversation, see below |
+| `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `state`?, `since`? | a pane's conversation, see below |
 | `bye` | `reason` | the gateway is exiting |
 
 A window is `id`, `index`, `name`, `active`, `zoomed`, `cols`, `rows` and
@@ -115,6 +115,14 @@ replaces it: a tool call gets its result. An `error` says there's no
 conversation (any more), e.g. the program exited. A new conversation in the
 same process (`/clear`) arrives as another `reset`.
 
+`state` is what the program is doing, if it says: `working` on a turn
+(through its tool calls, until it's finally done), `waiting` for the user to
+answer something mid-turn (a permission prompt, a question), or `idle`.
+`since` is when it got there, in Unix milliseconds. The `reset` carries it,
+and `entries` with just `state` and `since` come whenever it changes. What
+the program is asking isn't in the conversation: it's on the pane's screen,
+and answers are keys, as typed.
+
 An entry is `id`, `role` (`user` or `assistant`), `kind` and, by kind:
 
 | kind | fields | |
@@ -125,9 +133,11 @@ An entry is `id`, `role` (`user` or `assistant`), `kind` and, by kind:
 | `image` | `mime`, `data` | base64 |
 | `note` | `text` | an event rather than something said: an interruption, a compacted conversation |
 
-The gateway finds a Claude Code session's transcript from
+The gateway finds a Claude Code session's transcript, and its state, from
 `~/.claude/sessions/<pid>.json`, so it works for sessions already running.
-Neither file format is documented; entries it can't read are skipped.
+A plan written in plan mode (`~/.claude/plans/*.md`) arrives as a `text`
+entry after its write, to read as a reply. Neither file format is
+documented; entries it can't read are skipped.
 
 ## Presentation is the client's
 

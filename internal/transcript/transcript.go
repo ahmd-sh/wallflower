@@ -18,12 +18,20 @@ import (
 type Source interface {
 	// Name is how clients know the source.
 	Name() string
-	// Running maps the CLI's live processes to the transcripts they're
-	// writing. A file may not exist yet: a new conversation has none until
-	// its first message.
-	Running() map[int]string
+	// Running maps the CLI's live processes to their sessions.
+	Running() map[int]Session
 	// Parser reads one transcript from its start, or from any line.
 	Parser() Parser
+}
+
+// A Session is a running CLI's conversation: the transcript it's writing,
+// which may not exist yet (a new conversation has none until its first
+// message), and what it's doing, if it says (protocol.StateWorking...),
+// since when (Unix milliseconds).
+type Session struct {
+	Path  string
+	State string
+	Since int64
 }
 
 // A Parser turns transcript lines, in order, into the entries they add or
@@ -44,8 +52,9 @@ const (
 
 // Follow sends pid's conversation: its recent entries, then entries as
 // they're written, starting over when the process moves to another
-// transcript (a cleared conversation). It returns when ctx is done, or
-// after saying so when the process stops having a transcript.
+// transcript (a cleared conversation), and what the process is doing as
+// that changes. It returns when ctx is done, or after saying so when the
+// process stops having a transcript.
 func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries)) error {
 	var (
 		f        *os.File
@@ -53,7 +62,8 @@ func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries
 		p        Parser
 		offset   int64
 		partial  []byte
-		announce bool // say there's a conversation, if its file isn't there yet
+		announce bool    // say there's a conversation, if its file isn't there yet
+		said     Session // the state last sent
 	)
 	defer func() {
 		if f != nil {
@@ -68,23 +78,23 @@ func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries
 			send(protocol.Entries{Reset: true, Error: "the conversation ended"})
 			return nil
 		}
-		if cur != path {
+		if cur.Path != path {
 			if f != nil {
 				f.Close()
 				f = nil
 			}
-			path, announce = cur, true
+			path, announce = cur.Path, true
 		}
 		if f == nil {
 			if f, _ = os.Open(path); f != nil {
 				var entries []protocol.Entry
 				var more bool
 				entries, more, p, offset = recent(f, src, Recent)
-				partial, announce = nil, false
-				send(protocol.Entries{Reset: true, More: more, Entries: entries})
+				partial, announce, said = nil, false, cur
+				send(protocol.Entries{Reset: true, More: more, Entries: entries, State: cur.State, Since: cur.Since})
 			} else if announce {
-				announce = false
-				send(protocol.Entries{Reset: true})
+				announce, said = false, cur
+				send(protocol.Entries{Reset: true, State: cur.State, Since: cur.Since})
 			}
 		} else if st, err := f.Stat(); err == nil && st.Size() < offset {
 			f.Close() // rewritten: read it afresh
@@ -99,6 +109,10 @@ func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries
 			if changed := collect(p, lines); len(changed) > 0 {
 				send(protocol.Entries{Entries: changed})
 			}
+		}
+		if (f != nil || !announce) && (cur.State != said.State || cur.Since != said.Since) {
+			said = cur
+			send(protocol.Entries{State: cur.State, Since: cur.Since})
 		}
 		select {
 		case <-ctx.Done():

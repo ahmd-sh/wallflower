@@ -180,7 +180,16 @@ data class Entries(
     val more: Boolean = false,
     val entries: List<Entry> = emptyList(),
     val error: String? = null,
-) : ServerMessage
+    /** What the program is doing, when it says: [WORKING], [WAITING] or [IDLE]; since when, in Unix milliseconds. */
+    val state: String? = null,
+    val since: Long = 0,
+) : ServerMessage {
+    companion object {
+        const val WORKING = "working"
+        const val WAITING = "waiting"
+        const val IDLE = "idle"
+    }
+}
 
 /** One part of a conversation. */
 @Serializable
