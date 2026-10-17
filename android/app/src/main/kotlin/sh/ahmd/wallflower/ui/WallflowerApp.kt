@@ -561,6 +561,7 @@ private fun TerminalScreen(
                             line = line,
                             uploads = uploads.filter { it.pane == pane.id },
                             uploadDir = uploadDir,
+                            thumbnail = model.uploads::thumbnail,
                             onAttach = { uris -> model.uploads.add(session, pane.id, uris) },
                             onDismissUpload = model.uploads::dismiss,
                             onClear = if (profile.clearKeys().isEmpty()) null else {

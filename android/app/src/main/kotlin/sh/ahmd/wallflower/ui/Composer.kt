@@ -1,6 +1,8 @@
 package sh.ahmd.wallflower.ui
 
+import android.graphics.BitmapFactory
 import android.net.Uri
+import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -119,7 +121,9 @@ import sh.ahmd.wallflower.KeyBar
  * that has text, or stops.
  *
  * + sends photos or files to the Mac ([onAttach]); each shows above the box
- * on its way, then its path goes in at the cursor, shown as its name.
+ * on its way, then its path goes in at the cursor, shown as its name. What
+ * the draft holds shows above it too, photos by their [thumbnail], each
+ * with × to take it out.
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class) // edit changes for sticky keys; whether the keyboard is up
 @Composable
@@ -131,6 +135,7 @@ fun Composer(
     line: InputLine?,
     uploads: List<Uploads.Item>,
     uploadDir: String?,
+    thumbnail: (String) -> File?,
     onAttach: (List<Uri>) -> Unit,
     onDismissUpload: (String) -> Unit,
     onClear: (() -> Unit)?,
@@ -189,11 +194,24 @@ fun Composer(
             .animateContentSize(Motion.spatial())
             .padding(top = 14.dp, bottom = 8.dp),
     ) {
-        if (uploads.isNotEmpty()) {
+        val text = state.text.toString()
+        val attached = remember(text, paths) { paths?.findAll(text)?.map { it.value }?.distinct()?.toList().orEmpty() }
+        if (attached.isNotEmpty() || uploads.isNotEmpty()) {
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                for (path in attached) {
+                    key(path) {
+                        Attached(path, remember(path) { thumbnail(path) }) {
+                            haptics.tick()
+                            state.edit {
+                                val at = asCharSequence().indexOf(path)
+                                if (at >= 0) replace(at, (at + path.length).let { if (it < length && asCharSequence()[it] == ' ') it + 1 else it }, "")
+                            }
+                        }
+                    }
+                }
                 for (u in uploads) key(u.id) { UploadChip(u) { onDismissUpload(u.id) } }
             }
         }
@@ -320,6 +338,40 @@ private fun Attach(enabled: Boolean, onAttach: (List<Uri>) -> Unit) {
     }
 }
 
+/** A file in the draft: a photo as itself, anything else by name; × takes it out. */
+@Composable
+private fun Attached(path: String, thumb: File?, onRemove: () -> Unit) {
+    val image by produceState<ImageBitmap?>(null, thumb) {
+        value = thumb?.let { withContext(Dispatchers.IO) { BitmapFactory.decodeFile(it.path)?.asImageBitmap() } }
+    }
+    val shape = RoundedCornerShape(12.dp)
+    Box(Modifier.height(TILE).clip(shape).background(Palette.bg2)) {
+        image?.let { Image(it, null, Modifier.size(TILE), contentScale = ContentScale.Crop) }
+            ?: Row(Modifier.height(TILE).padding(start = 12.dp, end = 30.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(CLIP, color = Palette.grey, fontFamily = Mono, fontSize = 13.sp)
+                Text(
+                    path.substringAfterLast('/'),
+                    color = Palette.fg,
+                    fontFamily = Mono,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 6.dp).widthIn(max = 150.dp),
+                )
+            }
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+                .size(20.dp)
+                .clip(CircleShape)
+                .background(Palette.bg0.copy(alpha = 0.8f))
+                .clickable(onClick = onRemove),
+            contentAlignment = Alignment.Center,
+        ) { GlyphIcon(Glyph.Close, Palette.fg, size = 9.dp) }
+    }
+}
+
 /** A file on its way: what it is, and how far along, or why it didn't make it (tap to let it go). */
 @Composable
 private fun UploadChip(u: Uploads.Item, onDismiss: () -> Unit) {
@@ -329,14 +381,14 @@ private fun UploadChip(u: Uploads.Item, onDismiss: () -> Unit) {
     }
     Row(
         Modifier
-            .height(36.dp)
+            .height(TILE)
             .clip(RoundedCornerShape(12.dp))
             .background(Palette.bg2)
             .clickable(enabled = u.error != null, onClick = onDismiss)
-            .padding(start = 4.dp, end = 10.dp),
+            .padding(start = 6.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Palette.bg3), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(TILE - 12.dp).clip(RoundedCornerShape(8.dp)).background(Palette.bg3), contentAlignment = Alignment.Center) {
             thumb?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
                 ?: Text(CLIP, color = Palette.grey, fontFamily = Mono, fontSize = 13.sp)
         }
@@ -399,6 +451,7 @@ private class WholeUploads(private val paths: Regex) : InputTransformation {
 
 private const val CLIP = "\uF0C6" // the font's paperclip
 private const val MAX_ATTACH = 10
+private val TILE = 48.dp
 
 @Composable
 private fun KeyRow(keys: List<BarKey>, armed: BarKey?, onKey: (BarKey) -> Unit, onEdit: () -> Unit, modifier: Modifier) {

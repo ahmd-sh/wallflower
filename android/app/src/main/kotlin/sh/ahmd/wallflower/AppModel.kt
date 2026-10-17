@@ -3,6 +3,7 @@ package sh.ahmd.wallflower
 import android.app.Application
 import android.content.Context
 import android.os.Build
+import java.io.File
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +28,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     val confirm = Confirmations(prefs)
     val appearance = Appearance(prefs)
     val conversationViews = ConversationViews(prefs)
-    val uploads = Uploads(app.contentResolver, prefs, drafts, viewModelScope)
+    val uploads = Uploads(app.contentResolver, prefs, drafts, File(app.cacheDir, "thumbs"), viewModelScope)
     private var listening: Job? = null
 
     private val _host = MutableStateFlow(Host.load(prefs))
