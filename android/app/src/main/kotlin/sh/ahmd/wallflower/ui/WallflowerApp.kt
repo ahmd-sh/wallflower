@@ -1,6 +1,9 @@
 package sh.ahmd.wallflower.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -328,8 +331,11 @@ private fun TerminalScreen(
                     }
                 },
             )
-            if (pane != null && pane.id in following) {
-                ConversationView(conversations[pane.id] ?: Conversation()) { direction -> window?.let { session.swipe(it, direction) } }
+            val shown = pane?.takeIf { it.id in following }?.let { conversations[it.id] ?: Conversation() }
+            var last by remember { mutableStateOf(Conversation()) }
+            if (shown != null) last = shown
+            androidx.compose.animation.AnimatedVisibility(shown != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
+                ConversationView(last) { direction -> window?.let { session.swipe(it, direction) } }
             }
             if (window != null && pane != null) {
                 Row(Modifier.align(Alignment.TopEnd), verticalAlignment = Alignment.CenterVertically) {
@@ -470,7 +476,11 @@ private fun ViewToggle(conversation: Boolean, onClick: () -> Unit) {
             .background(Palette.bg1.copy(alpha = 0.85f))
             .clickable(onClick = onClick)
             .padding(horizontal = 9.dp, vertical = 4.dp),
-    ) { GlyphIcon(if (conversation) Glyph.Terminal else Glyph.Chat, Palette.fg, size = 14.dp) }
+    ) {
+        Crossfade(conversation, animationSpec = Motion.effect(), label = "view") {
+            GlyphIcon(if (it) Glyph.Terminal else Glyph.Chat, Palette.fg, size = 14.dp)
+        }
+    }
 }
 
 @Composable

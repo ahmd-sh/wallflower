@@ -48,11 +48,12 @@ const (
 // after saying so when the process stops having a transcript.
 func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries)) error {
 	var (
-		f       *os.File
-		path    string
-		p       Parser
-		offset  int64
-		partial []byte
+		f        *os.File
+		path     string
+		p        Parser
+		offset   int64
+		partial  []byte
+		announce bool // say there's a conversation, if its file isn't there yet
 	)
 	defer func() {
 		if f != nil {
@@ -72,16 +73,18 @@ func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries
 				f.Close()
 				f = nil
 			}
-			path = cur
-			send(protocol.Entries{Reset: true}) // until its file has something
+			path, announce = cur, true
 		}
 		if f == nil {
 			if f, _ = os.Open(path); f != nil {
 				var entries []protocol.Entry
 				var more bool
 				entries, more, p, offset = recent(f, src, Recent)
-				partial = nil
+				partial, announce = nil, false
 				send(protocol.Entries{Reset: true, More: more, Entries: entries})
+			} else if announce {
+				announce = false
+				send(protocol.Entries{Reset: true})
 			}
 		} else if st, err := f.Stat(); err == nil && st.Size() < offset {
 			f.Close() // rewritten: read it afresh

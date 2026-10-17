@@ -2,6 +2,21 @@ package sh.ahmd.wallflower.ui
 
 import android.graphics.BitmapFactory
 import android.util.Base64
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,12 +46,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -49,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import sh.ahmd.wallflower.protocol.Entry
 import sh.ahmd.wallflower.session.Conversation
@@ -77,26 +96,59 @@ fun ConversationView(conversation: Conversation, modifier: Modifier = Modifier, 
     ) {
         val items = remember(conversation.entries) { items(conversation.entries) }
         val list = rememberLazyListState()
-        // At the bottom, new entries come into view; scrolled up to read, the list stays put.
+        val scope = rememberCoroutineScope()
+        // At the bottom, new entries glide into view; scrolled up to read, the list stays put.
         val atBottom by remember { derivedStateOf { list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset < 8 } }
+        val away by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 600 } }
         val follow = atBottom
-        LaunchedEffect(items.size) { if (follow) list.scrollToItem(0) }
-        when {
-            !conversation.loaded -> Hint("reading the conversation…")
-            items.isEmpty() -> Hint(conversation.error ?: "nothing said yet")
-            else -> LazyColumn(
-                Modifier.fillMaxSize(),
-                state = list,
-                reverseLayout = true,
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 48.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-                items(items.asReversed(), key = { it.key }) { ItemView(it) }
-                if (conversation.more) item(key = "more") { Note("earlier messages are in the terminal") }
+        LaunchedEffect(items.size) { if (follow) list.animateScrollToItem(0) }
+        val phase = when {
+            !conversation.loaded -> Phase.Reading
+            items.isEmpty() -> Phase.Empty
+            else -> Phase.Shown
+        }
+        Crossfade(phase, animationSpec = Motion.effect(), label = "conversation") { p ->
+            when (p) {
+                Phase.Reading -> Hint("reading the conversation…")
+                Phase.Empty -> Hint(conversation.error ?: "nothing said yet")
+                Phase.Shown -> Box(Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        Modifier.fillMaxSize(),
+                        state = list,
+                        reverseLayout = true,
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 48.dp, bottom = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        items(items.asReversed(), key = { it.key }) {
+                            Box(Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())) { ItemView(it) }
+                        }
+                        if (conversation.more) item(key = "more") { Note("earlier messages are in the terminal") }
+                    }
+                    AnimatedVisibility(
+                        visible = away,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+                        enter = fadeIn(Motion.effect()) + slideInVertically(Motion.spatial()) { it },
+                        exit = fadeOut(Motion.effect()) + slideOutVertically(Motion.spatial()) { it },
+                    ) {
+                        Text(
+                            "↓ latest",
+                            color = Palette.fg,
+                            fontFamily = words,
+                            fontSize = wordSize(12.sp, 14.sp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Palette.bg2)
+                                .clickable { scope.launch { list.animateScrollToItem(0) } }
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                        )
+                    }
+                }
             }
         }
     }
 }
+
+private enum class Phase { Reading, Empty, Shown }
 
 /** What the list shows: something said, or a run of steps (tool calls, thinking) between. */
 private sealed interface Item {
@@ -166,6 +218,7 @@ private fun Prompt(text: String) {
             maxLines = if (open) Int.MAX_VALUE else 12,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
+                .animateContentSize(Motion.spatial())
                 .clip(RoundedCornerShape(18.dp))
                 .background(Palette.bg2)
                 .clickable { open = !open }
@@ -186,19 +239,21 @@ private fun Reply(text: String, copyable: Boolean) {
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         MarkdownText(text)
-        if (copyable) Text(
-            if (copied) "copied" else "copy",
-            color = Palette.dim,
-            fontFamily = words,
-            fontSize = wordSize(11.sp, 13.sp),
-            modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
-                .clickable {
-                    copy(context, text)
-                    copied = true
+        if (copyable) {
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable {
+                        copy(context, text)
+                        copied = true
+                    }
+                    .padding(vertical = 4.dp, horizontal = 2.dp),
+            ) {
+                Crossfade(copied, animationSpec = Motion.effect(), label = "copy") {
+                    Text(if (it) "copied" else "copy", color = Palette.dim, fontFamily = words, fontSize = wordSize(11.sp, 13.sp))
                 }
-                .padding(vertical = 4.dp, horizontal = 2.dp),
-        )
+            }
+        }
     }
 }
 
@@ -213,8 +268,14 @@ private fun Picture(e: Entry) {
         }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (e.role == "user") Arrangement.End else Arrangement.Start) {
+        val shown by animateFloatAsState(if (bitmap != null) 1f else 0f, Motion.effect(), label = "picture")
         bitmap?.let {
-            Image(it, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.heightIn(max = 260.dp).clip(RoundedCornerShape(12.dp)))
+            Image(
+                it,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.heightIn(max = 260.dp).graphicsLayer { alpha = shown }.clip(RoundedCornerShape(12.dp)),
+            )
         }
     }
 }
@@ -230,7 +291,7 @@ private fun Note(text: String) {
         textAlign = TextAlign.Center,
         maxLines = if (open) Int.MAX_VALUE else 2,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().clickable { open = !open }.padding(horizontal = 24.dp),
+        modifier = Modifier.fillMaxWidth().animateContentSize(Motion.spatial()).clickable { open = !open }.padding(horizontal = 24.dp),
     )
 }
 
@@ -251,8 +312,9 @@ private fun Steps(steps: List<Entry>) {
             Modifier.clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(if (open) "▾" else "▸", color = Palette.grey, fontFamily = Mono, fontSize = 12.sp)
-            if (running != null) Box(Modifier.padding(start = 8.dp).size(6.dp).clip(CircleShape).background(Palette.orange))
+            val turn by animateFloatAsState(if (open) 90f else 0f, Motion.spatial(), label = "chevron")
+            Text("▸", color = Palette.grey, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.rotate(turn))
+            if (running != null) Running(Modifier.padding(start = 8.dp))
             Text(
                 summary,
                 color = if (failed > 0) Palette.red else Palette.grey,
@@ -263,7 +325,11 @@ private fun Steps(steps: List<Entry>) {
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
-        if (open) {
+        AnimatedVisibility(
+            open,
+            enter = expandVertically(Motion.spatial()) + fadeIn(Motion.effect()),
+            exit = shrinkVertically(Motion.spatial()) + fadeOut(Motion.effect()),
+        ) {
             Column(Modifier.padding(start = 6.dp, top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 for (s in steps) Step(s)
             }
@@ -271,11 +337,19 @@ private fun Steps(steps: List<Entry>) {
     }
 }
 
+/** A dot that breathes while a tool runs. */
+@Composable
+private fun Running(modifier: Modifier) {
+    val breath by rememberInfiniteTransition(label = "running")
+        .animateFloat(0.3f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "breath")
+    Box(modifier.size(6.dp).graphicsLayer { alpha = breath }.clip(CircleShape).background(Palette.orange))
+}
+
 @Composable
 private fun Step(s: Entry) {
     var open by remember { mutableStateOf(false) }
     val mono = TextStyle(fontFamily = Mono, fontSize = 12.sp, lineHeight = 17.sp)
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(horizontal = 8.dp, vertical = 5.dp)) {
+    Column(Modifier.fillMaxWidth().animateContentSize(Motion.spatial()).clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(horizontal = 8.dp, vertical = 5.dp)) {
         Row {
             Text(
                 if (s.kind == "thinking") "thinking" else s.name,
