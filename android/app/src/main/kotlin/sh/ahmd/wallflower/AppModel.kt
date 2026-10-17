@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.filterNotNull
 import sh.ahmd.wallflower.session.HardwareKey
 import sh.ahmd.wallflower.session.Host
 import sh.ahmd.wallflower.session.HostKeys
@@ -26,7 +27,8 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     val confirm = Confirmations(prefs)
     val appearance = Appearance(prefs)
     val conversationViews = ConversationViews(prefs)
-    private var undelivered: Job? = null
+    val uploads = Uploads(app.contentResolver, prefs, drafts, viewModelScope)
+    private var listening: Job? = null
 
     private val _host = MutableStateFlow(Host.load(prefs))
     val host: StateFlow<Host?> = _host.asStateFlow()
@@ -49,10 +51,13 @@ class AppModel(app: Application) : AndroidViewModel(app) {
 
     private fun connect(host: Host) {
         _session.value?.stop()
-        undelivered?.cancel()
+        listening?.cancel()
         val transport = if (host.dev) TcpTransport() else SshTransport(host, key, hostKeys)
         val session = Session(transport, viewModelScope)
-        undelivered = viewModelScope.launch { session.undelivered.collect { drafts.restore(it.pane, it.text) } }
+        listening = viewModelScope.launch {
+            launch { session.undelivered.collect { drafts.restore(it.pane, it.text) } }
+            session.uploadDir.filterNotNull().collect(uploads::savedIn)
+        }
         _session.value = session
     }
 

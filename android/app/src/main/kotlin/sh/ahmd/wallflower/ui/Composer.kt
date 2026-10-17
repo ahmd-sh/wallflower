@@ -1,5 +1,29 @@
 package sh.ahmd.wallflower.ui
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.input.OutputTransformation
+import androidx.compose.foundation.text.input.TextFieldBuffer
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import sh.ahmd.wallflower.Uploads
+import sh.ahmd.wallflower.session.Session
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -93,6 +117,9 @@ import sh.ahmd.wallflower.KeyBar
  * replaces the line when sent, so the box is exactly what runs. The button
  * sends (held: types it in without Enter), enters the app's line when only
  * that has text, or stops.
+ *
+ * + sends photos or files to the Mac ([onAttach]); each shows above the box
+ * on its way, then its path goes in at the cursor, shown as its name.
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class) // edit changes for sticky keys; whether the keyboard is up
 @Composable
@@ -102,6 +129,10 @@ fun Composer(
     keys: List<BarKey>,
     connected: Boolean,
     line: InputLine?,
+    uploads: List<Uploads.Item>,
+    uploadDir: String?,
+    onAttach: (List<Uri>) -> Unit,
+    onDismissUpload: (String) -> Unit,
     onClear: (() -> Unit)?,
     onKey: (BarKey) -> Unit,
     onSend: (text: String, enter: Boolean) -> Boolean,
@@ -146,18 +177,31 @@ fun Composer(
             }
         }
     }
+    val paths = remember(uploadDir) { uploadDir?.let(Session::uploadPaths) }
+    val named = remember(paths) { paths?.let(::UploadNames) }
+    val whole = remember(paths) { paths?.let(::WholeUploads) }
     Column(
         Modifier
             .fillMaxWidth()
             .padding(start = 8.dp, end = 8.dp, bottom = 8.dp, top = 4.dp)
             .clip(RoundedCornerShape(26.dp))
             .background(Palette.bg1)
+            .animateContentSize(Motion.spatial())
             .padding(top = 14.dp, bottom = 8.dp),
     ) {
+        if (uploads.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                for (u in uploads) key(u.id) { UploadChip(u) { onDismissUpload(u.id) } }
+            }
+        }
         Box(Modifier.fillMaxWidth().animateContentSize(Motion.spatial()).padding(horizontal = 18.dp)) {
             BasicTextField(
                 state = state,
-                inputTransformation = intercept,
+                inputTransformation = intercept ?: whole,
+                outputTransformation = named,
                 lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 6),
                 textStyle = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp, lineHeight = 21.sp),
                 cursorBrush = SolidColor(Palette.orange),
@@ -223,6 +267,7 @@ fun Composer(
             Modifier.fillMaxWidth().padding(top = 10.dp, start = 8.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Attach(enabled = connected, onAttach = onAttach)
             KeyRow(keys, armed, press, onEditKeys, Modifier.weight(1f))
             SendButton(
                 action = when {
@@ -238,6 +283,122 @@ fun Composer(
         }
     }
 }
+
+/** + : photos, through the system's picker, or any file. */
+@Composable
+private fun Attach(enabled: Boolean, onAttach: (List<Uri>) -> Unit) {
+    val haptics = haptics()
+    var open by remember { mutableStateOf(false) }
+    val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_ATTACH)) { if (it.isNotEmpty()) onAttach(it) }
+    val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { if (it.isNotEmpty()) onAttach(it) }
+    Box(Modifier.padding(end = 6.dp)) {
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(Palette.bg2)
+                .clickable(enabled = enabled) {
+                    haptics.tick()
+                    open = true
+                },
+            contentAlignment = Alignment.Center,
+        ) { GlyphIcon(Glyph.Plus, if (enabled) Palette.fg else Palette.dim, size = 14.dp) }
+        PopupMenu(
+            expanded = open,
+            onDismiss = { open = false },
+            actions = listOf(
+                MenuAction("photos") {
+                    open = false
+                    photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+                MenuAction("files") {
+                    open = false
+                    files.launch(arrayOf("*/*"))
+                },
+            ),
+        )
+    }
+}
+
+/** A file on its way: what it is, and how far along, or why it didn't make it (tap to let it go). */
+@Composable
+private fun UploadChip(u: Uploads.Item, onDismiss: () -> Unit) {
+    val resolver = LocalContext.current.contentResolver
+    val thumb by produceState<ImageBitmap?>(null, u.uri) {
+        value = withContext(Dispatchers.IO) { runCatching { resolver.loadThumbnail(u.uri, android.util.Size(96, 96), null).asImageBitmap() }.getOrNull() }
+    }
+    Row(
+        Modifier
+            .height(36.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Palette.bg2)
+            .clickable(enabled = u.error != null, onClick = onDismiss)
+            .padding(start = 4.dp, end = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(Palette.bg3), contentAlignment = Alignment.Center) {
+            thumb?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                ?: Text(CLIP, color = Palette.grey, fontFamily = Mono, fontSize = 13.sp)
+        }
+        Column(Modifier.padding(start = 8.dp).widthIn(max = 150.dp)) {
+            Text(u.name, color = Palette.fg, fontFamily = Mono, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                u.error ?: "${percent(u)}%",
+                color = if (u.error != null) Palette.red else Palette.grey,
+                fontFamily = words,
+                fontSize = wordSize(10.sp, 11.sp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (u.error != null) GlyphIcon(Glyph.Close, Palette.grey, Modifier.padding(start = 8.dp), size = 11.dp)
+        else CircularProgressIndicator(
+            progress = { if (u.size > 0) u.sent.toFloat() / u.size else 0f },
+            modifier = Modifier.padding(start = 8.dp).size(14.dp),
+            color = Palette.green,
+            trackColor = Palette.bg3,
+            strokeWidth = 2.dp,
+        )
+    }
+}
+
+private fun percent(u: Uploads.Item) = if (u.size > 0) (u.sent * 100 / u.size).toInt() else 0
+
+/** An upload's path in the box shows as its name, marked as a file. */
+private class UploadNames(private val paths: Regex) : OutputTransformation {
+    override fun TextFieldBuffer.transformOutput() {
+        val found = paths.findAll(asCharSequence().toString()).toList()
+        var shift = 0
+        val names = ArrayList<IntRange>()
+        for (m in found) {
+            val name = "$CLIP " + m.value.substringAfterLast('/')
+            val start = m.range.first + shift
+            replace(start, m.range.last + 1 + shift, name)
+            names += start until start + name.length
+            shift += name.length - m.value.length
+        }
+        for (r in names) addStyle(SpanStyle(color = Palette.aqua, background = Palette.bg2), r.first, r.last + 1)
+    }
+}
+
+/** Deleting into an upload's path deletes all of it, as one thing: it shows as one. */
+@OptIn(ExperimentalFoundationApi::class)
+private class WholeUploads(private val paths: Regex) : InputTransformation {
+    override fun TextFieldBuffer.transformInput() {
+        if (changes.changeCount != 1) return
+        val now = changes.getRange(0)
+        val was = changes.getOriginalRange(0)
+        if (!now.collapsed || was.collapsed) return // only a deletion
+        val hit = paths.findAll(originalText.toString()).firstOrNull { it.range.first < was.max && was.min <= it.range.last } ?: return
+        revertAllChanges()
+        val end = (hit.range.last + 1).let { if (it < length && asCharSequence()[it] == ' ') it + 1 else it }
+        replace(hit.range.first, end, "")
+        selection = TextRange(hit.range.first)
+    }
+}
+
+private const val CLIP = "\uF0C6" // the font's paperclip
+private const val MAX_ATTACH = 10
 
 @Composable
 private fun KeyRow(keys: List<BarKey>, armed: BarKey?, onKey: (BarKey) -> Unit, onEdit: () -> Unit, modifier: Modifier) {

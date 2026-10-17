@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.placeCursorAtEnd
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.text.TextRange
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -40,6 +41,18 @@ class Drafts(private val prefs: SharedPreferences, private val scope: CoroutineS
         of(pane).edit {
             if (length > 0) replace(0, 0, text + "\n") else append(text)
             placeCursorAtEnd()
+        }
+    }
+
+    /** Puts [text] in at [pane]'s cursor as a word of its own, as a file dropped on a terminal is. */
+    fun insert(pane: String, text: String) {
+        of(pane).edit {
+            val at = selection.max
+            val s = asCharSequence()
+            val before = if (at > 0 && !s[at - 1].isWhitespace()) " " else ""
+            val after = if (at < length && s[at].isWhitespace()) "" else " "
+            replace(at, at, before + text + after)
+            selection = TextRange(at + before.length + text.length + after.length)
         }
     }
 

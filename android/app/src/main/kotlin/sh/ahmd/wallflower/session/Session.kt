@@ -1,7 +1,15 @@
 package sh.ahmd.wallflower.session
 
 import android.os.SystemClock
+import java.io.IOException
+import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.channels.ClosedSendChannelException
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,6 +50,8 @@ import sh.ahmd.wallflower.protocol.ServerHello
 import sh.ahmd.wallflower.protocol.ServerMessage
 import sh.ahmd.wallflower.protocol.State
 import sh.ahmd.wallflower.protocol.Transcript
+import sh.ahmd.wallflower.protocol.Upload
+import sh.ahmd.wallflower.protocol.Uploaded
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.terminal.Terminal
 
@@ -99,8 +109,17 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     /** Called on the IO thread after a pane's terminal changes. */
     @Volatile var onOutput: ((pane: String) -> Unit)? = null
 
+    private val _uploadDir = MutableStateFlow<String?>(null)
+    /** Where the gateway saves uploads: paths under it in what's sent are uploads, pasted on their own. */
+    val uploadDir: StateFlow<String?> = _uploadDir.asStateFlow()
+
     /** The live connection's outgoing queue; one writer drains it, so messages go out in order. */
     @Volatile private var queue: Channel<Outgoing>? = null
+    /** Completes when the live connection ends. */
+    @Volatile private var lost: CompletableDeferred<Unit>? = null
+    private val uploaded = ConcurrentHashMap<String, CompletableDeferred<Uploaded>>()
+    /** By ping: complete once its pong says everything sent before it arrived. */
+    private val arrivals = ConcurrentSkipListMap<Int, CompletableDeferred<Unit>>()
     @Volatile private var lastPing = 0L
     /** When the connection counts as dead unless a pong arrives; 0 if no ping is outstanding. */
     @Volatile private var deadline = 0L
@@ -119,6 +138,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     private sealed interface Outgoing {
         class Message(val message: ClientMessage) : Outgoing
         class Data(val pane: String, val bytes: ByteArray) : Outgoing
+        class Upload(val id: String, val bytes: ByteArray, val length: Int) : Outgoing
     }
 
     private class Submitted(val ping: Int, val pane: String, val text: String)
@@ -188,6 +208,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                     for (o in out) when (o) {
                         is Outgoing.Message -> w.send(o.message)
                         is Outgoing.Data -> w.sendData(o.pane, o.bytes)
+                        is Outgoing.Upload -> w.sendUpload(o.id, o.bytes, o.length)
                     }
                 } catch (e: Exception) {
                     conn.close()
@@ -196,8 +217,10 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
             lastPing = SystemClock.elapsedRealtime()
             deadline = 0
             synced = false
+            val ended = CompletableDeferred<Unit>()
             synchronized(pending) {
                 queue = out
+                lost = ended
                 following.clear()
             }
             follow(wanted)
@@ -216,13 +239,16 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 }
             } finally {
                 heartbeat.cancel()
-                val lost = synchronized(pending) {
+                val dropped = synchronized(pending) {
                     queue = null
+                    lost = null
                     out.close()
                     pending.toList().also { pending.clear() }
                 }
+                ended.complete(Unit)
+                arrivals.clear()
                 writer.cancel()
-                lost.forEach { _undelivered.tryEmit(Undelivered(it.pane, it.text)) }
+                dropped.forEach { _undelivered.tryEmit(Undelivered(it.pane, it.text)) }
             }
         }
     }
@@ -241,19 +267,24 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         }
     }
 
-    private fun ping(timeoutMs: Long): Int {
+    private fun ping(timeoutMs: Long, arrived: CompletableDeferred<Unit>? = null): Int {
         val id = pings.incrementAndGet()
         val now = SystemClock.elapsedRealtime()
         lastPing = now
         val d = now + timeoutMs
         if (deadline == 0L || d < deadline) deadline = d
+        if (arrived != null) arrivals[id] = arrived
         queue?.trySend(Outgoing.Message(Ping(id)))
         return id
     }
 
     private fun handle(m: ServerMessage) {
         when (m) {
-            is ServerHello -> _status.value = Status.Connected(m.tmux)
+            is ServerHello -> {
+                _uploadDir.value = m.uploads
+                _status.value = Status.Connected(m.tmux)
+            }
+            is Uploaded -> uploaded[m.id]?.complete(m)
             is State -> {
                 _state.value = m
                 // A pane picked on the phone gives way once tmux's active pane moves on (to it, or elsewhere).
@@ -294,6 +325,10 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
             }
             is Pong -> {
                 if (m.id == pings.get()) deadline = 0
+                arrivals.headMap(m.id, true).apply {
+                    values.forEach { it.complete(Unit) }
+                    clear()
+                }
                 // Messages are handled in order: everything sent before this ping arrived.
                 synchronized(pending) { pending.removeAll { it.ping <= m.id } }
             }
@@ -382,7 +417,13 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         val q = queue
         if (q == null || _status.value !is Status.Connected) return false
         if (clear.isNotEmpty()) q.trySend(Outgoing.Message(Keys(pane, clear)))
-        val sent = if ('\n' in text) {
+        val uploads = _uploadDir.value?.let { uploadPaths(it) }
+        val sent = if (uploads != null && uploads.containsMatchIn(text)) {
+            // Each upload is pasted on its own, as a file dropped on a terminal, so the app can take it in as one.
+            split(text, uploads).all { (part, upload) ->
+                q.trySend(if (upload || '\n' in part) Outgoing.Message(Paste(pane, part)) else Outgoing.Data(pane, part.encodeToByteArray())).isSuccess
+            } && (!enter || q.trySend(Outgoing.Message(Keys(pane, listOf("Enter")))).isSuccess)
+        } else if ('\n' in text) {
             q.trySend(Outgoing.Message(Paste(pane, text))).isSuccess &&
                 (!enter || q.trySend(Outgoing.Message(Keys(pane, listOf("Enter")))).isSuccess)
         } else {
@@ -390,6 +431,53 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         }
         if (sent) pending += Submitted(ping(PONG_TIMEOUT_MS), pane, text)
         sent
+    }
+
+    /**
+     * Sends [size] bytes from [input] to the Mac as upload [id] and returns
+     * where the gateway saved it. It goes a chunk at a time, each followed by
+     * a ping, with only [UPLOAD_AHEAD] chunks unanswered: whatever's typed
+     * meanwhile waits behind those alone rather than behind the whole file
+     * in the network's buffers, and [progress] hears what has truly arrived.
+     * Throws if the connection drops or the gateway won't save it.
+     */
+    suspend fun upload(id: String, name: String, size: Long, input: InputStream, progress: (Long) -> Unit): String {
+        val (q, ended) = synchronized(pending) { (queue ?: throw IOException("not connected")) to lost!! }
+        val reply = CompletableDeferred<Uploaded>()
+        uploaded[id] = reply
+        try {
+            q.send(Outgoing.Message(Upload(id, name, size)))
+            var sent = 0L
+            val ahead = ArrayDeque<Pair<Long, CompletableDeferred<Unit>>>() // bytes sent through a chunk, and its arrival
+            suspend fun settle(down: Int) {
+                while (ahead.size > down) {
+                    val (through, arrived) = ahead.removeFirst()
+                    arrived.unlessLost(ended)
+                    progress(through)
+                }
+            }
+            while (sent < size) {
+                val chunk = ByteArray(UPLOAD_CHUNK)
+                val n = input.read(chunk, 0, minOf(UPLOAD_CHUNK.toLong(), size - sent).toInt())
+                if (n < 0) throw IOException("$name ended early")
+                q.send(Outgoing.Upload(id, chunk, n))
+                sent += n
+                ahead.addLast(sent to CompletableDeferred<Unit>().also { ping(PONG_TIMEOUT_MS, it) })
+                settle(UPLOAD_AHEAD)
+            }
+            settle(0)
+            val r = reply.unlessLost(ended)
+            return r.path ?: throw IOException(r.error ?: "not saved")
+        } catch (_: ClosedSendChannelException) {
+            throw IOException("the connection dropped")
+        } finally {
+            uploaded.remove(id)
+        }
+    }
+
+    private suspend fun <T> Deferred<T>.unlessLost(ended: Deferred<Unit>): T = select {
+        onAwait { it }
+        ended.onAwait { throw IOException("the connection dropped") }
     }
 
     /** Tells tmux the size once it settles: the keyboard animates the view through every size in between. */
@@ -412,6 +500,24 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         const val PONG_TIMEOUT_MS = 10_000L
         const val PROBE_TIMEOUT_MS = 5_000L
         const val RESIZE_SETTLE_MS = 120L
+        const val UPLOAD_CHUNK = 32 * 1024
+        const val UPLOAD_AHEAD = 8
+
+        /** Upload paths: under [dir], names of the characters the gateway keeps, which never end in . or -. */
+        fun uploadPaths(dir: String) = Regex(Regex.escape(dir) + "/[A-Za-z0-9._-]*[A-Za-z0-9_]")
+
+        /** [text] as runs, each an upload's path or not. */
+        fun split(text: String, uploads: Regex): List<Pair<String, Boolean>> {
+            val parts = ArrayList<Pair<String, Boolean>>()
+            var at = 0
+            for (m in uploads.findAll(text)) {
+                if (m.range.first > at) parts += text.substring(at, m.range.first) to false
+                parts += m.value to true
+                at = m.range.last + 1
+            }
+            if (at < text.length) parts += text.substring(at) to false
+            return parts
+        }
 
         fun Window.activePane(): Pane? = panes.firstOrNull { it.active }
 

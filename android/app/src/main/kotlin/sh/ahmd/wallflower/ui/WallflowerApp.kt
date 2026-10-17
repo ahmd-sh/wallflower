@@ -374,6 +374,8 @@ private fun TerminalScreen(
         }
         // While its conversation shows, the same read finds any menu the pane's screen offers.
         var line by remember { mutableStateOf<InputLine?>(null) }
+        val uploads by model.uploads.items.collectAsStateWithLifecycle()
+        val uploadDir by model.uploads.dir.collectAsStateWithLifecycle()
         var menu by remember { mutableStateOf<Menu?>(null) }
         val terminal = pane?.let { terminals[it.id] }
         val reading by rememberUpdatedState(pane != null && pane.id in following)
@@ -557,6 +559,10 @@ private fun TerminalScreen(
                             keys = profile.keys,
                             connected = status is Status.Connected,
                             line = line,
+                            uploads = uploads.filter { it.pane == pane.id },
+                            uploadDir = uploadDir,
+                            onAttach = { uris -> model.uploads.add(session, pane.id, uris) },
+                            onDismissUpload = model.uploads::dismiss,
                             onClear = if (profile.clearKeys().isEmpty()) null else {
                                 {
                                     line?.let { session.send(Keys(pane.id, profile.clear(it))) }
