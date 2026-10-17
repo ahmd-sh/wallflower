@@ -83,7 +83,7 @@ Messages are handled in order, so a `pong` means everything sent before its
 | `result` | `id`, `lines`?, `error`? | reply to `tmux`, or a failed `scrollback` |
 | `error` | `message` | a message failed |
 | `pong` | `id` | |
-| `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `state`?, `since`? | a pane's conversation, see below |
+| `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `state`?, `since`?, `context`? | a pane's conversation, see below |
 | `uploaded` | `id`, `path`?, `error`? | where an upload was saved, or why it wasn't |
 | `bye` | `reason` | the gateway is exiting |
 
@@ -117,6 +117,11 @@ entries (200; `more` says there are earlier ones), then `entries` without
 replaces it: a tool call gets its result. An `error` says there's no
 conversation (any more), e.g. the program exited. A new conversation in the
 same process (`/clear`) arrives as another `reset`.
+
+`context` is how many tokens the conversation takes of the program's
+context, as of its latest reply, sent like `state` when it says and
+whenever it changes; 0 when it no longer knows (just after a compaction,
+until the next reply).
 
 `state` is what the program is doing, if it says: `working` on a turn
 (through its tool calls, until it's finally done), `waiting` for the user to

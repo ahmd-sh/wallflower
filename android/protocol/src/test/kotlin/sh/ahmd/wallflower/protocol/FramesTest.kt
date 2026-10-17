@@ -88,7 +88,7 @@ class FramesTest {
             message(),
         )
         assertEquals(Entries("%2", entries = listOf(Entry("n1", "user", "note", "[Request interrupted by user]"))), message())
-        assertEquals(Entries("%2", state = Entries.WAITING, since = 1792209270006), message())
+        assertEquals(Entries("%2", state = Entries.WAITING, since = 1792209270006, context = 17967), message())
         assertEquals(Entries("%2", reset = true, error = "the conversation ended"), message())
         assertEquals(Uploaded("u1", path = "/Users/me/Library/Caches/wallflower/uploads/PXL-1.jpg"), message())
         assertEquals(Uploaded("u2", error = "too big"), message())

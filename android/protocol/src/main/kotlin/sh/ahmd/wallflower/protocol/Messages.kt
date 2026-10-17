@@ -193,6 +193,8 @@ data class Entries(
     /** What the program is doing, when it says: [WORKING], [WAITING] or [IDLE]; since when, in Unix milliseconds. */
     val state: String? = null,
     val since: Long = 0,
+    /** Tokens the conversation takes of the program's context, when it says; 0 once it no longer knows (just compacted). */
+    val context: Int? = null,
 ) : ServerMessage {
     companion object {
         const val WORKING = "working"

@@ -50,6 +50,7 @@ func goldenClient(t *testing.T) []byte {
 
 func goldenServer(t *testing.T) []byte {
 	var b []byte
+	context := 17967
 	b = mustJSON(t, b, ServerHello{V: Version, Tmux: "3.8", Uploads: "/Users/me/Library/Caches/wallflower/uploads"})
 	b = mustJSON(t, b, State{Session: "$1", Name: "o", Windows: []Window{{
 		ID: "@1", Index: 1, Name: "base", Active: true, Zoomed: false, Cols: 56, Rows: 20,
@@ -74,7 +75,7 @@ func goldenServer(t *testing.T) []byte {
 		{ID: "a3", Role: "assistant", Kind: "text", Text: "**Done.** All `3` pass."},
 	}})
 	b = mustJSON(t, b, Entries{Pane: "%2", Entries: []Entry{{ID: "n1", Role: "user", Kind: "note", Text: "[Request interrupted by user]"}}})
-	b = mustJSON(t, b, Entries{Pane: "%2", State: StateWaiting, Since: 1792209270006})
+	b = mustJSON(t, b, Entries{Pane: "%2", State: StateWaiting, Since: 1792209270006, Context: &context})
 	b = mustJSON(t, b, Entries{Pane: "%2", Reset: true, Error: "the conversation ended"})
 	b = mustJSON(t, b, Uploaded{ID: "u1", Path: "/Users/me/Library/Caches/wallflower/uploads/PXL-1.jpg"})
 	b = mustJSON(t, b, Uploaded{ID: "u2", Error: "too big"})

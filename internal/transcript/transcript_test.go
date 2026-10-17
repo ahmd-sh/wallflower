@@ -51,17 +51,29 @@ func (f *fake) state(pid int, state string, since int64) {
 	f.running[pid] = s
 }
 
-func (f *fake) Parser() Parser { return fakeParser{} }
+func (f *fake) Parser() Parser { return &fakeParser{} }
 
-type fakeParser struct{}
+// fakeParser reads {"id","text"} lines as entries, and {"ctx"} lines as how full the context is.
+type fakeParser struct{ ctx int }
 
-func (fakeParser) Line(b []byte) []protocol.Entry {
-	var e struct{ ID, Text string }
+func (p *fakeParser) Line(b []byte) []protocol.Entry {
+	var e struct {
+		ID, Text string
+		Ctx      int
+	}
 	if json.Unmarshal(b, &e) != nil {
+		return nil
+	}
+	if e.Ctx > 0 {
+		p.ctx = e.Ctx
+	}
+	if e.ID == "" {
 		return nil
 	}
 	return []protocol.Entry{{ID: e.ID, Role: "assistant", Kind: "text", Text: e.Text}}
 }
+
+func (p *fakeParser) Context() int { return p.ctx }
 
 func line(id, text string) string { return fmt.Sprintf(`{"id":%q,"text":%q}`+"\n", id, text) }
 
@@ -135,6 +147,12 @@ func TestFollow(t *testing.T) {
 	src.state(7, protocol.StateIdle, 2000)
 	if e := next(t, got); e.State != protocol.StateIdle || e.Since != 2000 {
 		t.Fatalf("idle: %+v", e)
+	}
+
+	// So does how full its context is.
+	appendTo(t, one, `{"ctx":5000}`+"\n")
+	if e := next(t, got); e.Reset || len(e.Entries) > 0 || e.Context == nil || *e.Context != 5000 || e.State != protocol.StateIdle {
+		t.Fatalf("context: %+v", e)
 	}
 
 	// A cleared conversation is a new file, which starts the client over.

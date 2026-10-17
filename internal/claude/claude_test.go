@@ -66,6 +66,27 @@ func TestBigImagesAndOutputs(t *testing.T) {
 	}
 }
 
+func TestContext(t *testing.T) {
+	p := New("").Parser().(transcript.Measure)
+	line := func(s string) { p.(transcript.Parser).Line([]byte(s)) }
+	if p.Context() != 0 {
+		t.Errorf("before any reply: %d", p.Context())
+	}
+	line(`{"type":"assistant","uuid":"a","message":{"content":[],"usage":{"input_tokens":2,"cache_creation_input_tokens":736,"cache_read_input_tokens":543056,"output_tokens":319}}}`)
+	if p.Context() != 544113 {
+		t.Errorf("after a reply: %d", p.Context())
+	}
+	line(`{"type":"assistant","uuid":"s","isSidechain":true,"message":{"content":[],"usage":{"input_tokens":9000}}}`)
+	line(`{"type":"assistant","uuid":"e","message":{"content":[],"usage":{"input_tokens":0,"output_tokens":0}}}`)
+	if p.Context() != 544113 {
+		t.Errorf("a subagent's reply, or one without usage, changed it: %d", p.Context())
+	}
+	line(`{"type":"system","subtype":"compact_boundary","uuid":"c","content":"Conversation compacted","compactMetadata":{"trigger":"manual","preTokens":544113,"postTokens":17967}}`)
+	if p.Context() != 0 {
+		t.Errorf("after compacting, before the next reply: %d", p.Context())
+	}
+}
+
 func TestPlans(t *testing.T) {
 	p := New("").Parser()
 	got := p.Line([]byte(`{"type":"assistant","uuid":"a","message":{"content":[{"type":"tool_use","id":"t","name":"Write","input":{"file_path":"/Users/me/.claude/plans/fix-it.md","content":"# Plan\n\n1. fix it\n"}}]}}`))

@@ -196,6 +196,9 @@ type Reset struct {
 // entries are new, or replace the ones with their IDs. Error says why there
 // is no conversation (any more). State says what the CLI is doing, when it
 // says and whenever that changes (with no entries), and Since when it began.
+// Context is how many tokens the conversation takes of the CLI's context,
+// as of its latest reply, when it says and whenever that changes; 0 when it
+// no longer knows (just compacted, until the next reply).
 type Entries struct {
 	Pane    string  `json:"pane"`
 	Reset   bool    `json:"reset,omitempty"`
@@ -204,6 +207,7 @@ type Entries struct {
 	Error   string  `json:"error,omitempty"`
 	State   string  `json:"state,omitempty"` // StateWorking, StateWaiting or StateIdle
 	Since   int64   `json:"since,omitempty"` // Unix milliseconds
+	Context *int    `json:"context,omitempty"`
 }
 
 // What a CLI is doing: working on a turn (its tools included), waiting for

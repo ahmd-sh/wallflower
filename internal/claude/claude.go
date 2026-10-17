@@ -108,8 +108,15 @@ func projectDir(cwd string) string { return notAlnum.ReplaceAllString(cwd, "-") 
 func (s *Source) Parser() transcript.Parser { return &parser{tools: map[string]protocol.Entry{}} }
 
 type parser struct {
-	tools map[string]protocol.Entry // calls waiting for their result, by tool_use id
+	tools   map[string]protocol.Entry // calls waiting for their result, by tool_use id
+	context int                       // tokens in context as of the latest reply or compaction
 }
+
+// Context is what the latest reply's request held, cached or not, and the
+// reply itself (the next request holds that too). A compaction leaves it
+// unknown until the next reply: claude counts what's left without the system
+// prompt and tools that the replies' counts include.
+func (p *parser) Context() int { return p.context }
 
 type record struct {
 	Type             string `json:"type"`
@@ -117,8 +124,15 @@ type record struct {
 	IsMeta           bool   `json:"isMeta"`
 	IsSidechain      bool   `json:"isSidechain"`
 	IsCompactSummary bool   `json:"isCompactSummary"`
+	Subtype          string `json:"subtype"`
 	Message          struct {
 		Content json.RawMessage `json:"content"`
+		Usage   *struct {
+			InputTokens              int `json:"input_tokens"`
+			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+			OutputTokens             int `json:"output_tokens"`
+		} `json:"usage"`
 	} `json:"message"`
 }
 
@@ -141,7 +155,18 @@ type block struct {
 
 func (p *parser) Line(b []byte) []protocol.Entry {
 	var r record
-	if json.Unmarshal(b, &r) != nil || r.IsSidechain || r.IsMeta || r.UUID == "" {
+	if json.Unmarshal(b, &r) != nil || r.IsSidechain || r.UUID == "" {
+		return nil
+	}
+	if u := r.Message.Usage; r.Type == "assistant" && u != nil {
+		if n := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens + u.OutputTokens; n > 0 {
+			p.context = n
+		}
+	}
+	if r.Subtype == "compact_boundary" {
+		p.context = 0
+	}
+	if r.IsMeta {
 		return nil
 	}
 	if r.Type != "user" && r.Type != "assistant" {

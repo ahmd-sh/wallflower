@@ -40,6 +40,27 @@ type Parser interface {
 	Line(b []byte) []protocol.Entry
 }
 
+// A Measure is a Parser that knows how many tokens the conversation takes of
+// the CLI's context, as of the lines it has read; 0 until it does.
+type Measure interface {
+	Context() int
+}
+
+// known is n to send, if there's anything to say.
+func known(n int) *int {
+	if n == 0 {
+		return nil
+	}
+	return &n
+}
+
+func contextOf(p Parser) int {
+	if m, ok := p.(Measure); ok {
+		return m.Context()
+	}
+	return 0
+}
+
 const (
 	// Recent is how many entries a client gets first; older ones stay in
 	// the terminal's scrollback.
@@ -52,8 +73,8 @@ const (
 
 // Follow sends pid's conversation: its recent entries, then entries as
 // they're written, starting over when the process moves to another
-// transcript (a cleared conversation), and what the process is doing as
-// that changes. It returns when ctx is done, or after saying so when the
+// transcript (a cleared conversation), and what the process is doing, and
+// how full its context is, as those change. It returns when ctx is done, or after saying so when the
 // process stops having a transcript.
 func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries)) error {
 	var (
@@ -64,6 +85,7 @@ func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries
 		partial  []byte
 		announce bool    // say there's a conversation, if its file isn't there yet
 		said     Session // the state last sent
+		measured int     // the context last sent
 	)
 	defer func() {
 		if f != nil {
@@ -90,10 +112,10 @@ func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries
 				var entries []protocol.Entry
 				var more bool
 				entries, more, p, offset = recent(f, src, Recent)
-				partial, announce, said = nil, false, cur
-				send(protocol.Entries{Reset: true, More: more, Entries: entries, State: cur.State, Since: cur.Since})
+				partial, announce, said, measured = nil, false, cur, contextOf(p)
+				send(protocol.Entries{Reset: true, More: more, Entries: entries, State: cur.State, Since: cur.Since, Context: known(measured)})
 			} else if announce {
-				announce, said = false, cur
+				announce, said, measured = false, cur, 0
 				send(protocol.Entries{Reset: true, State: cur.State, Since: cur.Since})
 			}
 		} else if st, err := f.Stat(); err == nil && st.Size() < offset {
@@ -110,9 +132,17 @@ func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries
 				send(protocol.Entries{Entries: changed})
 			}
 		}
-		if (f != nil || !announce) && (cur.State != said.State || cur.Since != said.Since) {
-			said = cur
-			send(protocol.Entries{State: cur.State, Since: cur.Since})
+		now := measured
+		if f != nil {
+			now = contextOf(p)
+		}
+		if (f != nil || !announce) && (cur.State != said.State || cur.Since != said.Since || now != measured) {
+			e := protocol.Entries{State: cur.State, Since: cur.Since}
+			if now != measured {
+				e.Context = &now
+			}
+			said, measured = cur, now
+			send(e)
 		}
 		select {
 		case <-ctx.Done():
