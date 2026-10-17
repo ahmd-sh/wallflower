@@ -832,7 +832,7 @@ private fun ViewToggle(conversation: Boolean, onClick: () -> Unit) {
             .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(Palette.bg1)
-            .border(1.dp, Palette.bg4, RoundedCornerShape(8.dp))
+            .border(1.dp, Palette.border, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 9.dp, vertical = 4.dp),
     ) {
@@ -871,7 +871,7 @@ private fun PaneDots(count: Int, position: () -> Float, onClick: () -> Unit) {
             .padding(8.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(Palette.bg1)
-            .border(1.dp, Palette.bg4, RoundedCornerShape(8.dp))
+            .border(1.dp, Palette.border, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp)
             .size(width = dot * count + gap * (count - 1).coerceAtLeast(0), height = dot),
@@ -932,7 +932,7 @@ private fun TabBar(
             .fillMaxWidth()
             .drawBehind {
                 val line = 1.dp.toPx()
-                drawRect(Palette.bg4, Offset(0f, size.height - line), Size(size.width, line))
+                drawRect(Palette.border, Offset(0f, size.height - line), Size(size.width, line))
             }
             .padding(vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,

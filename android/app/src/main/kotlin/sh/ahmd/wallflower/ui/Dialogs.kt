@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.PopupProperties
 
 enum class Glyph { Plus, Close, Power, Chat, Terminal, Spark }
 
@@ -115,7 +116,14 @@ class MenuAction(val label: String, val color: Color = Palette.fg, val onClick: 
  * ruled apart beneath an optional [header]. Felt as it opens and shuts.
  */
 @Composable
-fun PopupMenu(expanded: Boolean, onDismiss: () -> Unit, actions: List<MenuAction>, header: (@Composable () -> Unit)? = null) {
+fun PopupMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    actions: List<MenuAction>,
+    header: (@Composable () -> Unit)? = null,
+    /** Leave the keyboard up while it's open, rather than taking focus. */
+    keepKeyboard: Boolean = false,
+) {
     val haptics = haptics()
     var felt by remember { mutableStateOf(expanded) }
     LaunchedEffect(expanded) {
@@ -129,7 +137,8 @@ fun PopupMenu(expanded: Boolean, onDismiss: () -> Unit, actions: List<MenuAction
         containerColor = Palette.bg1,
         tonalElevation = 0.dp,
         shadowElevation = 6.dp,
-        border = BorderStroke(1.dp, Palette.bg4),
+        border = BorderStroke(1.dp, Palette.border),
+        properties = PopupProperties(focusable = !keepKeyboard),
     ) {
         Column(Modifier.widthIn(min = 150.dp).padding(horizontal = 4.dp)) {
             header?.let {

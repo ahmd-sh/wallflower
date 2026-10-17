@@ -1,6 +1,16 @@
 package sh.ahmd.wallflower.ui
 
 import android.graphics.BitmapFactory
+import androidx.compose.animation.core.animate
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import android.net.Uri
 import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -115,7 +125,8 @@ import sh.ahmd.wallflower.KeyBar
  * draft stays put until sent. The app keeps its own input line ([line], when
  * wallflower can read it). While the box is empty it shows that line dimmed,
  * with × to clear it in the app ([onClear]), or else what the app suggests
- * typing; a tap brings either into the box to edit. What's in the box
+ * typing; a swipe right brings either into the box to edit (a tap is just
+ * the box's, to type something else). What's in the box
  * replaces the line when sent, so the box is exactly what runs. The button
  * sends (held: types it in without Enter), enters the app's line when only
  * that has text, or stops.
@@ -151,6 +162,16 @@ fun Composer(
     val imeVisible = WindowInsets.isImeVisible
     val focusManager = LocalFocusManager.current
     LaunchedEffect(imeVisible) { if (!imeVisible) focusManager.clearFocus() }
+    // Back from a picker the keyboard was up for, it comes back up, once the window has focus again.
+    var refocus by remember { mutableStateOf(false) }
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(refocus, windowFocused) {
+        if (refocus && windowFocused) {
+            refocus = false
+            focus.requestFocus()
+            keyboard?.show()
+        }
+    }
     val pending = line?.text.orEmpty()
     val ghost = pending.ifEmpty { line?.suggestion.orEmpty() }
     val haptics = haptics()
@@ -214,6 +235,17 @@ fun Composer(
                 }
                 for (u in uploads) key(u.id) { UploadChip(u) { onDismissUpload(u.id) } }
             }
+            uploads.firstOrNull { it.error != null }?.let { u ->
+                Text(
+                    "${u.name}: ${u.error}",
+                    color = Palette.red,
+                    fontFamily = words,
+                    fontSize = wordSize(11.sp, 12.sp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
+                )
+            }
         }
         Box(Modifier.fillMaxWidth().animateContentSize(Motion.spatial()).padding(horizontal = 18.dp)) {
             BasicTextField(
@@ -240,32 +272,51 @@ fun Composer(
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
             if (state.text.isEmpty() && armed == null && ghost.isNotEmpty()) {
-                // The app's line or its suggestion, over the empty box: tap to bring it in and edit it.
+                // The app's line or its suggestion, over the empty box. A tap is the box's, to type afresh;
+                // swiped right, past where a tick says, it comes in to edit.
                 val suggested = pending.isEmpty()
                 val clearable = !suggested && onClear != null
-                // Only the words take the tap: beside them, the box takes it, to type afresh.
-                Row(Modifier.padding(end = if (clearable) 30.dp else 0.dp), verticalAlignment = Alignment.Top) {
-                    if (suggested) GlyphIcon(Glyph.Spark, Palette.dim, Modifier.padding(top = 5.dp, end = 8.dp), size = 11.dp)
-                    Text(
-                        ghost,
-                        color = if (suggested) Palette.dim else Palette.grey,
-                        fontFamily = Mono,
-                        fontSize = 15.sp,
-                        lineHeight = 21.sp,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable {
-                                haptics.tick()
-                                state.edit {
-                                    replace(0, length, ghost)
-                                    placeCursorAtEnd()
-                                }
+                val reach = with(LocalDensity.current) { TAKE_REACH.toPx() }
+                var pulled by remember { mutableFloatStateOf(0f) }
+                var past by remember { mutableStateOf(false) }
+                val ink = lerp(if (suggested) Palette.dim else Palette.grey, Palette.fg, (pulled / reach).coerceIn(0f, 1f))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(end = if (clearable) 30.dp else 0.dp)
+                        .pointerInput(Unit) {
+                            detectTapGestures {
                                 focus.requestFocus()
                                 keyboard?.show()
+                            }
+                        }
+                        .draggable(
+                            rememberDraggableState { dx ->
+                                pulled = (pulled + dx).coerceIn(0f, reach * 1.5f)
+                                if ((pulled >= reach) != past) {
+                                    past = !past
+                                    haptics.threshold(past)
+                                }
                             },
-                    )
+                            Orientation.Horizontal,
+                            onDragStopped = {
+                                if (past) {
+                                    state.edit {
+                                        replace(0, length, ghost)
+                                        placeCursorAtEnd()
+                                    }
+                                    focus.requestFocus()
+                                    keyboard?.show()
+                                }
+                                past = false
+                                animate(pulled, 0f, animationSpec = Motion.spatial()) { v, _ -> pulled = v }
+                            },
+                        )
+                        .graphicsLayer { translationX = pulled },
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    if (suggested) GlyphIcon(Glyph.Spark, ink, Modifier.padding(top = 5.dp, end = 8.dp), size = 11.dp)
+                    Text(ghost, color = ink, fontFamily = Mono, fontSize = 15.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
                 if (clearable) {
                     Box(
@@ -285,7 +336,7 @@ fun Composer(
             Modifier.fillMaxWidth().padding(top = 10.dp, start = 8.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Attach(enabled = connected, onAttach = onAttach)
+            Attach(enabled = connected, typing = { imeVisible }, onAttach = onAttach, onBack = { refocus = true })
             KeyRow(keys, armed, press, onEditKeys, Modifier.weight(1f))
             SendButton(
                 action = when {
@@ -302,21 +353,28 @@ fun Composer(
     }
 }
 
-/** + : photos, through the system's picker, or any file. */
+/** + : photos, through the system's picker, or any file. The keyboard stays up for it, and comes back after. */
 @Composable
-private fun Attach(enabled: Boolean, onAttach: (List<Uri>) -> Unit) {
+private fun Attach(enabled: Boolean, typing: () -> Boolean, onAttach: (List<Uri>) -> Unit, onBack: () -> Unit) {
     val haptics = haptics()
     var open by remember { mutableStateOf(false) }
-    val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_ATTACH)) { if (it.isNotEmpty()) onAttach(it) }
-    val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { if (it.isNotEmpty()) onAttach(it) }
+    var wasTyping by remember { mutableStateOf(false) }
+    val picked: (List<Uri>) -> Unit = {
+        if (it.isNotEmpty()) onAttach(it)
+        if (wasTyping) onBack()
+    }
+    val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_ATTACH), picked)
+    val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), picked)
     Box(Modifier.padding(end = 6.dp)) {
         Box(
             Modifier
                 .size(36.dp)
                 .clip(CircleShape)
                 .background(Palette.bg2)
+                .border(1.dp, Palette.border, CircleShape)
                 .clickable(enabled = enabled) {
                     haptics.tick()
+                    wasTyping = typing()
                     open = true
                 },
             contentAlignment = Alignment.Center,
@@ -324,6 +382,7 @@ private fun Attach(enabled: Boolean, onAttach: (List<Uri>) -> Unit) {
         PopupMenu(
             expanded = open,
             onDismiss = { open = false },
+            keepKeyboard = true,
             actions = listOf(
                 MenuAction("photos") {
                     open = false
@@ -338,83 +397,72 @@ private fun Attach(enabled: Boolean, onAttach: (List<Uri>) -> Unit) {
     }
 }
 
-/** A file in the draft: a photo as itself, anything else by name; × takes it out. */
+/** A file in the draft: a photo as itself, anything else by its name; × takes it out. */
 @Composable
 private fun Attached(path: String, thumb: File?, onRemove: () -> Unit) {
     val image by produceState<ImageBitmap?>(null, thumb) {
         value = thumb?.let { withContext(Dispatchers.IO) { BitmapFactory.decodeFile(it.path)?.asImageBitmap() } }
     }
-    val shape = RoundedCornerShape(12.dp)
-    Box(Modifier.height(TILE).clip(shape).background(Palette.bg2)) {
-        image?.let { Image(it, null, Modifier.size(TILE), contentScale = ContentScale.Crop) }
-            ?: Row(Modifier.height(TILE).padding(start = 12.dp, end = 30.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(CLIP, color = Palette.grey, fontFamily = Mono, fontSize = 13.sp)
-                Text(
-                    path.substringAfterLast('/'),
-                    color = Palette.fg,
-                    fontFamily = Mono,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 6.dp).widthIn(max = 150.dp),
-                )
-            }
-        Box(
-            Modifier
-                .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(20.dp)
-                .clip(CircleShape)
-                .background(Palette.bg0.copy(alpha = 0.8f))
-                .clickable(onClick = onRemove),
-            contentAlignment = Alignment.Center,
-        ) { GlyphIcon(Glyph.Close, Palette.fg, size = 9.dp) }
-    }
+    Tile(image, path.substringAfterLast('/')) { Remove(Modifier.align(Alignment.TopEnd), onRemove) }
 }
 
-/** A file on its way: what it is, and how far along, or why it didn't make it (tap to let it go). */
+/** A file on its way, and how far along; failed, tap to let it go (why is said beneath). */
 @Composable
 private fun UploadChip(u: Uploads.Item, onDismiss: () -> Unit) {
     val resolver = LocalContext.current.contentResolver
     val thumb by produceState<ImageBitmap?>(null, u.uri) {
-        value = withContext(Dispatchers.IO) { runCatching { resolver.loadThumbnail(u.uri, android.util.Size(96, 96), null).asImageBitmap() }.getOrNull() }
+        value = withContext(Dispatchers.IO) { runCatching { resolver.loadThumbnail(u.uri, android.util.Size(192, 192), null).asImageBitmap() }.getOrNull() }
     }
-    Row(
-        Modifier
-            .height(TILE)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Palette.bg2)
-            .clickable(enabled = u.error != null, onClick = onDismiss)
-            .padding(start = 6.dp, end = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(TILE - 12.dp).clip(RoundedCornerShape(8.dp)).background(Palette.bg3), contentAlignment = Alignment.Center) {
-            thumb?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-                ?: Text(CLIP, color = Palette.grey, fontFamily = Mono, fontSize = 13.sp)
-        }
-        Column(Modifier.padding(start = 8.dp).widthIn(max = 150.dp)) {
-            Text(u.name, color = Palette.fg, fontFamily = Mono, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                u.error ?: "${percent(u)}%",
-                color = if (u.error != null) Palette.red else Palette.grey,
-                fontFamily = words,
-                fontSize = wordSize(10.sp, 11.sp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+    Tile(thumb, u.name, Modifier.clickable(enabled = u.error != null, onClick = onDismiss)) {
+        Box(Modifier.matchParentSize().background(if (u.error != null) Palette.red.copy(alpha = 0.3f) else Palette.bg0.copy(alpha = 0.55f)))
+        if (u.error != null) {
+            Remove(Modifier.align(Alignment.TopEnd), onDismiss)
+        } else {
+            CircularProgressIndicator(
+                progress = { if (u.size > 0) u.sent.toFloat() / u.size else 0f },
+                modifier = Modifier.align(Alignment.Center).size(22.dp),
+                color = Palette.fg,
+                trackColor = Palette.bg3,
+                strokeWidth = 2.5.dp,
             )
         }
-        if (u.error != null) GlyphIcon(Glyph.Close, Palette.grey, Modifier.padding(start = 8.dp), size = 11.dp)
-        else CircularProgressIndicator(
-            progress = { if (u.size > 0) u.sent.toFloat() / u.size else 0f },
-            modifier = Modifier.padding(start = 8.dp).size(14.dp),
-            color = Palette.green,
-            trackColor = Palette.bg3,
-            strokeWidth = 2.dp,
-        )
     }
 }
 
-private fun percent(u: Uploads.Item) = if (u.size > 0) (u.sent * 100 / u.size).toInt() else 0
+/** A square for a file: its picture, or a paperclip and its name. */
+@Composable
+private fun Tile(image: ImageBitmap?, name: String, modifier: Modifier = Modifier, over: @Composable BoxScope.() -> Unit) {
+    Box(modifier.size(TILE).clip(RoundedCornerShape(12.dp)).background(Palette.bg2)) {
+        if (image != null) {
+            Image(image, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else {
+            Text(CLIP, color = Palette.grey, fontFamily = Mono, fontSize = 16.sp, modifier = Modifier.align(Alignment.Center).padding(bottom = 10.dp))
+            Text(
+                name,
+                color = Palette.fg,
+                fontFamily = Mono,
+                fontSize = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.MiddleEllipsis,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(start = 5.dp, end = 5.dp, bottom = 6.dp),
+            )
+        }
+        over()
+    }
+}
+
+@Composable
+private fun Remove(modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier
+            .padding(4.dp)
+            .size(20.dp)
+            .clip(CircleShape)
+            .background(Palette.bg0.copy(alpha = 0.8f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { GlyphIcon(Glyph.Close, Palette.fg, size = 9.dp) }
+}
 
 /** An upload's path in the box shows as its name, marked as a file. */
 private class UploadNames(private val paths: Regex) : OutputTransformation {
@@ -451,7 +499,8 @@ private class WholeUploads(private val paths: Regex) : InputTransformation {
 
 private const val CLIP = "\uF0C6" // the font's paperclip
 private const val MAX_ATTACH = 10
-private val TILE = 48.dp
+private val TILE = 56.dp
+private val TAKE_REACH = 72.dp // how far a swipe takes the app's line or suggestion
 
 @Composable
 private fun KeyRow(keys: List<BarKey>, armed: BarKey?, onKey: (BarKey) -> Unit, onEdit: () -> Unit, modifier: Modifier) {
