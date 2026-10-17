@@ -23,6 +23,7 @@ object Palette {
     val bg1 = Color(0xFF272E33)
     val bg2 = Color(0xFF2E383C)
     val bg3 = Color(0xFF374145)
+    val bg4 = Color(0xFF414B50)
     val fg = Color(0xFFD3C6AA)
     val grey = Color(0xFF859289)
     val dim = Color(0xFF5C6A72)

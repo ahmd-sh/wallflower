@@ -47,6 +47,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -135,6 +136,9 @@ fun ConversationView(
             conversation.state == Entries.WAITING -> if (unread) Status.Waiting else Status.Working
             else -> null
         }
+        // The card opening and shutting, felt even where the status line leaves with it.
+        val feel = rememberFold()
+        SideEffect { feel.shown(status == Status.Asking) }
         val list = rememberLazyListState()
         val scope = rememberCoroutineScope()
         // At the bottom, new entries glide into view; scrolled up to read, the list stays put.
@@ -172,7 +176,7 @@ fun ConversationView(
                                     label = "status",
                                 ) { now ->
                                     when (now) {
-                                        Status.Asking -> shown?.let { MenuCard(it, onKeys) }
+                                        Status.Asking -> shown?.let { MenuCard(it, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }) }
                                         Status.Working -> Working(conversation.since)
                                         Status.Waiting -> Waiting()
                                     }
@@ -488,6 +492,7 @@ private fun Step(s: Entry) {
 private class Fold(private val haptics: Haptics) {
     private var tapped = false
     private var height = 0
+    private var open: Boolean? = null
 
     fun tap() {
         tapped = true
@@ -498,6 +503,15 @@ private class Fold(private val haptics: Haptics) {
         if (tapped) feel(height)
         tapped = false
         height = 0
+    }
+
+    /** Whether it's open now, for a fold that opens by itself: a change is felt as if tapped. */
+    fun shown(open: Boolean) {
+        val was = this.open
+        this.open = open
+        if (was == null || was == open) return
+        tap()
+        if (!open) leave()
     }
 
     /** Its content's height, laid out at the size it's animating to. */

@@ -69,16 +69,27 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
         private class Row(val text: String, private val cells: IntArray, private val muted: BooleanArray, private val lit: BooleanArray) {
             fun highlighted(i: Int) = i < text.length && text[i] != ' ' && lit[cells[i]]
 
-            /** Most of its characters from [from] on are grey. */
-            fun mutedFrom(from: Int): Boolean {
+            /** Most of its characters from [from] (up to [to]) are grey. */
+            fun mutedFrom(from: Int, to: Int = text.length): Boolean {
                 var grey = 0
                 var all = 0
-                for (i in from until text.length) {
+                for (i in from until to) {
                     if (text[i].isWhitespace()) continue
                     all++
                     if (muted[cells[i]]) grey++
                 }
                 return all > 0 && grey * 2 > all
+            }
+
+            /** Where grey words start that run to its end, after words from [from] that aren't: a description beside a label. */
+            fun greyTail(from: Int): Int? {
+                var at: Int? = null
+                for (i in text.length - 1 downTo from) {
+                    if (text[i].isWhitespace()) continue
+                    if (!muted[cells[i]]) break
+                    at = i
+                }
+                return at?.takeIf { a -> (from until a).any { !text[it].isWhitespace() && !muted[cells[it]] } }
             }
 
             companion object {
@@ -119,8 +130,14 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
                             labelAt += label.length - b.groupValues[2].length
                             label = b.groupValues[2]
                         }
-                        labelMuted = rows[y].mutedFrom(labelAt)
-                        options += Option(next, label, "", checked, m.groups[2] != null, rows[y].mutedFrom(numberAt))
+                        // A description can follow the label on its row, in grey after a ·.
+                        var detail = ""
+                        rows[y].greyTail(labelAt)?.let { at ->
+                            detail = row.substring(at).trim().removePrefix("·").trim()
+                            label = row.substring(labelAt, at).trim().removeSuffix("·").trim()
+                        }
+                        labelMuted = rows[y].mutedFrom(labelAt, labelAt + label.length)
+                        options += Option(next, label, detail, checked, m.groups[2] != null, labelMuted)
                         next++
                     }
                     rule(row) -> {
@@ -136,7 +153,7 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
                         options[options.lastIndex] = if (wrapped && last.detail.isEmpty() && rows[y].mutedFrom(indent(row)) == labelMuted) {
                             last.copy(label = last.label + " " + text)
                         } else {
-                            last.copy(detail = if (last.detail.isEmpty()) text else last.detail + "\n" + text)
+                            last.copy(detail = if (last.detail.isEmpty()) text else last.detail + (if (wrapped) " " else "\n") + text)
                         }
                     }
                     indent(row) > numberAt && options.isNotEmpty() -> {

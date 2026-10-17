@@ -821,6 +821,7 @@ private fun ViewToggle(conversation: Boolean, onClick: () -> Unit) {
             .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(Palette.bg1)
+            .border(1.dp, Palette.bg4, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 9.dp, vertical = 4.dp),
     ) {
@@ -859,6 +860,7 @@ private fun PaneDots(count: Int, position: () -> Float, onClick: () -> Unit) {
             .padding(8.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(Palette.bg1)
+            .border(1.dp, Palette.bg4, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp)
             .size(width = dot * count + gap * (count - 1).coerceAtLeast(0), height = dot),
@@ -914,13 +916,22 @@ private fun TabBar(
     val at = remember { Animatable(index.coerceAtLeast(0).toFloat()) }
     LaunchedEffect(index) { if (index >= 0) at.animateTo(index.toFloat(), Motion.spatial()) }
     var menu by remember { mutableStateOf<String?>(null) }
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                val line = 1.dp.toPx()
+                drawRect(Palette.bg4, Offset(0f, size.height - line), Size(size.width, line))
+            }
+            .padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         BarButton(Glyph.Plus, Palette.fg, Modifier.padding(start = 6.dp), onClick = onNew)
         LazyRow(
             state = list,
             modifier = Modifier
                 .weight(1f)
-                .clipToBounds()
+                .clip(RoundedCornerShape(8.dp))
                 .drawBehind {
                     // The tabs' backgrounds, where the list put them, and the highlight between them.
                     val info = list.layoutInfo
@@ -965,7 +976,7 @@ private fun TabBar(
                                     menu = w.id
                                 },
                             )
-                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text("${w.index}", color = number, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), fontWeight = FontWeight.Bold)

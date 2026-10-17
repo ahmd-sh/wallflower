@@ -217,6 +217,21 @@ class MenuTest {
     }
 
     @Test
+    fun aRealPermissionWithADescriptionBesideALabel() {
+        val menu = Menu.read(captured("claude-bash-permission.ansi", 54))!!
+        assertEquals(Line("touch /tmp/wf-probe-1 && ls -l /tmp/wf-probe-1", true), menu.lines.single { it.code })
+        assertEquals(
+            listOf(
+                Option(1, "Yes", "", null, current = true, muted = false),
+                Option(2, "Yes, and allow access to /tmp and touch /tmp/wf-probe-1 commands", "", null, current = false, muted = false),
+                Option(3, "Yes, and switch to auto mode", "auto mode handles these prompts for you", null, current = false, muted = false),
+                Option(4, "No", "", null, current = false, muted = false),
+            ),
+            menu.options,
+        )
+    }
+
+    @Test
     fun aNumberedListIsNotAMenu() {
         val s = screen(
             plain("⏺ Two steps:"),
