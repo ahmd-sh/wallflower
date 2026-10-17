@@ -217,9 +217,14 @@ internal fun Field(label: String, value: String, keyboard: KeyboardType = Keyboa
 
 @Composable
 internal fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    val haptics = haptics()
+    val flip = {
+        haptics.toggle(!on)
+        onChange(!on)
+    }
     if (grotesque) {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { onChange(!on) }.padding(vertical = 4.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = flip).padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Checkbox(on, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = Palette.orange, uncheckedColor = Palette.grey, checkmarkColor = Palette.bg0))
@@ -227,7 +232,7 @@ internal fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
         }
         return
     }
-    Row(Modifier.clickable { onChange(!on) }, verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.clickable(onClick = flip), verticalAlignment = Alignment.CenterVertically) {
         Text(if (on) "[x] " else "[ ] ", color = Palette.orange, fontFamily = Mono, fontSize = 13.sp)
         Text(label, color = Palette.fg, fontFamily = Mono, fontSize = 12.sp)
     }

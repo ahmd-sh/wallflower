@@ -1,6 +1,13 @@
 package sh.ahmd.wallflower.ui
 
-import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -34,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.LaunchedEffect
@@ -60,7 +68,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -141,7 +148,7 @@ fun Composer(
             .background(Palette.bg1)
             .padding(top = 14.dp, bottom = 8.dp),
     ) {
-        Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp)) {
+        Box(Modifier.fillMaxWidth().animateContentSize(Motion.spatial()).padding(horizontal = 18.dp)) {
             BasicTextField(
                 state = state,
                 inputTransformation = intercept,
@@ -244,33 +251,42 @@ private fun KeyRow(keys: List<BarKey>, armed: BarKey?, onKey: (BarKey) -> Unit, 
     }
 }
 
-/** Sends on tap; keys like the arrows repeat while held. */
+/** Sends on tap; keys like the arrows repeat while held. A sticky key toggles, and feels like it. */
 @Composable
 private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
-    val view = LocalView.current
+    val haptics = haptics()
     val scope = rememberCoroutineScope()
     var pressed by remember { mutableStateOf(false) }
     val repeats = key.keys.size == 1 && key.keys[0] in KeyBar.repeating
-    val fire = {
-        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+    val isArmed by rememberUpdatedState(armed)
+    val fire = { again: Boolean ->
+        when {
+            key.sticky -> haptics.toggle(!isArmed)
+            again -> haptics.repeat()
+            else -> haptics.key()
+        }
         onKey(key)
     }
+    val background by animateColorAsState(
+        when {
+            armed -> Palette.orange
+            pressed -> Palette.bg3
+            else -> Palette.bg2
+        },
+        Motion.effect(),
+        label = "key",
+    )
+    val ink by animateColorAsState(if (armed) Palette.bg0 else Palette.fg, Motion.effect(), label = "key")
     Text(
         key.label,
-        color = if (armed) Palette.bg0 else Palette.fg,
+        color = ink,
         fontFamily = Mono,
         fontSize = 13.sp,
         maxLines = 1,
         modifier = Modifier
             .height(36.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(
-                when {
-                    armed -> Palette.orange
-                    pressed -> Palette.bg3
-                    else -> Palette.bg2
-                },
-            )
+            .background(background)
             .pointerInput(key) {
                 detectTapGestures(onPress = {
                     pressed = true
@@ -278,10 +294,11 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
                     val repeat = if (repeats) {
                         scope.launch {
                             delay(REPEAT_AFTER_MS)
+                            fire(false)
                             repeated = true
                             while (isActive) {
-                                fire()
                                 delay(REPEAT_EVERY_MS)
+                                fire(true)
                             }
                         }
                     } else {
@@ -290,7 +307,7 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
                     val released = tryAwaitRelease() // false if the row scrolled instead
                     repeat?.cancel()
                     pressed = false
-                    if (released && !repeated) fire()
+                    if (released && !repeated) fire(false)
                 })
             }
             .padding(horizontal = 14.dp, vertical = 9.dp),
@@ -299,20 +316,29 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
 
 private enum class Action { Send, Enter, Stop }
 
+/** Its color follows whether there's anything to send; the mark turns into the next one. */
 @Composable
 private fun SendButton(action: Action, connected: Boolean, onSend: (enter: Boolean) -> Unit, onEnter: () -> Unit, onStop: () -> Unit) {
-    val view = LocalView.current
-    val background = when {
-        !connected -> Palette.bg2
-        action == Action.Stop -> Palette.bg3
-        else -> Palette.green
-    }
-    val ink = when {
-        !connected -> Palette.dim
-        action == Action.Stop -> Palette.fg
-        else -> Palette.bg0
-    }
-    Canvas(
+    val haptics = haptics()
+    val background by animateColorAsState(
+        when {
+            !connected -> Palette.bg2
+            action == Action.Stop -> Palette.bg3
+            else -> Palette.green
+        },
+        Motion.effect(),
+        label = "send",
+    )
+    val ink by animateColorAsState(
+        when {
+            !connected -> Palette.dim
+            action == Action.Stop -> Palette.fg
+            else -> Palette.bg0
+        },
+        Motion.effect(),
+        label = "send",
+    )
+    Box(
         Modifier
             .size(40.dp)
             .clip(CircleShape)
@@ -322,12 +348,12 @@ private fun SendButton(action: Action, connected: Boolean, onSend: (enter: Boole
                 onLongClick = {
                     // Held: type it in without Enter, to finish with the app's own completion.
                     if (action == Action.Send) {
-                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        haptics.hold()
                         onSend(false)
                     }
                 },
                 onClick = {
-                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                    haptics.confirm()
                     when (action) {
                         Action.Send -> onSend(true)
                         Action.Enter -> onEnter()
@@ -335,12 +361,25 @@ private fun SendButton(action: Action, connected: Boolean, onSend: (enter: Boole
                     }
                 },
             ),
+        contentAlignment = Alignment.Center,
     ) {
+        AnimatedContent(
+            action,
+            transitionSpec = { (fadeIn(Motion.effect()) + scaleIn(Motion.effect(), 0.4f)) togetherWith (fadeOut(Motion.effect()) + scaleOut(Motion.effect(), 0.4f)) },
+            label = "mark",
+        ) { a -> Mark(a, { ink }) }
+    }
+}
+
+@Composable
+private fun Mark(action: Action, ink: () -> Color) {
+    Canvas(Modifier.size(40.dp)) {
+        val color = ink()
         val c = center
         val h = 7.dp.toPx()
         val w = 2.2.dp.toPx()
         fun line(x0: Float, y0: Float, x1: Float, y1: Float) =
-            drawLine(ink, Offset(c.x + x0 * h, c.y + y0 * h), Offset(c.x + x1 * h, c.y + y1 * h), w, StrokeCap.Round)
+            drawLine(color, Offset(c.x + x0 * h, c.y + y0 * h), Offset(c.x + x1 * h, c.y + y1 * h), w, StrokeCap.Round)
         when (action) {
             Action.Send -> {
                 line(0f, 1f, 0f, -1f)
@@ -355,7 +394,7 @@ private fun SendButton(action: Action, connected: Boolean, onSend: (enter: Boole
             }
             Action.Stop -> {
                 val half = 5.5.dp.toPx()
-                drawRoundRect(ink, Offset(c.x - half, c.y - half), Size(half * 2, half * 2), CornerRadius(1.5.dp.toPx()))
+                drawRoundRect(color, Offset(c.x - half, c.y - half), Size(half * 2, half * 2), CornerRadius(1.5.dp.toPx()))
             }
         }
     }

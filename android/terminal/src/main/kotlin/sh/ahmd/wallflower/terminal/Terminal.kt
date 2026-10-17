@@ -65,18 +65,23 @@ class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
     /**
      * Packs what changed since the last call (everything if [force]) into
      * [into]. Returns false if there is nothing to draw, including while the
-     * app holds a synchronized update.
+     * app holds a synchronized update. Changes are taken once, so a [reader]
+     * other than the last one gets everything: two views can show one pane.
      */
-    fun frame(into: FrameBuffer, force: Boolean = false): Boolean = lock.read {
+    fun frame(into: FrameBuffer, force: Boolean = false, reader: Any? = null): Boolean = lock.read {
         if (handle == 0L) return@read false
-        var n = nativeFrame(handle, into.buffer, force)
+        val full = force || reader !== lastReader
+        var n = nativeFrame(handle, into.buffer, full)
         if (n < 0) {
             into.grow(-n) // nothing was consumed; the retry packs the same changes
-            n = nativeFrame(handle, into.buffer, force)
+            n = nativeFrame(handle, into.buffer, full)
         }
         into.load(maxOf(n, 0))
+        if (n > 0) lastReader = reader
         n > 0
     }
+
+    @Volatile private var lastReader: Any? = null
 
     override fun close() = lock.write {
         if (handle != 0L) nativeFree(handle)

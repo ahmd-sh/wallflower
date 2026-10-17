@@ -233,6 +233,7 @@ private fun Prompt(text: String) {
 @Composable
 private fun Reply(text: String, copyable: Boolean) {
     val context = LocalContext.current
+    val haptics = haptics()
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) {
         if (copied) {
@@ -248,6 +249,7 @@ private fun Reply(text: String, copyable: Boolean) {
                     .clip(RoundedCornerShape(6.dp))
                     .clickable {
                         copy(context, text)
+                        haptics.confirm()
                         copied = true
                     }
                     .padding(vertical = 4.dp, horizontal = 2.dp),

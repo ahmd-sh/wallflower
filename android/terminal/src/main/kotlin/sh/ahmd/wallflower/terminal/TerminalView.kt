@@ -41,6 +41,7 @@ import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_STRIKETHROUGH
 class TerminalView(context: Context) : View(context) {
     var terminal: Terminal? = null
         set(value) {
+            if (field === value) return
             field = value
             forceFull = true
             requestFrame()
@@ -155,11 +156,20 @@ class TerminalView(context: Context) : View(context) {
         if (!frameRequested.getAndSet(true)) postOnAnimation(pull)
     }
 
+    /** Paused, it stops pulling frames (it's covered); it catches up when resumed. */
+    var paused = false
+        set(value) {
+            if (field == value) return
+            field = value
+            if (!value) requestFrame()
+        }
+
     private fun pullFrame() {
         frameRequested.set(false)
         val t = terminal ?: return
+        if (paused) return
         if (forceFull) t.setTheme(theme)
-        if (!t.frame(frame, forceFull)) return
+        if (!t.frame(frame, forceFull, reader = this)) return
         forceFull = false
 
         if (frame.cols != cols || frame.rows != rows) {
@@ -421,6 +431,12 @@ class TerminalView(context: Context) : View(context) {
         if (restHeight == 0f || room <= 0f) return 0f
         return -(if (alt) room else minOf(room, scrollback * cell))
     }
+
+    /** Where the cursor's row ends as drawn, in pixels from the top: what to keep in view when showing part of this. */
+    fun cursorBottom(): Float = if (rows == 0) height.toFloat() else cursorRows() * cellHeight * fitScale() - shift()
+
+    /** How wide the grid is drawn, in pixels; 0 before the first frame. */
+    fun gridWidth(): Float = cols * cellWidth * fitScale()
 
     /** Rows down to the cursor's, which tmux keeps in view; all of them if it's hidden. */
     private fun cursorRows() = if (cursorVisible) cursorY + 1 else rows

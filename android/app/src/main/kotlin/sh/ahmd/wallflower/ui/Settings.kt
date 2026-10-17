@@ -1,5 +1,6 @@
 package sh.ahmd.wallflower.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -82,6 +83,8 @@ fun SettingsScreen(
             Chip("bricolage", look == Look.Grotesque, Grotesque) { appearance.use(Look.Grotesque) }
         }
         Body("The terminal, what you type for it, keys and values stay in the terminal font.")
+        val feel by appearance.haptics.collectAsStateWithLifecycle()
+        Toggle("haptics for swipes, switches and sends", feel) { appearance.feel(it) }
 
         Section("mac")
         if (host != null) {
@@ -309,14 +312,22 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable () -> U
 }
 
 @Composable
-private fun Chip(label: String, selected: Boolean, font: FontFamily = Mono, onClick: () -> Unit) = Text(
-    label,
-    color = if (selected) Palette.bg0 else Palette.fg,
-    fontFamily = font,
-    fontSize = 13.sp,
-    modifier = Modifier
-        .clip(RoundedCornerShape(18.dp))
-        .background(if (selected) Palette.orange else Palette.bg2)
-        .clickable(onClick = onClick)
-        .padding(horizontal = 14.dp, vertical = 9.dp),
-)
+private fun Chip(label: String, selected: Boolean, font: FontFamily = Mono, onClick: () -> Unit) {
+    val haptics = haptics()
+    val background by animateColorAsState(if (selected) Palette.orange else Palette.bg2, Motion.effect(), label = "chip")
+    val ink by animateColorAsState(if (selected) Palette.bg0 else Palette.fg, Motion.effect(), label = "chip")
+    Text(
+        label,
+        color = ink,
+        fontFamily = font,
+        fontSize = 13.sp,
+        modifier = Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(background)
+            .clickable {
+                if (!selected) haptics.tick()
+                onClick()
+            }
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+    )
+}
