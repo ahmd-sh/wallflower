@@ -127,6 +127,7 @@ import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Session.Companion.shownPane
 import sh.ahmd.wallflower.session.Status
 import sh.ahmd.wallflower.terminal.InputLine
+import sh.ahmd.wallflower.terminal.Menu
 import sh.ahmd.wallflower.terminal.Terminal
 import sh.ahmd.wallflower.terminal.TerminalView
 
@@ -373,16 +374,26 @@ private fun TerminalScreen(
             }
             onDispose { session.onOutput = null }
         }
+        // While its conversation shows, the same read finds any menu the pane's screen offers.
         var line by remember { mutableStateOf<InputLine?>(null) }
+        var menu by remember { mutableStateOf<Menu?>(null) }
         val terminal = pane?.let { terminals[it.id] }
+        val reading by rememberUpdatedState(pane != null && pane.id in following)
+        LaunchedEffect(pane?.id) { menu = null } // another pane's; the same pane's new terminal (more history) offers the same
         LaunchedEffect(terminal) {
             line = null
             lineTicks.trySend(Unit)
             for (tick in lineTicks) {
-                line = withContext(Dispatchers.Default) { terminal?.screen()?.let(InputLine::read) }
+                val (l, m) = withContext(Dispatchers.Default) {
+                    val screen = terminal?.screen()
+                    screen?.let(InputLine::read) to screen?.takeIf { reading }?.let(Menu::read)
+                }
+                line = l
+                menu = m
                 delay(LINE_EVERY_MS)
             }
         }
+        LaunchedEffect(reading) { lineTicks.trySend(Unit) }
 
         // The pane zooms out into its card among the window's others; a card zooms back in.
         var overview by remember { mutableStateOf(false) }
@@ -463,7 +474,12 @@ private fun TerminalScreen(
             var last by remember { mutableStateOf(Conversation()) }
             if (conversation != null) last = conversation
             androidx.compose.animation.AnimatedVisibility(conversation != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
-                ConversationView(last, swipe = swipe)
+                ConversationView(
+                    last,
+                    swipe = swipe,
+                    menu = if (current) menu else null,
+                    onKeys = { keys -> session.send(Keys(p.id, keys)) },
+                )
             }
         }
 
@@ -804,7 +820,7 @@ private fun ViewToggle(conversation: Boolean, onClick: () -> Unit) {
         Modifier
             .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Palette.bg1.copy(alpha = 0.85f))
+            .background(Palette.bg1)
             .clickable(onClick = onClick)
             .padding(horizontal = 9.dp, vertical = 4.dp),
     ) {
@@ -842,7 +858,7 @@ private fun PaneDots(count: Int, position: () -> Float, onClick: () -> Unit) {
         Modifier
             .padding(8.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Palette.bg1.copy(alpha = 0.85f))
+            .background(Palette.bg1)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp)
             .size(width = dot * count + gap * (count - 1).coerceAtLeast(0), height = dot),

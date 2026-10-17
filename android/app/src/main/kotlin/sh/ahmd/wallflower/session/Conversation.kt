@@ -6,17 +6,25 @@ import sh.ahmd.wallflower.protocol.Entry
 /**
  * A pane's conversation, as the program in it recorded it. [loaded] once the
  * gateway has sent it; [more] if it holds earlier entries than these;
- * [error] when there's none to show.
+ * [error] when there's none to show. [state] is what the program is doing,
+ * if it says ([Entries.WORKING]...), and [since] when it started.
  */
 data class Conversation(
     val entries: List<Entry> = emptyList(),
     val more: Boolean = false,
     val error: String? = null,
     val loaded: Boolean = false,
+    val state: String? = null,
+    val since: Long = 0,
 ) {
-    /** With [m] applied: a reset replaces everything, else entries replace theirs by id or come last. */
+    val working get() = state == Entries.WORKING
+
+    /** With [m] applied: a reset replaces everything, else entries replace theirs by id or come last; a state replaces the last. */
     fun apply(m: Entries): Conversation {
-        if (m.reset) return Conversation(m.entries.takeLast(MAX_ENTRIES), m.more || m.entries.size > MAX_ENTRIES, m.error, loaded = true)
+        if (m.reset) {
+            return Conversation(m.entries.takeLast(MAX_ENTRIES), m.more || m.entries.size > MAX_ENTRIES, m.error, loaded = true, m.state, m.since)
+        }
+        if (m.state != null && m.entries.isEmpty()) return copy(state = m.state, since = m.since, error = m.error ?: error)
         val at = HashMap<String, Int>(entries.size)
         entries.forEachIndexed { i, e -> at[e.id] = i }
         val next = entries.toMutableList()
@@ -30,7 +38,14 @@ data class Conversation(
             }
         }
         val dropped = (next.size - MAX_ENTRIES).coerceAtLeast(0)
-        return copy(entries = if (dropped > 0) next.drop(dropped) else next, more = more || dropped > 0, error = m.error, loaded = true)
+        return copy(
+            entries = if (dropped > 0) next.drop(dropped) else next,
+            more = more || dropped > 0,
+            error = m.error,
+            loaded = true,
+            state = m.state ?: state,
+            since = if (m.state != null) m.since else since,
+        )
     }
 
     companion object {

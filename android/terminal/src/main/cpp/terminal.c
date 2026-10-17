@@ -66,6 +66,21 @@ static void on_render_hold(GhosttyTerminal term, void* userdata, bool held) {
 
 static int32_t rgb(GhosttyColorRgb c) { return (c.r << 16) | (c.g << 8) | c.b; }
 
+// A grey that apps use for secondary text: bright black, the middle of the
+// 256-color grey ramp and the cube's greys, or an RGB grey neither dark nor
+// light.
+static bool muted(GhosttyStyleColor c) {
+  if (c.tag == GHOSTTY_STYLE_COLOR_PALETTE) {
+    uint8_t p = c.value.palette;
+    return p == 8 || (p >= 240 && p <= 250) || p == 59 || p == 102 || p == 145;
+  }
+  if (c.tag != GHOSTTY_STYLE_COLOR_RGB) return false;
+  GhosttyColorRgb v = c.value.rgb;
+  int hi = v.r > v.g ? (v.r > v.b ? v.r : v.b) : (v.g > v.b ? v.g : v.b);
+  int lo = v.r < v.g ? (v.r < v.b ? v.r : v.b) : (v.g < v.b ? v.g : v.b);
+  return hi - lo <= 24 && hi >= 90 && lo <= 200;
+}
+
 static int32_t style_color(GhosttyStyleColor c, const GhosttyRenderStateColors* colors) {
   switch (c.tag) {
     case GHOSTTY_STYLE_COLOR_RGB: return rgb(c.value.rgb);
@@ -208,7 +223,8 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeWheel(JNIEnv* env, jclass cls, j
 // (1: soft-wrapped onto the next row) and per cell an attribute byte and a
 // codepoint count, then that many i32 codepoints. Attributes: bits 0-1 the
 // OSC 133 role (0 output, 1 input, 2 prompt), 4 faint, 8 in palette color 8
-// (autosuggestion grey), 16 the second half of a wide cell.
+// (autosuggestion grey), 16 the second half of a wide cell, 32 in a grey (see
+// muted), 64 highlighted: inverse, or on a background color.
 JNIEXPORT jbyteArray JNICALL
 Java_sh_ahmd_wallflower_terminal_Terminal_nativeScreen(JNIEnv* env, jclass cls, jlong h) {
   (void)cls;
@@ -255,6 +271,8 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeScreen(JNIEnv* env, jclass cls, 
         if (ghostty_grid_ref_style(&ref, &style) == GHOSTTY_SUCCESS) {
           if (style.faint) attr |= 4;
           if (style.fg_color.tag == GHOSTTY_STYLE_COLOR_PALETTE && style.fg_color.value.palette == 8) attr |= 8;
+          if (muted(style.fg_color)) attr |= 32;
+          if (style.inverse || style.bg_color.tag != GHOSTTY_STYLE_COLOR_NONE) attr |= 64;
         }
         if (ghostty_grid_ref_graphemes(&ref, cps, 8, &n) != GHOSTTY_SUCCESS) n = 0;
       }

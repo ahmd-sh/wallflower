@@ -1,7 +1,9 @@
 package sh.ahmd.wallflower.ui
 
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
 
 /**
@@ -14,4 +16,10 @@ object Motion {
     fun <T> spatial(): FiniteAnimationSpec<T> = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
 
     fun <T> effect(): FiniteAnimationSpec<T> = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
+
+    /** How long [spatial] takes to move something [distance] pixels, until it's within a pixel of where it stops. */
+    fun settleMillis(distance: Float): Long =
+        spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow, visibilityThreshold = 1f)
+            .vectorize(Float.VectorConverter)
+            .getDurationNanos(AnimationVector1D(0f), AnimationVector1D(distance), AnimationVector1D(0f)) / 1_000_000
 }

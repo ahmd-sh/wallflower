@@ -38,4 +38,17 @@ class ConversationTest {
         assertEquals("new", c.entries.last().id)
         assertEquals(true, c.more)
     }
+
+    @Test
+    fun theStateKeepsUntilItChanges() {
+        val c = Conversation()
+            .apply(Entries("%1", reset = true, entries = listOf(text("a")), state = Entries.WORKING, since = 5))
+            .apply(Entries("%1", entries = listOf(text("b"))))
+        assertEquals(true, c.working)
+        assertEquals(5L, c.since)
+        val done = c.apply(Entries("%1", state = Entries.IDLE, since = 9))
+        assertEquals(Entries.IDLE, done.state)
+        assertEquals(9L, done.since)
+        assertEquals(listOf("a", "b"), done.entries.map { it.id })
+    }
 }

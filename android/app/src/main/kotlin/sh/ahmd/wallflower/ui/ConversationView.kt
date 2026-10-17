@@ -2,9 +2,12 @@ package sh.ahmd.wallflower.ui
 
 import android.graphics.BitmapFactory
 import android.util.Base64
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -17,6 +20,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -54,11 +58,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -70,17 +79,28 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import sh.ahmd.wallflower.protocol.Entries
 import sh.ahmd.wallflower.protocol.Entry
 import sh.ahmd.wallflower.session.Conversation
+import sh.ahmd.wallflower.terminal.Menu
 
 /**
  * A pane's conversation in place of its terminal: what each side said, with
  * each run of tool calls and thinking folded into one line, to open when
  * wanted. The newest is at the bottom, which stays in view as entries come.
- * Sideways drags go to [swipe], to move between panes as on the terminal.
+ * Below it, while the program works, a line says so; when its screen offers
+ * a [menu] (a permission, a question), that's there to answer, and the keys
+ * picking an option go to [onKeys]. Sideways drags go to [swipe], to move
+ * between panes as on the terminal.
  */
 @Composable
-fun ConversationView(conversation: Conversation, modifier: Modifier = Modifier, swipe: Swipe? = null) {
+fun ConversationView(
+    conversation: Conversation,
+    modifier: Modifier = Modifier,
+    swipe: Swipe? = null,
+    menu: Menu? = null,
+    onKeys: (List<String>) -> Unit = {},
+) {
     var dragged by remember { mutableFloatStateOf(0f) }
     Box(
         modifier
@@ -98,13 +118,31 @@ fun ConversationView(conversation: Conversation, modifier: Modifier = Modifier, 
             ),
     ) {
         val items = remember(conversation.entries) { items(conversation.entries) }
+        // A menu while the program says it's busy is one left on the screen, or a list that looks like one.
+        val asking = menu?.takeIf { conversation.state != Entries.WORKING }
+        // The program says it's waiting a moment after its screen moved on (answered), so for that long it's working.
+        var unread by remember { mutableStateOf(false) }
+        LaunchedEffect(conversation.state, asking == null) {
+            unread = false
+            if (conversation.state == Entries.WAITING && asking == null) {
+                delay(UNREAD_MS)
+                unread = true
+            }
+        }
+        val status = when {
+            asking != null -> Status.Asking
+            conversation.state == Entries.WORKING -> Status.Working
+            conversation.state == Entries.WAITING -> if (unread) Status.Waiting else Status.Working
+            else -> null
+        }
         val list = rememberLazyListState()
         val scope = rememberCoroutineScope()
         // At the bottom, new entries glide into view; scrolled up to read, the list stays put.
         val atBottom by remember { derivedStateOf { list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset < 8 } }
         val away by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 600 } }
         val follow = atBottom
-        LaunchedEffect(items.size) { if (follow) list.animateScrollToItem(0) }
+        LaunchedEffect(items.size, status) { if (follow) list.animateScrollToItem(0) }
+
         val phase = when {
             !conversation.loaded -> Phase.Reading
             items.isEmpty() -> Phase.Empty
@@ -122,8 +160,30 @@ fun ConversationView(conversation: Conversation, modifier: Modifier = Modifier, 
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 48.dp, bottom = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
+                        if (status != null) {
+                            item(key = "status") {
+                                // One item that changes between them, so a menu that flickers off and on doesn't leave and come back.
+                                var shown by remember { mutableStateOf(asking) }
+                                if (asking != null) shown = asking
+                                AnimatedContent(
+                                    status,
+                                    Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect()),
+                                    transitionSpec = { fadeIn(Motion.effect()) togetherWith fadeOut(Motion.effect()) using SizeTransform(clip = false) },
+                                    label = "status",
+                                ) { now ->
+                                    when (now) {
+                                        Status.Asking -> shown?.let { MenuCard(it, onKeys) }
+                                        Status.Working -> Working(conversation.since)
+                                        Status.Waiting -> Waiting()
+                                    }
+                                }
+                            }
+                        }
+                        val newest = items.lastOrNull()
                         items(items.asReversed(), key = { it.key }) {
-                            Box(Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())) { ItemView(it) }
+                            Box(Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())) {
+                                ItemView(it, ongoing = status != null && it === newest)
+                            }
                         }
                         if (conversation.more) item(key = "more") { Note("earlier messages are in the terminal") }
                     }
@@ -152,6 +212,12 @@ fun ConversationView(conversation: Conversation, modifier: Modifier = Modifier, 
 }
 
 private enum class Phase { Reading, Empty, Shown }
+
+/** What's below the conversation: a menu to answer, the program working, or waiting on something unread. */
+private enum class Status { Asking, Working, Waiting }
+
+/** How long the program can say it's waiting without a menu on screen before that's what it is. */
+private const val UNREAD_MS = 1_200L
 
 /** What the list shows: something said, or a run of steps (tool calls, thinking) between. */
 private sealed interface Item {
@@ -195,8 +261,9 @@ private fun items(entries: List<Entry>): List<Item> {
     return out
 }
 
+/** [ongoing]: the newest item of a turn still going, whose reply isn't the last word yet. */
 @Composable
-private fun ItemView(item: Item) {
+private fun ItemView(item: Item, ongoing: Boolean) {
     when (item) {
         is Item.Steps -> Steps(item.entries)
         is Item.Said -> {
@@ -205,7 +272,7 @@ private fun ItemView(item: Item) {
                 e.kind == "image" -> Picture(e)
                 e.kind == "note" -> Note(e.text)
                 e.role == "user" -> Prompt(e.text)
-                else -> Reply(e.text, copyable = item.last)
+                else -> Reply(e.text, copyable = item.last && !ongoing)
             }
         }
     }
@@ -304,6 +371,7 @@ private fun Note(text: String) {
 @Composable
 private fun Steps(steps: List<Entry>) {
     var open by remember { mutableStateOf(false) }
+    val feel = rememberFold()
     val running = steps.lastOrNull { it.kind == "tool" }?.takeIf { !it.done }
     val failed = steps.count { it.error }
     val names = steps.filter { it.kind == "tool" }.map { it.name }.distinct()
@@ -314,7 +382,14 @@ private fun Steps(steps: List<Entry>) {
     }
     Column {
         Row(
-            Modifier.clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(vertical = 4.dp),
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable {
+                    feel.tap()
+                    if (open) feel.leave()
+                    open = !open
+                }
+                .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val turn by animateFloatAsState(if (open) 90f else 0f, Motion.spatial(), label = "chevron")
@@ -335,7 +410,10 @@ private fun Steps(steps: List<Entry>) {
             enter = expandVertically(Motion.spatial()) + fadeIn(Motion.effect()),
             exit = shrinkVertically(Motion.spatial()) + fadeOut(Motion.effect()),
         ) {
-            Column(Modifier.padding(start = 6.dp, top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(
+                Modifier.onSizeChanged { feel.laidOut(it.height) }.padding(start = 6.dp, top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 for (s in steps) Step(s)
             }
         }
@@ -353,8 +431,20 @@ private fun Running(modifier: Modifier) {
 @Composable
 private fun Step(s: Entry) {
     var open by remember { mutableStateOf(false) }
+    val feel = rememberFold()
     val mono = TextStyle(fontFamily = Mono, fontSize = 12.sp, lineHeight = 17.sp)
-    Column(Modifier.fillMaxWidth().animateContentSize(Motion.spatial()).clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(horizontal = 8.dp, vertical = 5.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .animateContentSize(Motion.spatial())
+            .onSizeChanged { feel.laidOut(it.height) } // the size it's going to
+            .clip(RoundedCornerShape(8.dp))
+            .clickable {
+                feel.tap()
+                open = !open
+            }
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+    ) {
         Row {
             Text(
                 if (s.kind == "thinking") "thinking" else s.name,
@@ -388,6 +478,99 @@ private fun Step(s: Entry) {
                 )
             }
         }
+    }
+}
+
+/**
+ * Feels a fold opening or shutting: after a [tap], its next change of height
+ * plays a slide lasting as long as the spring takes to move that far.
+ */
+private class Fold(private val haptics: Haptics) {
+    private var tapped = false
+    private var height = 0
+
+    fun tap() {
+        tapped = true
+    }
+
+    /** Its content goes as it shuts, all of it at once (it animates out after). */
+    fun leave() {
+        if (tapped) feel(height)
+        tapped = false
+        height = 0
+    }
+
+    /** Its content's height, laid out at the size it's animating to. */
+    fun laidOut(h: Int) {
+        val moved = kotlin.math.abs(h - height)
+        height = h
+        if (tapped && moved > 0) feel(moved)
+    }
+
+    private fun feel(px: Int) {
+        tapped = false
+        haptics.slide(Motion.settleMillis(px.toFloat()))
+    }
+}
+
+@Composable
+private fun rememberFold(): Fold {
+    val haptics = haptics()
+    return remember(haptics) { Fold(haptics) }
+}
+
+/** The program working on its turn, and for how long; gone when it's done. */
+@Composable
+private fun Working(since: Long) {
+    val seconds by produceState(elapsed(since), since) {
+        while (true) {
+            value = elapsed(since)
+            delay(1_000 - System.currentTimeMillis() % 1_000)
+        }
+    }
+    val shine by rememberInfiniteTransition(label = "working")
+        .animateFloat(-0.5f, 1.5f, infiniteRepeatable(tween(1_600, easing = LinearEasing)), label = "shine")
+    Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Running(Modifier)
+        Text(
+            "working" + (if (since > 0) " · " + duration(seconds) else ""),
+            style = TextStyle(fontFamily = words, fontSize = wordSize(12.sp, 14.sp)),
+            modifier = Modifier
+                .padding(start = 8.dp)
+                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                .drawWithContent {
+                    drawContent()
+                    // A light passing along it.
+                    val x = shine * size.width
+                    drawRect(
+                        Brush.horizontalGradient(listOf(Palette.grey, Palette.fg, Palette.grey), startX = x - size.width / 3, endX = x + size.width / 3),
+                        blendMode = BlendMode.SrcIn,
+                    )
+                },
+        )
+    }
+}
+
+private fun elapsed(since: Long) = if (since > 0) ((System.currentTimeMillis() - since) / 1_000).coerceAtLeast(0) else 0
+
+private fun duration(seconds: Long) = when {
+    seconds < 60 -> "${seconds}s"
+    seconds < 3_600 -> "${seconds / 60}m ${seconds % 60}s"
+    else -> "${seconds / 3_600}h ${seconds % 3_600 / 60}m"
+}
+
+/** The program needs an answer that isn't on its screen as a menu wallflower can read. */
+@Composable
+private fun Waiting() {
+    Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(6.dp).clip(CircleShape).background(Palette.orange))
+        Text(
+            "waiting for you · answer in the terminal",
+            color = Palette.grey,
+            fontFamily = words,
+            fontSize = wordSize(12.sp, 14.sp),
+            modifier = Modifier.padding(start = 8.dp),
+        )
     }
 }
 

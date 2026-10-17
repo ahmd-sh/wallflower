@@ -5,8 +5,8 @@ import java.nio.ByteOrder
 
 /**
  * The active screen's text, with what each cell is: enough to read what an
- * app's input line holds. Cells are row-major; a wide character's second
- * cell is an empty spacer.
+ * app's input line holds, or the choices it offers. Cells are row-major; a
+ * wide character's second cell is an empty spacer.
  */
 class Screen(
     val cols: Int,
@@ -29,6 +29,12 @@ class Screen(
 
     fun spacer(x: Int, y: Int) = attrs[y * cols + x] and SPACER != 0
 
+    /** In a grey, as apps write secondary text: hints, descriptions. */
+    fun muted(x: Int, y: Int) = attrs[y * cols + x] and MUTED != 0
+
+    /** Inverse or on a background color, as apps mark what's current. */
+    fun highlighted(x: Int, y: Int) = attrs[y * cols + x] and HIGHLIGHT != 0
+
     /** The row continues on the next one (soft wrap). */
     fun wrapped(y: Int) = wrapped[y]
 
@@ -39,6 +45,8 @@ class Screen(
         const val FAINT = 4
         const val GREY = 8
         const val SPACER = 16
+        const val MUTED = 32
+        const val HIGHLIGHT = 64
 
         /** Reads the native snapshot layout (see terminal.c). */
         fun parse(bytes: ByteArray): Screen {
