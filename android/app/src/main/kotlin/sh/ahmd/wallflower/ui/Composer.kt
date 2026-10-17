@@ -111,10 +111,15 @@ fun Composer(
 ) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    // Closing the keyboard lets go of the box, so switching panes doesn't bring it back.
-    val imeVisible = WindowInsets.isImeVisible
+    // The box keeps hold while the keyboard hides, as it does itself for voice typing. Moving to another
+    // pane's draft with the keyboard shut, it lets go first, so the draft doesn't raise the keyboard.
+    val imeVisible by rememberUpdatedState(WindowInsets.isImeVisible)
     val focusManager = LocalFocusManager.current
-    LaunchedEffect(imeVisible) { if (!imeVisible) focusManager.clearFocus() }
+    var box by remember { mutableStateOf(state) }
+    LaunchedEffect(state) {
+        if (!imeVisible) focusManager.clearFocus()
+        box = state
+    }
     val pending = line?.text.orEmpty()
     val ghost = pending.ifEmpty { line?.suggestion.orEmpty() }
     val haptics = haptics()
@@ -156,7 +161,7 @@ fun Composer(
     ) {
         Box(Modifier.fillMaxWidth().animateContentSize(Motion.spatial()).padding(horizontal = 18.dp)) {
             BasicTextField(
-                state = state,
+                state = box,
                 inputTransformation = intercept,
                 lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 6),
                 textStyle = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp, lineHeight = 21.sp),
@@ -168,7 +173,7 @@ fun Composer(
                 ),
                 decorator = { field ->
                     Box {
-                        if (state.text.isEmpty() && (armed != null || ghost.isEmpty())) {
+                        if (box.text.isEmpty() && (armed != null || ghost.isEmpty())) {
                             val hint = armed?.let { "${it.label} + key" } ?: "send to ${program.ifEmpty { "pane" }}"
                             Text(hint, color = if (armed != null) Palette.orange else Palette.dim, fontFamily = Mono, fontSize = 15.sp)
                         }
@@ -177,10 +182,12 @@ fun Composer(
                 },
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
             )
-            if (state.text.isEmpty() && armed == null && ghost.isNotEmpty()) {
+            if (box.text.isEmpty() && armed == null && ghost.isNotEmpty()) {
                 // The app's line or its suggestion, over the empty box: tap to bring it in and edit it.
                 val suggested = pending.isEmpty()
-                Row(verticalAlignment = Alignment.Top) {
+                val clearable = !suggested && onClear != null
+                // Only the words take the tap: beside them, the box takes it, to type afresh.
+                Row(Modifier.padding(end = if (clearable) 30.dp else 0.dp), verticalAlignment = Alignment.Top) {
                     if (suggested) GlyphIcon(Glyph.Spark, Palette.dim, Modifier.padding(top = 5.dp, end = 8.dp), size = 11.dp)
                     Text(
                         ghost,
@@ -191,11 +198,10 @@ fun Composer(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
-                            .weight(1f)
                             .clip(RoundedCornerShape(6.dp))
                             .clickable {
                                 haptics.tick()
-                                state.edit {
+                                box.edit {
                                     replace(0, length, ghost)
                                     placeCursorAtEnd()
                                 }
@@ -203,18 +209,18 @@ fun Composer(
                                 keyboard?.show()
                             },
                     )
-                    if (!suggested && onClear != null) {
-                        Box(
-                            Modifier
-                                .padding(start = 6.dp)
-                                .clip(CircleShape)
-                                .clickable {
-                                    haptics.confirm()
-                                    onClear()
-                                }
-                                .padding(4.dp),
-                        ) { GlyphIcon(Glyph.Close, Palette.grey, size = 13.dp) }
-                    }
+                }
+                if (clearable) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .clip(CircleShape)
+                            .clickable {
+                                haptics.confirm()
+                                onClear?.invoke()
+                            }
+                            .padding(4.dp),
+                    ) { GlyphIcon(Glyph.Close, Palette.grey, size = 13.dp) }
                 }
             }
         }
@@ -225,12 +231,12 @@ fun Composer(
             KeyRow(keys, armed, press, onEditKeys, Modifier.weight(1f))
             SendButton(
                 action = when {
-                    state.text.isNotEmpty() -> Action.Send
+                    box.text.isNotEmpty() -> Action.Send
                     pending.isNotEmpty() -> Action.Enter
                     else -> Action.Stop
                 },
                 connected = connected,
-                onSend = { enter -> if (onSend(state.text.toString(), enter)) state.clearText() },
+                onSend = { enter -> if (onSend(box.text.toString(), enter)) box.clearText() },
                 onEnter = onEnter,
                 onStop = onStop,
             )

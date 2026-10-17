@@ -1,9 +1,13 @@
 package sh.ahmd.wallflower.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,6 +19,7 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -101,6 +106,63 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
         }
     }
 }
+
+/** A menu's choice: what it says, in what color, and what it does. */
+class MenuAction(val label: String, val color: Color = Palette.fg, val onClick: () -> Unit)
+
+/**
+ * A menu dropping from what opened it, rounded and compact, its choices
+ * ruled apart beneath an optional [header]. Felt as it opens and shuts.
+ */
+@Composable
+fun PopupMenu(expanded: Boolean, onDismiss: () -> Unit, actions: List<MenuAction>, header: (@Composable () -> Unit)? = null) {
+    val haptics = haptics()
+    var felt by remember { mutableStateOf(expanded) }
+    LaunchedEffect(expanded) {
+        if (expanded != felt) haptics.slide(if (expanded) MENU_IN_MS else MENU_OUT_MS)
+        felt = expanded
+    }
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(16.dp),
+        containerColor = Palette.bg1,
+        tonalElevation = 0.dp,
+        shadowElevation = 6.dp,
+        border = BorderStroke(1.dp, Palette.bg4),
+    ) {
+        Column(Modifier.widthIn(min = 150.dp).padding(horizontal = 4.dp)) {
+            header?.let {
+                Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) { it() }
+                MenuRule()
+            }
+            actions.forEachIndexed { i, action ->
+                if (i > 0) MenuRule()
+                Text(
+                    action.label,
+                    color = action.color,
+                    fontFamily = words,
+                    fontSize = wordSize(13.sp, 15.sp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            haptics.tick()
+                            action.onClick()
+                        }
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuRule() = Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(1.dp).background(Palette.bg2))
+
+/** How long a menu takes to open and to shut (Material's). */
+private const val MENU_IN_MS = 120L
+private const val MENU_OUT_MS = 75L
 
 /** Asks before closing something. "Don't ask again" comes back with the answer. */
 @Composable

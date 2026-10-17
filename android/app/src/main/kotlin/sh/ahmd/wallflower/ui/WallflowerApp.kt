@@ -52,8 +52,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -929,7 +927,7 @@ private fun TabBar(
                 val line = 1.dp.toPx()
                 drawRect(Palette.bg4, Offset(0f, size.height - line), Size(size.width, line))
             }
-            .padding(vertical = 7.dp),
+            .padding(vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BarButton(Glyph.Plus, Palette.fg, Modifier.padding(start = 6.dp), onClick = onNew)
@@ -977,10 +975,7 @@ private fun TabBar(
                                     if (!on) haptics.tick()
                                     onSelect(w)
                                 },
-                                onLongClick = {
-                                    haptics.hold()
-                                    menu = w.id
-                                },
+                                onLongClick = { menu = w.id },
                             )
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -989,10 +984,14 @@ private fun TabBar(
                         Text(" ${w.name}", color = name, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), maxLines = 1)
                         if (agent != null) AgentDot(agent, Modifier.padding(start = 6.dp))
                     }
-                    DropdownMenu(expanded = menu == w.id, onDismissRequest = { menu = null }) {
-                        DropdownMenuItem(text = { Text("rename") }, onClick = { menu = null; onRename(w) })
-                        DropdownMenuItem(text = { Text("close", color = Palette.red) }, onClick = { menu = null; onClose(w) })
-                    }
+                    PopupMenu(
+                        expanded = menu == w.id,
+                        onDismiss = { menu = null },
+                        actions = listOf(
+                            MenuAction("rename") { menu = null; onRename(w) },
+                            MenuAction("close", Palette.red) { menu = null; onClose(w) },
+                        ),
+                    )
                 }
             }
         }
@@ -1033,11 +1032,15 @@ private fun PowerButton(status: Status, onSettings: () -> Unit, onExit: () -> Un
     var open by remember { mutableStateOf(false) }
     Box(Modifier.padding(end = 6.dp)) {
         BarButton(Glyph.Power, color) { open = true }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            Text(what, color = target, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-            DropdownMenuItem(text = { Text("settings") }, onClick = { open = false; onSettings() })
-            DropdownMenuItem(text = { Text("disconnect", color = Palette.red) }, onClick = { open = false; onExit() })
-        }
+        PopupMenu(
+            expanded = open,
+            onDismiss = { open = false },
+            actions = listOf(
+                MenuAction("settings") { open = false; onSettings() },
+                MenuAction("disconnect", Palette.red) { open = false; onExit() },
+            ),
+            header = { Text(what, color = target, fontFamily = words, fontSize = wordSize(12.sp, 13.sp)) },
+        )
     }
 }
 
