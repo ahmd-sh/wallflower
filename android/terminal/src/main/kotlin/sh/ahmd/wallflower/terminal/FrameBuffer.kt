@@ -31,6 +31,8 @@ class FrameBuffer {
     val cursorBlinking get() = ints[3] and 2 != 0
     val cursorWideTail get() = ints[3] and 4 != 0
     val cursorInViewport get() = ints[3] and 8 != 0
+    /** A full-screen app has the alternate screen, which keeps no scrollback. */
+    val altScreen get() = ints[3] and 32 != 0
     val cursorX get() = ints[4]
     val cursorY get() = ints[5]
     val cursorStyle get() = ints[6]

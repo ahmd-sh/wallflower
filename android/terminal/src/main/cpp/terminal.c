@@ -337,6 +337,8 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeFrame(JNIEnv* env, jclass cls, j
   ghostty_render_state_update(t->state, t->term);
   GhosttyTerminalScrollbar scroll = {0};
   ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scroll);
+  GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
   pthread_mutex_unlock(&t->lock);
 
   GhosttyRenderStateDirty dirty = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
@@ -357,7 +359,8 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeFrame(JNIEnv* env, jclass cls, j
 
   int32_t cursor_flags = (cursor.visible ? 1 : 0) | (cursor.blinking ? 2 : 0) |
                          (cursor.wide_tail ? 4 : 0) | (cursor.viewport_has_value ? 8 : 0) |
-                         (cursor.password_input ? 16 : 0);
+                         (cursor.password_input ? 16 : 0) |
+                         (screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE ? 32 : 0);
   put(&o, dirty == GHOSTTY_RENDER_STATE_DIRTY_FULL ? 2 : 1);
   put(&o, cols);
   put(&o, rows);

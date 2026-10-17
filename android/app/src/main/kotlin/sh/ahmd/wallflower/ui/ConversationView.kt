@@ -20,7 +20,9 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -55,10 +58,8 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -71,28 +72,30 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import sh.ahmd.wallflower.protocol.Entry
 import sh.ahmd.wallflower.session.Conversation
-import kotlin.math.abs
 
 /**
  * A pane's conversation in place of its terminal: what each side said, with
  * each run of tool calls and thinking folded into one line, to open when
  * wanted. The newest is at the bottom, which stays in view as entries come.
- * A sideways swipe moves to the next pane, as on the terminal.
+ * Sideways drags go to [swipe], to move between panes as on the terminal.
  */
 @Composable
-fun ConversationView(conversation: Conversation, modifier: Modifier = Modifier, onSwipe: (direction: Int) -> Unit = {}) {
-    val threshold = with(LocalDensity.current) { 80.dp.toPx() }
+fun ConversationView(conversation: Conversation, modifier: Modifier = Modifier, swipe: Swipe? = null) {
+    var dragged by remember { mutableFloatStateOf(0f) }
     Box(
         modifier
             .fillMaxSize()
             .background(Palette.bg0)
-            .pointerInput(Unit) {
-                var dx = 0f
-                detectHorizontalDragGestures(
-                    onDragStart = { dx = 0f },
-                    onDragEnd = { if (abs(dx) > threshold) onSwipe(if (dx < 0) 1 else -1) },
-                ) { _, amount -> dx += amount }
-            },
+            .draggable(
+                rememberDraggableState { delta ->
+                    dragged += delta
+                    swipe?.drag(dragged)
+                },
+                Orientation.Horizontal,
+                enabled = swipe != null,
+                onDragStarted = { dragged = 0f },
+                onDragStopped = { velocity -> swipe?.end(dragged, velocity) },
+            ),
     ) {
         val items = remember(conversation.entries) { items(conversation.entries) }
         val list = rememberLazyListState()

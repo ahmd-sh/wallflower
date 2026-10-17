@@ -333,14 +333,6 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         send(Select(window = window.id))
     }
 
-    /** Shows the next (1) or previous (-1) pane of a window, as [show] does. */
-    fun swipe(window: Window, direction: Int) {
-        val panes = window.panes.sortedBy { it.index }
-        val current = window.shownPane(_chosen.value) ?: return
-        if (panes.size < 2) return
-        show(window, panes[(panes.indexOfFirst { it.id == current.id } + direction).mod(panes.size)])
-    }
-
     /** Shows a pane of a window now, and has tmux focus it in the background, zoomed so it gets the whole screen. */
     fun show(window: Window, pane: Pane) {
         _chosen.value = _chosen.value + (window.id to PaneChoice(pane.id, window.activePane()?.id))
@@ -401,12 +393,13 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     }
 
     /** Tells tmux the size once it settles: the keyboard animates the view through every size in between. */
-    fun resize(cols: Int, rows: Int) {
+    /** Resizes once the size settles, or at once if it's known [ahead] (the keyboard says where it'll stop). */
+    fun resize(cols: Int, rows: Int, ahead: Boolean = false) {
         if (grid == cols to rows) return
         grid = cols to rows
         resizing?.cancel()
         resizing = scope.launch {
-            delay(RESIZE_SETTLE_MS)
+            if (!ahead) delay(RESIZE_SETTLE_MS)
             send(Resize(cols, rows))
         }
     }

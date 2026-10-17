@@ -14,6 +14,7 @@ import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import android.view.VelocityTracker
 import android.view.ViewConfiguration
 import android.widget.OverScroller
 import java.util.concurrent.atomic.AtomicBoolean
@@ -52,8 +53,31 @@ class TerminalView(context: Context) : View(context) {
             requestFrame()
         }
 
-    /** The grid that fits this view at the current font size. */
-    var onGridSize: ((cols: Int, rows: Int) -> Unit)? = null
+    /**
+     * The grid that fits this view at the current font size; [ahead] when
+     * it's for [settleHeight], a size the view will have but doesn't yet.
+     */
+    var onGridSize: ((cols: Int, rows: Int, ahead: Boolean) -> Unit)? = null
+
+    /**
+     * The height the view is about to settle at while it changes (the
+     * keyboard sliding), or 0. Its grid is reported at once, so tmux resizes
+     * while the keyboard moves, and rows laid out for it are drawn hanging
+     * from the view's moving bottom edge, which is where they'll end up.
+     */
+    var settleHeight = 0
+        set(value) {
+            if (field == value) return
+            if (value > 0) {
+                settling = value
+                settleFrom = height.toFloat()
+            }
+            field = value
+            reportGrid()
+            invalidate()
+        }
+    private var settling = 0 // the height last settled towards, held after the keyboard stops until the grid fits it
+    private var settleFrom = 0f
 
     var fontSizeSp = 13f
         set(value) {
@@ -61,8 +85,8 @@ class TerminalView(context: Context) : View(context) {
             updateMetrics()
         }
 
-    private val regular = withSymbols(R.font.jetbrains_mono_regular)
-    private val bold = withSymbols(R.font.jetbrains_mono_bold)
+    private val regular = typeface(context, R.font.jetbrains_mono_regular)
+    private val bold = typeface(context, R.font.jetbrains_mono_bold)
     private val text = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply { typeface = regular }
     private val fill = Paint()
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -86,6 +110,18 @@ class TerminalView(context: Context) : View(context) {
     private var cursorY = 0
     private var cursorStyle = FrameBuffer.CURSOR_BLOCK
     private var cursorColor = DEFAULT
+    private var altScreen = false
+    private var scrollback = 0 // rows of history above the screen
+    private var restHeight = 0f // the height the grid fills; see shift
+
+    // The frame before the grid changed size, fading into the new one, and how it was laid out.
+    private var fading: Array<RenderNode>? = null
+    private var fadingRows = 0
+    private var fadingCursorRows = 0
+    private var fadingScrollback = 0
+    private var fadingAlt = false
+    private var fadingScale = 1f
+    private var fadeStart = 0L
 
     private var forceFull = true
     private val frameRequested = AtomicBoolean()
@@ -127,6 +163,15 @@ class TerminalView(context: Context) : View(context) {
         forceFull = false
 
         if (frame.cols != cols || frame.rows != rows) {
+            if (cols > 0) {
+                fading = nodes
+                fadingRows = rows
+                fadingCursorRows = cursorRows()
+                fadingScrollback = scrollback
+                fadingAlt = altScreen
+                fadingScale = fitScale()
+                fadeStart = SystemClock.uptimeMillis()
+            }
             cols = frame.cols
             rows = frame.rows
             nodes = Array(rows) { RenderNode("row$it") }
@@ -147,6 +192,9 @@ class TerminalView(context: Context) : View(context) {
         cursorY = frame.cursorY
         cursorStyle = frame.cursorStyle
         cursorColor = frame.cursorColor
+        altScreen = frame.altScreen
+        scrollback = (frame.scrollTotal - frame.scrollLength).coerceAtLeast(0)
+        rest()
         if (!predictions.isEmpty && predictions.confirm(::codepointAt, SystemClock.uptimeMillis())) scheduleExpiry()
         invalidate()
     }
@@ -302,15 +350,92 @@ class TerminalView(context: Context) : View(context) {
         fill.color = opaque(background)
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), fill)
         if (cols == 0) return
+        val old = fading
+        val t = (SystemClock.uptimeMillis() - fadeStart) / FADE_MS.toFloat()
+        val oldAlpha = if (old != null && t < 1f) (1f - t) * (1f - t) else 0f
+        if (old != null && oldAlpha == 0f) {
+            fading = null
+            for (node in nodes) node.alpha = 1f
+        }
+        settled()
         val scale = fitScale()
         canvas.save()
+        canvas.translate(0f, -shift())
         canvas.scale(scale, scale)
-        for (node in nodes) if (node.hasDisplayList()) canvas.drawRenderNode(node)
+        for (node in nodes) {
+            if (!node.hasDisplayList()) continue
+            if (fading != null) node.alpha = 1f - oldAlpha
+            canvas.drawRenderNode(node)
+        }
         drawPredictions(canvas)
         // The cursor runs ahead with the predictions, so typing feels local.
         val (cx, cy) = predictions.cursorAfter(cols) ?: (cursorX to cursorY)
         if (cursorVisible && cx < cols && cy < rows) drawCursor(canvas, cx, cy)
         canvas.restore()
+        if (fading != null && old != null) {
+            canvas.save()
+            canvas.translate(0f, -shift(fadingRows, fadingCursorRows, fadingScrollback, fadingAlt, fadingScale))
+            canvas.scale(fadingScale, fadingScale)
+            for (node in old) {
+                if (!node.hasDisplayList()) continue
+                node.alpha = oldAlpha
+                canvas.drawRenderNode(node)
+            }
+            canvas.restore()
+            postInvalidateOnAnimation()
+        }
+    }
+
+    /**
+     * How far up the rows are drawn, in pixels; negative is down. The view
+     * changes height first (the keyboard sliding), tmux changes the grid
+     * after; meanwhile rows go where tmux will put them. Shorter: the cursor
+     * stays in view, as tmux keeps it. Taller: rows move down as far as tmux
+     * will pull history back in above them, all the way for full-screen
+     * apps, which redraw against the bottom. With [settleHeight] known, rows
+     * travel there in step with the view, and the grid tmux sends for it
+     * hangs from the bottom edge, so the two line up as one fades into the
+     * other.
+     */
+    private fun shift() = shift(rows, cursorRows(), scrollback, altScreen, fitScale())
+
+    private fun shift(rows: Int, cursorRows: Int, scrollback: Int, alt: Boolean, scale: Float): Float {
+        if (rows == 0) return 0f
+        val cell = cellHeight * scale
+        val h = height.toFloat()
+        if (settling > 0) {
+            val target = settling.toFloat()
+            val targetRows = floor(target / cell).toInt()
+            if (targetRows == rows) return target - h
+            // Each row heads for where tmux will put it once the grid fits.
+            val moved = when {
+                targetRows > rows -> if (alt) targetRows - rows else minOf(scrollback, targetRows - rows)
+                else -> -maxOf(0, cursorRows - targetRows)
+            }
+            val progress = if (settleFrom == target) 1f else ((settleFrom - h) / (settleFrom - target)).coerceIn(0f, 1f)
+            return -moved * cell * progress
+        }
+        val content = rows * cell
+        if (content > h) return (cursorRows * cell - h).coerceIn(0f, content - h)
+        val room = h - restHeight
+        if (restHeight == 0f || room <= 0f) return 0f
+        return -(if (alt) room else minOf(room, scrollback * cell))
+    }
+
+    /** Rows down to the cursor's, which tmux keeps in view; all of them if it's hidden. */
+    private fun cursorRows() = if (cursorVisible) cursorY + 1 else rows
+
+    /** Stops settling once the view stopped where it said and the grid fits, or stopped elsewhere. */
+    private fun settled() {
+        if (settling == 0 || settleHeight != 0) return
+        val target = settling.toFloat()
+        if (height.toFloat() != target || floor(target / (cellHeight * fitScale())).toInt() == rows) settling = 0
+    }
+
+    /** Notes the height the grid fills, while it does. */
+    private fun rest() {
+        val cell = cellHeight * fitScale()
+        if (rows > 0 && cell > 0f && floor(height / cell).toInt() == rows) restHeight = height.toFloat()
     }
 
     private fun drawPredictions(canvas: Canvas) {
@@ -363,19 +488,6 @@ class TerminalView(context: Context) : View(context) {
         return if (w > width && width > 0) width / w else 1f
     }
 
-    /**
-     * The font, then symbols it lacks (TUI spinners, ⏺ ⎿ ⏵ ✻), then the
-     * system's fonts. Anything not in the font would otherwise depend on the
-     * phone having it.
-     */
-    private fun withSymbols(font: Int): Typeface {
-        fun family(id: Int) = FontFamily.Builder(Font.Builder(resources, id).build()).build()
-        return Typeface.CustomFallbackBuilder(family(font))
-            .addCustomFallback(family(R.font.symbols_fallback))
-            .addCustomFallback(family(R.font.symbols_fallback2))
-            .setSystemFallback("monospace")
-            .build()
-    }
 
     private fun updateMetrics() {
         text.textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, resources.displayMetrics)
@@ -389,11 +501,15 @@ class TerminalView(context: Context) : View(context) {
         requestFrame()
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) = reportGrid()
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        rest()
+        reportGrid()
+    }
 
     private fun reportGrid() {
         if (width == 0 || height == 0 || cellWidth == 0f) return
-        onGridSize?.invoke(floor(width / cellWidth).toInt(), floor(height / cellHeight).toInt())
+        val h = if (settleHeight > 0) settleHeight else height
+        onGridSize?.invoke(floor(width / cellWidth).toInt(), floor(h / cellHeight).toInt(), settleHeight > 0)
     }
 
     /**
@@ -403,8 +519,11 @@ class TerminalView(context: Context) : View(context) {
      */
     var onAppScroll: ((up: Boolean, wheel: ByteArray?) -> Unit)? = null
 
-    /** A horizontal swipe: 1 for the next pane, -1 for the previous. */
-    var onSwipe: ((direction: Int) -> Unit)? = null
+    /** A sideways drag, for moving between panes: how far it has gone, as it goes. */
+    var onSwipe: ((dx: Float) -> Unit)? = null
+
+    /** The sideways drag let go: how far it went, and how fast (px/s; negative is leftwards). */
+    var onSwipeEnd: ((dx: Float, velocity: Float) -> Unit)? = null
 
     // On the primary screen, scrolling moves the terminal's own viewport
     // through its scrollback and never sends anything to the pane.
@@ -447,7 +566,7 @@ class TerminalView(context: Context) : View(context) {
         scrollRemainder -= rows
         val up = rows < 0 // towards history
         val col = (touchX / (cellWidth * fitScale())).toInt().coerceIn(0, maxOf(cols - 1, 0))
-        val row = (touchY / cell).toInt().coerceIn(0, maxOf(this.rows - 1, 0))
+        val row = ((touchY + shift()) / cell).toInt().coerceIn(0, maxOf(this.rows - 1, 0))
         when (val wheel = t.wheel(up, col, row)) {
             Terminal.Wheel.Local -> {
                 t.scrollBy(rows)
@@ -470,37 +589,38 @@ class TerminalView(context: Context) : View(context) {
     private var downX = 0f
     private var downY = 0f
     private var swiping = false
+    private var swipeX = 0f
+    private val velocity = VelocityTracker.obtain()
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         touchX = event.x
         touchY = event.y
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) velocity.clear()
+        velocity.addMovement(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x
                 downY = event.y
                 swiping = false
-                animate().cancel()
             }
             MotionEvent.ACTION_MOVE -> {
                 val dx = event.x - downX
                 if (!swiping && onSwipe != null && abs(dx) > slop * 2 && abs(dx) > abs(event.y - downY) * 1.5f) {
                     swiping = true
+                    swipeX = event.x
                     scroller.forceFinished(true)
+                    parent?.requestDisallowInterceptTouchEvent(true)
                 }
                 if (swiping) {
-                    translationX = dx * 0.4f // follows the finger, reluctantly
+                    onSwipe?.invoke(event.x - swipeX)
                     return true
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (swiping) {
                 swiping = false
-                val dx = event.x - downX
-                if (event.actionMasked == MotionEvent.ACTION_UP && abs(dx) > width * 0.2f) {
-                    val direction = if (dx < 0) 1 else -1
-                    onSwipe?.invoke(direction)
-                    translationX = direction * width * 0.12f // the next pane comes in from where the finger went
-                }
-                animate().translationX(0f).setDuration(160).start()
+                velocity.computeCurrentVelocity(1000)
+                val fling = if (event.actionMasked == MotionEvent.ACTION_UP) velocity.xVelocity else 0f
+                onSwipeEnd?.invoke(event.x - swipeX, fling)
                 return true
             }
         }
@@ -513,5 +633,26 @@ class TerminalView(context: Context) : View(context) {
     private companion object {
         val STYLE_MASK = FLAG_BOLD or FLAG_ITALIC or FLAG_FAINT or (7 shl 8) or FLAG_STRIKETHROUGH or FLAG_OVERLINE or
             FLAG_INVERSE or FLAG_SELECTED
+
+        const val FADE_MS = 180L
+
+        private val typefaces = HashMap<Int, Typeface>()
+
+        /**
+         * The font, then symbols it lacks (TUI spinners, ⏺ ⎿ ⏵ ✻), then the
+         * system's fonts. Anything not in the font would otherwise depend on
+         * the phone having it. Built once: views come and go as panes do.
+         */
+        fun typeface(context: Context, font: Int): Typeface = synchronized(typefaces) {
+            typefaces.getOrPut(font) {
+                val res = context.applicationContext.resources
+                fun family(id: Int) = FontFamily.Builder(Font.Builder(res, id).build()).build()
+                Typeface.CustomFallbackBuilder(family(font))
+                    .addCustomFallback(family(R.font.symbols_fallback))
+                    .addCustomFallback(family(R.font.symbols_fallback2))
+                    .setSystemFallback("monospace")
+                    .build()
+            }
+        }
     }
 }

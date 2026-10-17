@@ -2,6 +2,10 @@ package sh.ahmd.wallflower.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.combinedClickable
@@ -57,6 +61,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.imeAnimationTarget
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
@@ -157,6 +170,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TerminalScreen(
     session: Session,
@@ -183,7 +197,12 @@ private fun TerminalScreen(
     val offered by model.conversationViews.offered.collectAsStateWithLifecycle()
     val conversing by model.conversationViews.panes.collectAsStateWithLifecycle()
     val converses = offered && pane != null && pane.transcript.isNotEmpty()
-    val following = if (converses && pane.id in conversing) setOf(pane.id) else emptySet()
+    // The shown pane's neighbours too, so a swipe brings theirs in already loaded.
+    val nearby = window?.panes?.sortedBy { it.index }?.let { panes ->
+        val i = panes.indexOfFirst { it.id == pane?.id }
+        if (i < 0) emptyList() else listOf(-1, 0, 1).map { panes[(i + it).mod(panes.size)] }.distinct()
+    }.orEmpty()
+    val following = if (offered) nearby.filter { it.transcript.isNotEmpty() && it.id in conversing }.map { it.id }.toSet() else emptySet()
     LaunchedEffect(following) { session.follow(following) }
 
     Column(
@@ -312,42 +331,89 @@ private fun TerminalScreen(
             return@Column
         }
 
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp).clipToBounds(),
-                factory = { ctx ->
-                    TerminalView(ctx).apply {
-                        onGridSize = { cols, rows -> session.start(cols, rows); session.resize(cols, rows) }
-                        view = this
-                    }
-                },
-                update = {
-                    it.terminal = terminal
-                    it.onSwipe = { direction -> window?.let { w -> session.swipe(w, direction) } }
-                    it.onAppScroll = { up, wheel ->
-                        pane?.let { p ->
+        // The keyboard says where it'll stop as it starts to move: terminals learn how tall they'll be.
+        var areaHeight by remember { mutableIntStateOf(0) }
+        var settleHeight by remember { mutableIntStateOf(0) }
+        val density = LocalDensity.current
+        val ime = WindowInsets.ime
+        val imeTarget = WindowInsets.imeAnimationTarget
+        val navigation = WindowInsets.navigationBars
+        LaunchedEffect(Unit) {
+            var lastTarget = -1
+            snapshotFlow { imeTarget.getBottom(density) to ime.getBottom(density) }.collect { (to, now) ->
+                fun above(inset: Int) = maxOf(inset - navigation.getBottom(density), 0) // imePadding's share of it
+                settleHeight = when {
+                    to == now -> 0
+                    settleHeight == 0 || to != lastTarget -> areaHeight + above(now) - above(to)
+                    else -> settleHeight
+                }
+                lastTarget = to
+            }
+        }
+
+        Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { areaHeight = it.height }) {
+            /** A pane's terminal, and its conversation over it while that's on. */
+            @Composable
+            fun Page(p: Pane, current: Boolean, swipe: Swipe?) = Box(Modifier.fillMaxSize()) {
+                var mine by remember { mutableStateOf<TerminalView?>(null) }
+                AndroidView(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp).clipToBounds(),
+                    factory = { ctx ->
+                        TerminalView(ctx).apply {
+                            onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) }
+                            mine = this
+                        }
+                    },
+                    update = {
+                        it.terminal = terminals[p.id]
+                        it.settleHeight = settleHeight
+                        it.onSwipe = swipe?.let { s -> s::drag }
+                        it.onSwipeEnd = swipe?.let { s -> s::end }
+                        it.onAppScroll = { up, wheel ->
                             if (wheel != null) session.input(p.id, wheel) else session.send(Keys(p.id, listOf(if (up) "Up" else "Down")))
                         }
-                    }
-                },
-            )
-            val shown = pane?.takeIf { it.id in following }?.let { conversations[it.id] ?: Conversation() }
-            var last by remember { mutableStateOf(Conversation()) }
-            if (shown != null) last = shown
-            androidx.compose.animation.AnimatedVisibility(shown != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
-                ConversationView(last) { direction -> window?.let { session.swipe(it, direction) } }
+                        if (current) view = it
+                    },
+                )
+                DisposableEffect(mine, p.id) {
+                    val v = mine
+                    if (v != null) views[p.id] = v
+                    onDispose { if (v != null) views.remove(p.id, v) }
+                }
+                val conversation = conversations[p.id]?.takeIf { p.id in following } ?: if (p.id in following) Conversation() else null
+                var last by remember { mutableStateOf(Conversation()) }
+                if (conversation != null) last = conversation
+                androidx.compose.animation.AnimatedVisibility(conversation != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
+                    ConversationView(last, swipe = swipe)
+                }
             }
-            if (window != null && pane != null) {
+
+            if (window == null || pane == null) {
+                Page(Pane("", 0, false, 0, 0, 0, 0, command = ""), current = true, swipe = null) // measures the grid until there are panes
+            } else {
+                // Tabs slide along in the direction of the tab bar.
+                AnimatedContent(
+                    targetState = window.id,
+                    transitionSpec = {
+                        val forward = windows.indexOfFirst { it.id == targetState } >= windows.indexOfFirst { it.id == initialState }
+                        val sign = if (forward) 1 else -1
+                        (slideInHorizontally(Motion.spatial()) { sign * it / 5 } + fadeIn(Motion.effect())) togetherWith
+                            (slideOutHorizontally(Motion.spatial()) { -sign * it / 5 } + fadeOut(Motion.effect()))
+                    },
+                    label = "tab",
+                ) { id ->
+                    val w = windows.firstOrNull { it.id == id }
+                    val shownHere = w?.shownPane(chosen)
+                    if (w != null && shownHere != null) {
+                        PanePager(w.panes.sortedBy { it.index }, shownHere, onShow = { session.show(w, it) }) { p, current, swipe ->
+                            Page(p, current, swipe)
+                        }
+                    }
+                }
                 Row(Modifier.align(Alignment.TopEnd), verticalAlignment = Alignment.CenterVertically) {
                     if (converses) ViewToggle(conversation = pane.id in following) { model.conversationViews.toggle(pane.id) }
                     PaneDots(window, pane.id, Modifier) { overview = true }
                 }
-            }
-            DisposableEffect(view, pane?.id) {
-                val v = view
-                val id = pane?.id
-                if (v != null && id != null) views[id] = v
-                onDispose { if (id != null) views.remove(id, v) }
             }
         }
 
