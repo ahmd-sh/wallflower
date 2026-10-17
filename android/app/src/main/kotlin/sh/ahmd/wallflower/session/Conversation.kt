@@ -7,7 +7,8 @@ import sh.ahmd.wallflower.protocol.Entry
  * A pane's conversation, as the program in it recorded it. [loaded] once the
  * gateway has sent it; [more] if it holds earlier entries than these;
  * [error] when there's none to show. [state] is what the program is doing,
- * if it says ([Entries.WORKING]...), and [since] when it started.
+ * if it says ([Entries.WORKING]...), and [since] when it started; [context]
+ * how many tokens it takes of the program's context, 0 while that's unknown.
  */
 data class Conversation(
     val entries: List<Entry> = emptyList(),
@@ -16,15 +17,19 @@ data class Conversation(
     val loaded: Boolean = false,
     val state: String? = null,
     val since: Long = 0,
+    val context: Int = 0,
 ) {
     val working get() = state == Entries.WORKING
 
     /** With [m] applied: a reset replaces everything, else entries replace theirs by id or come last; a state replaces the last. */
     fun apply(m: Entries): Conversation {
         if (m.reset) {
-            return Conversation(m.entries.takeLast(MAX_ENTRIES), m.more || m.entries.size > MAX_ENTRIES, m.error, loaded = true, m.state, m.since)
+            return Conversation(m.entries.takeLast(MAX_ENTRIES), m.more || m.entries.size > MAX_ENTRIES, m.error, loaded = true, m.state, m.since, m.context ?: 0)
         }
-        if (m.state != null && m.entries.isEmpty()) return copy(state = m.state, since = m.since, error = m.error ?: error)
+        val context = m.context ?: context
+        if (m.entries.isEmpty() && (m.state != null || m.context != null)) {
+            return copy(state = m.state ?: state, since = if (m.state != null) m.since else since, error = m.error ?: error, context = context)
+        }
         val at = HashMap<String, Int>(entries.size)
         entries.forEachIndexed { i, e -> at[e.id] = i }
         val next = entries.toMutableList()
@@ -45,6 +50,7 @@ data class Conversation(
             loaded = true,
             state = m.state ?: state,
             since = if (m.state != null) m.since else since,
+            context = context,
         )
     }
 

@@ -51,4 +51,17 @@ class ConversationTest {
         assertEquals(9L, done.since)
         assertEquals(listOf("a", "b"), done.entries.map { it.id })
     }
+
+    @Test
+    fun theContextKeepsUntilItChangesAndGoesWithANewConversation() {
+        val c = Conversation()
+            .apply(Entries("%1", reset = true, entries = listOf(text("a")), context = 1000))
+            .apply(Entries("%1", entries = listOf(text("b"))))
+        assertEquals(1000, c.context)
+        val more = c.apply(Entries("%1", context = 2500))
+        assertEquals(2500, more.context)
+        assertEquals(listOf("a", "b"), more.entries.map { it.id })
+        assertEquals(0, more.apply(Entries("%1", context = 0)).context)
+        assertEquals(0, more.apply(Entries("%1", reset = true)).context)
+    }
 }

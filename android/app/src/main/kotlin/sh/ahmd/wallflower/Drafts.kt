@@ -44,15 +44,25 @@ class Drafts(private val prefs: SharedPreferences, private val scope: CoroutineS
         }
     }
 
-    /** Puts [text] in at [pane]'s cursor as a word of its own, as a file dropped on a terminal is. */
+    /**
+     * Puts [text] in at [pane]'s cursor as a word of its own, as a file
+     * dropped on a terminal is, and the cursor on the line after it, to go on
+     * writing; in the middle of a line, just after it.
+     */
     fun insert(pane: String, text: String) {
         of(pane).edit {
             val at = selection.max
             val s = asCharSequence()
             val before = if (at > 0 && !s[at - 1].isWhitespace()) " " else ""
-            val after = if (at < length && s[at].isWhitespace()) "" else " "
+            val after = when {
+                at == length -> "\n"
+                s[at] == '\n' -> ""
+                s[at].isWhitespace() -> ""
+                else -> " "
+            }
             replace(at, at, before + text + after)
-            selection = TextRange(at + before.length + text.length + after.length)
+            val end = at + before.length + text.length + after.length
+            selection = TextRange(if (after.isEmpty() && end < length && asCharSequence()[end] == '\n') end + 1 else end)
         }
     }
 

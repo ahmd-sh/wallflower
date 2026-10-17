@@ -101,6 +101,8 @@ fun ConversationView(
     swipe: Swipe? = null,
     menu: Menu? = null,
     onKeys: (List<String>) -> Unit = {},
+    /** Sends the program its compact command, from the context button; null while it can't. */
+    onCompact: (() -> Unit)? = null,
 ) {
     var dragged by remember { mutableFloatStateOf(0f) }
     Box(
@@ -164,6 +166,14 @@ fun ConversationView(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 48.dp, bottom = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
+                        if (conversation.context > 0) {
+                            item(key = "context") {
+                                Box(
+                                    Modifier.fillMaxWidth().animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect()),
+                                    contentAlignment = Alignment.CenterEnd,
+                                ) { ContextButton(conversation.context, onCompact) }
+                            }
+                        }
                         if (status != null) {
                             item(key = "status") {
                                 // One item that changes between them, so a menu that flickers off and on doesn't leave and come back.
@@ -331,6 +341,44 @@ private fun Reply(text: String, copyable: Boolean) {
             }
         }
     }
+}
+
+/** How much of the program's context the conversation takes; tapped, it offers to compact it. */
+@Composable
+private fun ContextButton(tokens: Int, onCompact: (() -> Unit)?) {
+    val haptics = haptics()
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Text(
+            "context ${count(tokens)}",
+            color = Palette.dim,
+            fontFamily = words,
+            fontSize = wordSize(11.sp, 13.sp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .clickable(enabled = onCompact != null) {
+                    haptics.tick()
+                    open = true
+                }
+                .padding(vertical = 4.dp, horizontal = 2.dp),
+        )
+        PopupMenu(
+            expanded = open,
+            onDismiss = { open = false },
+            actions = listOf(
+                MenuAction("compact") {
+                    open = false
+                    onCompact?.invoke()
+                },
+            ),
+        )
+    }
+}
+
+private fun count(n: Int) = when {
+    n < 1_000 -> "$n"
+    n < 1_000_000 -> "${n / 1_000}k"
+    else -> "%.1fM".format(n / 1e6)
 }
 
 @Composable

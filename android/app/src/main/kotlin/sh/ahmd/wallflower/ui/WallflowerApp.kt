@@ -479,6 +479,11 @@ private fun TerminalScreen(
                     swipe = swipe,
                     menu = if (current) menu else null,
                     onKeys = { keys -> session.send(Keys(p.id, keys)) },
+                    onCompact = if (current) {
+                        { session.submit(p.id, "/compact", clear = line?.let(bar.profileFor(p.command)::clear).orEmpty()) }
+                    } else {
+                        null
+                    },
                 )
             }
         }

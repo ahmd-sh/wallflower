@@ -227,7 +227,7 @@ fun Composer(
                             haptics.tick()
                             state.edit {
                                 val at = asCharSequence().indexOf(path)
-                                if (at >= 0) replace(at, (at + path.length).let { if (it < length && asCharSequence()[it] == ' ') it + 1 else it }, "")
+                                if (at >= 0) cutUpload(at, at + path.length)
                             }
                         }
                     }
@@ -501,10 +501,21 @@ private class WholeUploads(private val paths: Regex) : InputTransformation {
         if (!now.collapsed || was.collapsed) return // only a deletion
         val hit = paths.findAll(originalText.toString()).firstOrNull { it.range.first < was.max && was.min <= it.range.last } ?: return
         revertAllChanges()
-        val end = (hit.range.last + 1).let { if (it < length && asCharSequence()[it] == ' ') it + 1 else it }
-        replace(hit.range.first, end, "")
-        selection = TextRange(hit.range.first)
+        cutUpload(hit.range.first, hit.range.last + 1)
     }
+}
+
+/** Takes an upload's path out, with the space after it, or its line if it had one to itself. */
+private fun TextFieldBuffer.cutUpload(start: Int, end: Int) {
+    val s = asCharSequence()
+    val alone = start == 0 || s[start - 1] == '\n'
+    val until = when {
+        end < length && s[end] == ' ' -> end + 1
+        end < length && s[end] == '\n' && alone -> end + 1
+        else -> end
+    }
+    replace(start, until, "")
+    selection = TextRange(start)
 }
 
 private const val CLIP = "\uF0C6" // the font's paperclip
