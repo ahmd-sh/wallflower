@@ -25,6 +25,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     val keyBar = KeyBarStore(prefs)
     val confirm = Confirmations(prefs)
     val appearance = Appearance(prefs)
+    val conversationViews = ConversationViews(prefs)
     private var undelivered: Job? = null
 
     private val _host = MutableStateFlow(Host.load(prefs))

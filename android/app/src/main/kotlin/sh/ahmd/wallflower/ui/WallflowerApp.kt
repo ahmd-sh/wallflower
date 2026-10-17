@@ -68,6 +68,7 @@ import sh.ahmd.wallflower.protocol.Keys
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.session.Blocked
+import sh.ahmd.wallflower.session.Conversation
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Session.Companion.shownPane
 import sh.ahmd.wallflower.session.Status
@@ -128,6 +129,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     store = model.keyBar,
                     confirm = model.confirm,
                     appearance = model.appearance,
+                    conversations = model.conversationViews,
                     program = program,
                     onBack = { screen = Screen.Terminal },
                     onEditHost = { screen = Screen.Setup },
@@ -172,6 +174,14 @@ private fun TerminalScreen(
     val window = windows.firstOrNull { it.id == viewing } ?: windows.firstOrNull { it.active }
     val pane = window?.shownPane(chosen)
     LaunchedEffect(pane?.command) { onProgram(pane?.command) }
+
+    // A pane whose program records its conversation can show that instead of its terminal.
+    val conversations by session.conversations.collectAsStateWithLifecycle()
+    val offered by model.conversationViews.offered.collectAsStateWithLifecycle()
+    val conversing by model.conversationViews.panes.collectAsStateWithLifecycle()
+    val converses = offered && pane != null && pane.transcript.isNotEmpty()
+    val following = if (converses && pane.id in conversing) setOf(pane.id) else emptySet()
+    LaunchedEffect(following) { session.follow(following) }
 
     Column(
         Modifier
@@ -318,8 +328,14 @@ private fun TerminalScreen(
                     }
                 },
             )
+            if (pane != null && pane.id in following) {
+                ConversationView(conversations[pane.id] ?: Conversation()) { direction -> window?.let { session.swipe(it, direction) } }
+            }
             if (window != null && pane != null) {
-                PaneDots(window, pane.id, Modifier.align(Alignment.TopEnd)) { overview = true }
+                Row(Modifier.align(Alignment.TopEnd), verticalAlignment = Alignment.CenterVertically) {
+                    if (converses) ViewToggle(conversation = pane.id in following) { model.conversationViews.toggle(pane.id) }
+                    PaneDots(window, pane.id, Modifier) { overview = true }
+                }
             }
             DisposableEffect(view, pane?.id) {
                 val v = view
@@ -444,6 +460,19 @@ private fun NewPaneCard(onClick: () -> Unit) {
 }
 
 /** Which of the window's panes is showing: swipe the terminal sideways for the others, tap for all of them. */
+/** Switches a pane between its terminal and its conversation. */
+@Composable
+private fun ViewToggle(conversation: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .padding(vertical = 8.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Palette.bg1.copy(alpha = 0.85f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 4.dp),
+    ) { GlyphIcon(if (conversation) Glyph.Terminal else Glyph.Chat, Palette.fg, size = 14.dp) }
+}
+
 @Composable
 private fun PaneDots(window: Window, shown: String, modifier: Modifier, onClick: () -> Unit) {
     Row(

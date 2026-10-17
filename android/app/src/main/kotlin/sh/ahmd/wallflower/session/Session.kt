@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -21,6 +22,7 @@ import sh.ahmd.wallflower.protocol.ClientHello
 import sh.ahmd.wallflower.protocol.ClientMessage
 import sh.ahmd.wallflower.protocol.Close
 import sh.ahmd.wallflower.protocol.DEFAULT_HISTORY
+import sh.ahmd.wallflower.protocol.Entries
 import sh.ahmd.wallflower.protocol.ErrorMessage
 import sh.ahmd.wallflower.protocol.Focus
 import sh.ahmd.wallflower.protocol.Frame
@@ -39,6 +41,7 @@ import sh.ahmd.wallflower.protocol.Select
 import sh.ahmd.wallflower.protocol.ServerHello
 import sh.ahmd.wallflower.protocol.ServerMessage
 import sh.ahmd.wallflower.protocol.State
+import sh.ahmd.wallflower.protocol.Transcript
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.terminal.Terminal
 
@@ -86,6 +89,10 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     private val _chosen = MutableStateFlow<Map<String, PaneChoice>>(emptyMap())
     val chosen: StateFlow<Map<String, PaneChoice>> = _chosen.asStateFlow()
 
+    /** Conversations of the panes [follow] asked for, as they arrive. */
+    private val _conversations = MutableStateFlow<Map<String, Conversation>>(emptyMap())
+    val conversations: StateFlow<Map<String, Conversation>> = _conversations.asStateFlow()
+
     private val _undelivered = MutableSharedFlow<Undelivered>(extraBufferCapacity = 16)
     val undelivered: SharedFlow<Undelivered> = _undelivered.asSharedFlow()
 
@@ -101,6 +108,8 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     private val opened = LinkedHashMap<String, Int>() // pane -> history lines it has; least recently viewed first
     @Volatile private var awaitingWindow: Set<String>? = null // windows there were when the phone opened one
     @Volatile private var synced = false // this connection's session has the window being viewed current
+    private val following = HashSet<String>() // panes this connection asked for conversations of; guarded by pending
+    @Volatile private var wanted: Set<String> = emptySet()
     private val pings = AtomicInteger()
     private var grid = 80 to 24
     private var job: Job? = null
@@ -187,7 +196,11 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
             lastPing = SystemClock.elapsedRealtime()
             deadline = 0
             synced = false
-            synchronized(pending) { queue = out }
+            synchronized(pending) {
+                queue = out
+                following.clear()
+            }
+            follow(wanted)
             val heartbeat = scope.launch(Dispatchers.IO) { heartbeat(conn) }
             try {
                 val r = FrameReader(conn.input)
@@ -270,6 +283,9 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                     gone.values.forEach { it.close() }
                 }
             }
+            is Entries -> {
+                if (m.pane in wanted) _conversations.update { it + (m.pane to (it[m.pane] ?: Conversation()).apply(m)) }
+            }
             is Reset -> {
                 val term = Terminal(m.cols, m.rows)
                 val old = _terminals.value[m.pane]
@@ -336,6 +352,20 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     fun newWindow() {
         awaitingWindow = _state.value?.windows?.map { it.id }?.toSet().orEmpty()
         send(New)
+    }
+
+    /** Has the gateway send these panes' conversations, and no others'. */
+    fun follow(panes: Set<String>) {
+        wanted = panes
+        synchronized(pending) {
+            queue?.let { q ->
+                for (p in following - panes) q.trySend(Outgoing.Message(Transcript(p, on = false)))
+                for (p in panes - following) q.trySend(Outgoing.Message(Transcript(p, on = true)))
+                following.clear()
+                following += panes
+            }
+        }
+        _conversations.update { c -> if (c.keys.all { it in panes }) c else c.filterKeys { it in panes } }
     }
 
     fun send(m: ClientMessage) {

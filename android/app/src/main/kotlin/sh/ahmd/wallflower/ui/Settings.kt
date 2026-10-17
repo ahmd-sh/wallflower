@@ -41,6 +41,7 @@ import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.Appearance
 import sh.ahmd.wallflower.BarKey
 import sh.ahmd.wallflower.Confirmations
+import sh.ahmd.wallflower.ConversationViews
 import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.KeyBarStore
 import sh.ahmd.wallflower.KeyProfile
@@ -65,6 +66,7 @@ fun SettingsScreen(
     store: KeyBarStore,
     confirm: Confirmations,
     appearance: Appearance,
+    conversations: ConversationViews,
     program: String?,
     onBack: () -> Unit,
     onEditHost: () -> Unit,
@@ -97,6 +99,11 @@ fun SettingsScreen(
         val askWindows by confirm.windows.collectAsStateWithLifecycle()
         Toggle("ask before closing a pane", askPanes) { confirm.askForPanes(it) }
         Toggle("ask before closing a tab (or its last pane)", askWindows) { confirm.askForWindows(it) }
+
+        Section("conversations")
+        val offered by conversations.offered.collectAsStateWithLifecycle()
+        Toggle("offer a conversation view for Claude Code", offered) { conversations.offer(it) }
+        Body("Replies as markdown, tool calls folded, read from what Claude Code records. The button by a pane's dots switches it; the terminal keeps running underneath.")
 
         Section("key bar")
         Body(

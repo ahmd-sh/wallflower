@@ -247,7 +247,7 @@ internal fun Button(label: String, primary: Boolean = false, onClick: () -> Unit
         .padding(horizontal = 16.dp, vertical = 10.dp),
 )
 
-private fun copy(context: Context, text: String) {
+internal fun copy(context: Context, text: String) {
     val clipboard = context.getSystemService(ClipboardManager::class.java)
     clipboard.setPrimaryClip(ClipData.newPlainText("wallflower", text))
 }

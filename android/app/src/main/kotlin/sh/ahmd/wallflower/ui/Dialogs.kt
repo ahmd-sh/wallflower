@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -42,7 +43,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-enum class Glyph { Plus, Close, Power }
+enum class Glyph { Plus, Close, Power, Chat, Terminal }
 
 /** Line icons, drawn to match the send button rather than pulled from an icon set. */
 @Composable
@@ -69,6 +70,21 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
                     style = Stroke(w, cap = StrokeCap.Round),
                 )
                 drawLine(color, Offset(c.x, c.y - r), Offset(c.x, c.y), w, StrokeCap.Round)
+            }
+            Glyph.Chat -> {
+                val top = c.y - r * 0.8f
+                val bottom = c.y + r * 0.45f
+                drawRoundRect(
+                    color, topLeft = Offset(c.x - r, top), size = Size(r * 2, bottom - top),
+                    cornerRadius = CornerRadius(r * 0.45f), style = Stroke(w),
+                )
+                drawLine(color, Offset(c.x - r * 0.35f, bottom), Offset(c.x - r * 0.6f, c.y + r), w, StrokeCap.Round)
+                drawLine(color, Offset(c.x - r * 0.6f, c.y + r), Offset(c.x + r * 0.05f, bottom), w, StrokeCap.Round)
+            }
+            Glyph.Terminal -> {
+                drawLine(color, Offset(c.x - r, c.y - r * 0.6f), Offset(c.x - r * 0.35f, c.y), w, StrokeCap.Round)
+                drawLine(color, Offset(c.x - r * 0.35f, c.y), Offset(c.x - r, c.y + r * 0.6f), w, StrokeCap.Round)
+                drawLine(color, Offset(c.x + r * 0.05f, c.y + r * 0.7f), Offset(c.x + r, c.y + r * 0.7f), w, StrokeCap.Round)
             }
         }
     }
