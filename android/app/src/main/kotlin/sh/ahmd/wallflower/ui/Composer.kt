@@ -8,7 +8,6 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import android.net.Uri
@@ -273,13 +272,20 @@ fun Composer(
             )
             if (state.text.isEmpty() && armed == null && ghost.isNotEmpty()) {
                 // The app's line or its suggestion, over the empty box. A tap is the box's, to type afresh;
-                // swiped right, past where a tick says, it comes in to edit.
+                // swiped right it fills with colour as it goes, and once full (a tick) it comes in to edit.
                 val suggested = pending.isEmpty()
                 val clearable = !suggested && onClear != null
                 val reach = with(LocalDensity.current) { TAKE_REACH.toPx() }
                 var pulled by remember { mutableFloatStateOf(0f) }
                 var past by remember { mutableStateOf(false) }
-                val ink = lerp(if (suggested) Palette.dim else Palette.grey, Palette.fg, (pulled / reach).coerceIn(0f, 1f))
+                val base = if (suggested) Palette.dim else Palette.grey
+                val fill = (pulled / reach).coerceIn(0f, 1f)
+                val filled = Brush.horizontalGradient(
+                    0f to Palette.fg,
+                    (fill - FILL_EDGE).coerceAtLeast(0f) to Palette.fg,
+                    (fill + FILL_EDGE).coerceAtMost(1f) to base,
+                    1f to base,
+                )
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -311,12 +317,16 @@ fun Composer(
                                 past = false
                                 animate(pulled, 0f, animationSpec = Motion.spatial()) { v, _ -> pulled = v }
                             },
-                        )
-                        .graphicsLayer { translationX = pulled },
+                        ),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    if (suggested) GlyphIcon(Glyph.Spark, ink, Modifier.padding(top = 5.dp, end = 8.dp), size = 11.dp)
-                    Text(ghost, color = ink, fontFamily = Mono, fontSize = 15.sp, lineHeight = 21.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    if (suggested) GlyphIcon(Glyph.Spark, if (fill > 0f) Palette.fg else base, Modifier.padding(top = 5.dp, end = 8.dp), size = 11.dp)
+                    Text(
+                        ghost,
+                        style = TextStyle(brush = if (fill > 0f) filled else SolidColor(base), fontFamily = Mono, fontSize = 15.sp, lineHeight = 21.sp),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 if (clearable) {
                     Box(
@@ -501,6 +511,7 @@ private const val CLIP = "\uF0C6" // the font's paperclip
 private const val MAX_ATTACH = 10
 private val TILE = 56.dp
 private val TAKE_REACH = 72.dp // how far a swipe takes the app's line or suggestion
+private const val FILL_EDGE = 0.04f // the softness of the fill's edge, of the text's width
 
 @Composable
 private fun KeyRow(keys: List<BarKey>, armed: BarKey?, onKey: (BarKey) -> Unit, onEdit: () -> Unit, modifier: Modifier) {
