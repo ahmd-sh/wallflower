@@ -39,6 +39,8 @@ class FramesTest {
             Rename("@2", "logs ✓"),
             Kill(pane = "%2"),
             Kill(window = "@2"),
+            Transcript("%2", on = true),
+            Transcript("%2", on = false),
         ).forEach(w::send)
         w.sendData("%1", "echo héllo ✓\r".encodeToByteArray())
 
@@ -57,7 +59,7 @@ class FramesTest {
         assertEquals("o", state.name)
         val (claude, floating) = state.windows.single().panes
         assertEquals(Pane("%2", 0, false, 0, 0, 28, 20, alt = true, agent = "waiting", title = "✳ Fix tests",
-            path = "/Users/ahmedshaikh/dev/wallflower", command = "2.1.300"), claude)
+            path = "/Users/ahmedshaikh/dev/wallflower", command = "claude", transcript = "claude"), claude)
         assertEquals(true, floating.floating)
         assertEquals(Reset("%2", 28, 20), message())
 
@@ -70,6 +72,21 @@ class FramesTest {
         assertEquals(Result(3, error = "tmux: no-such-command: unknown command"), message())
         assertEquals(ErrorMessage("bad id \"x\""), message())
         assertEquals(Pong(4), message())
+        assertEquals(
+            Entries(
+                "%2", reset = true, more = true,
+                entries = listOf(
+                    Entry("u1", "user", "text", "fix the tests ✓"),
+                    Entry("a1", "assistant", "tool", "go test ./...", name = "Bash", output = "ok", done = true),
+                    Entry("a2", "assistant", "tool", "rm -rf /", name = "Bash", output = "denied", done = true, error = true),
+                    Entry("u2", "user", "image", mime = "image/png", data = "iVBORw0KGgo="),
+                    Entry("a3", "assistant", "text", "**Done.** All `3` pass."),
+                ),
+            ),
+            message(),
+        )
+        assertEquals(Entries("%2", entries = listOf(Entry("n1", "user", "note", "[Request interrupted by user]"))), message())
+        assertEquals(Entries("%2", reset = true, error = "the conversation ended"), message())
         assertEquals(Bye("tmux exited"), message())
         assertNull(r.next())
     }

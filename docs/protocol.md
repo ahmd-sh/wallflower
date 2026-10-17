@@ -59,6 +59,7 @@ client never has to resync on its own.
 | `rename` | `window`, `name` | |
 | `kill` | `window` or `pane` | close it; closing a window's last pane closes the window |
 | `scrollback` | `id`, `pane`, `start`, `end` | lines in tmux numbering: 0 is the top visible line, negative is history |
+| `transcript` | `pane`, `on` | start or stop the pane's conversation arriving as `entries`; for panes whose `transcript` is set |
 | `tmux` | `id`, `command` | run a raw tmux command line (escape hatch) |
 | `ping` | `id` | |
 
@@ -80,6 +81,7 @@ Messages are handled in order, so a `pong` means everything sent before its
 | `result` | `id`, `lines`?, `error`? | reply to `tmux`, or a failed `scrollback` |
 | `error` | `message` | a message failed |
 | `pong` | `id` | |
+| `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`? | a pane's conversation, see below |
 | `bye` | `reason` | the gateway is exiting |
 
 A window is `id`, `index`, `name`, `active`, `zoomed`, `cols`, `rows` and
@@ -94,8 +96,38 @@ A window is `id`, `index`, `name`, `active`, `zoomed`, `cols`, `rows` and
 | `agent` | the pane's `@agent_state` option, set by hooks (`tmux set -p @agent_state waiting`) |
 | `title`, `path` | |
 | `command` | the foreground program; tools that run from a versioned file (`.../claude/versions/2.1.300`) report the name they were run as |
+| `transcript` | the source of the conversation the pane's program records (`claude`), if any |
 
 When a window is zoomed, only its active pane is visible.
+
+## Conversations
+
+Some programs record their conversation as they go: Claude Code writes a
+transcript for each session. For a pane running one, the gateway can send
+the conversation itself, for a client to render natively, alongside the
+terminal, which keeps streaming as usual. It's read-only: input still goes
+to the terminal.
+
+After `transcript` with `on`, `entries` with `reset` carries the latest
+entries (200; `more` says there are earlier ones), then `entries` without
+`reset` as the program writes more. An entry with an `id` already sent
+replaces it: a tool call gets its result. An `error` says there's no
+conversation (any more), e.g. the program exited. A new conversation in the
+same process (`/clear`) arrives as another `reset`.
+
+An entry is `id`, `role` (`user` or `assistant`), `kind` and, by kind:
+
+| kind | fields | |
+|------|--------|---|
+| `text` | `text` | markdown |
+| `thinking` | `text` | |
+| `tool` | `name`, `text`, `output`?, `done`?, `error`? | `text` is what the call was asked, in brief; `output` is trimmed |
+| `image` | `mime`, `data` | base64 |
+| `note` | `text` | an event rather than something said: an interruption, a compacted conversation |
+
+The gateway finds a Claude Code session's transcript from
+`~/.claude/sessions/<pid>.json`, so it works for sessions already running.
+Neither file format is documented; entries it can't read are skipped.
 
 ## Presentation is the client's
 

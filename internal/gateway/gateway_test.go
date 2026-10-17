@@ -41,12 +41,19 @@ func connect(t *testing.T, cols, rows int) *client {
 
 func connectCtx(t *testing.T, ctx context.Context, cols, rows int) *client {
 	t.Helper()
+	return connectOpts(t, ctx, cols, rows, Options{})
+}
+
+// connectOpts is connect with more options; the socket and session are filled in.
+func connectOpts(t *testing.T, ctx context.Context, cols, rows int, opts Options) *client {
+	t.Helper()
 	socket, tmuxRun := tmuxtest.Server(t, 120, 40)
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	c := &client{t: t, w: inW, frames: make(chan protocol.Frame, 1024), done: make(chan error, 1), socket: socket, tmux: tmuxRun}
 	go func() {
-		c.done <- Serve(ctx, inR, outW, Options{Socket: socket, Session: "t"})
+		opts.Socket, opts.Session = socket, "t"
+		c.done <- Serve(ctx, inR, outW, opts)
 		outW.Close()
 	}()
 	go func() {

@@ -85,6 +85,13 @@ type Kill struct {
 	Pane   string `json:"pane,omitempty"`
 }
 
+// Transcript starts or stops a pane's conversation arriving as Entries; a
+// pane has one when Pane.Transcript names its source.
+type Transcript struct {
+	Pane string `json:"pane"`
+	On   bool   `json:"on"`
+}
+
 type ScrollbackRequest struct {
 	ID    int    `json:"id"`
 	Pane  string `json:"pane"`
@@ -117,6 +124,7 @@ func (Split) Type() string             { return "split" }
 func (New) Type() string               { return "new" }
 func (Rename) Type() string            { return "rename" }
 func (Kill) Type() string              { return "kill" }
+func (Transcript) Type() string        { return "transcript" }
 
 // Gateway to client.
 
@@ -157,6 +165,9 @@ type Pane struct {
 	Title    string `json:"title,omitempty"`
 	Path     string `json:"path,omitempty"`
 	Command  string `json:"command"`
+	// Transcript names the source of the conversation the pane's program
+	// records (claude), if it has one; see Transcript.
+	Transcript string `json:"transcript,omitempty"`
 }
 
 // Reset tells the client to recreate the pane's terminal at this size; the
@@ -165,6 +176,32 @@ type Reset struct {
 	Pane string `json:"pane"`
 	Cols int    `json:"cols"`
 	Rows int    `json:"rows"`
+}
+
+// Entries carries a pane's conversation. With Reset, its latest entries
+// replace any before (More says earlier ones weren't sent); otherwise these
+// entries are new, or replace the ones with their IDs. Error says why there
+// is no conversation (any more).
+type Entries struct {
+	Pane    string  `json:"pane"`
+	Reset   bool    `json:"reset,omitempty"`
+	More    bool    `json:"more,omitempty"`
+	Entries []Entry `json:"entries,omitempty"`
+	Error   string  `json:"error,omitempty"`
+}
+
+// Entry is one part of a conversation.
+type Entry struct {
+	ID     string `json:"id"`
+	Role   string `json:"role"`             // user or assistant
+	Kind   string `json:"kind"`             // text (markdown), thinking, tool, image or note
+	Text   string `json:"text,omitempty"`   // what was said; for a tool, what it was asked
+	Name   string `json:"name,omitempty"`   // tool
+	Output string `json:"output,omitempty"` // tool, trimmed
+	Done   bool   `json:"done,omitempty"`   // tool finished
+	Error  bool   `json:"error,omitempty"`  // tool failed
+	Mime   string `json:"mime,omitempty"`   // image
+	Data   string `json:"data,omitempty"`   // image, base64
 }
 
 type ScrollbackReply struct {
@@ -200,14 +237,16 @@ func (Result) Type() string          { return "result" }
 func (Error) Type() string           { return "error" }
 func (Pong) Type() string            { return "pong" }
 func (Bye) Type() string             { return "bye" }
+func (Entries) Type() string         { return "entries" }
 
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Select{}, Zoom{},
 	ScrollbackRequest{}, TmuxCommand{}, Ping{}, Paste{}, Focus{}, Split{}, New{}, Rename{}, Kill{},
+	Transcript{},
 )
 
 var serverMessages = registry(
-	ServerHello{}, State{}, Reset{}, ScrollbackReply{}, Result{}, Error{}, Pong{}, Bye{},
+	ServerHello{}, State{}, Reset{}, ScrollbackReply{}, Result{}, Error{}, Pong{}, Bye{}, Entries{},
 )
 
 // DecodeClient decodes a message sent by a client. It returns a pointer to

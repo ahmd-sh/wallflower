@@ -3,6 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+
+	"github.com/ahmd-sh/wallflower/internal/claude"
+	"github.com/ahmd-sh/wallflower/internal/transcript"
 )
 
 const usage = `usage: wallflower <command> [flags]
@@ -30,4 +34,20 @@ func main() {
 		fmt.Fprintln(os.Stderr, "wallflower:", err)
 		os.Exit(1)
 	}
+}
+
+func defaultClaudeDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".claude")
+}
+
+// transcripts are the CLIs whose conversations panes can show.
+func transcripts(claudeDir string) []transcript.Source {
+	if claudeDir == "" {
+		return nil
+	}
+	return []transcript.Source{claude.New(claudeDir)}
 }

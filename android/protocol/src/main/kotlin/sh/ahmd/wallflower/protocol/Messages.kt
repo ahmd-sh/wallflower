@@ -89,6 +89,11 @@ data class Rename(val window: String, val name: String) : ClientMessage
 @SerialName("kill")
 data class Kill(val window: String? = null, val pane: String? = null) : ClientMessage
 
+/** Starts or stops [pane]'s conversation arriving as [Entries]; panes with one name its source ([Pane.transcript]). */
+@Serializable
+@SerialName("transcript")
+data class Transcript(val pane: String, val on: Boolean) : ClientMessage
+
 /** Lines in tmux numbering: 0 is the top visible line, negative is history. */
 @Serializable
 @SerialName("scrollback")
@@ -144,6 +149,8 @@ data class Pane(
     val title: String = "",
     val path: String = "",
     val command: String,
+    /** The source of the conversation the pane's program records (claude), if any; see [Transcript]. */
+    val transcript: String = "",
 )
 
 /** Recreate the pane's terminal at this size; the next data frame repaints it. */
@@ -159,6 +166,40 @@ data class ScrollbackReply(
     @SerialName("history_size") val historySize: Int,
     val lines: List<String>,
 ) : ServerMessage
+
+/**
+ * A pane's conversation. With [reset], its latest entries replace any before
+ * ([more]: earlier ones weren't sent); otherwise these entries are new, or
+ * replace the ones with their ids. [error] says why there is no conversation.
+ */
+@Serializable
+@SerialName("entries")
+data class Entries(
+    val pane: String,
+    val reset: Boolean = false,
+    val more: Boolean = false,
+    val entries: List<Entry> = emptyList(),
+    val error: String? = null,
+) : ServerMessage
+
+/** One part of a conversation. */
+@Serializable
+data class Entry(
+    val id: String,
+    /** user or assistant */
+    val role: String,
+    /** text (markdown), thinking, tool, image or note */
+    val kind: String,
+    /** What was said; for a tool, what it was asked. */
+    val text: String = "",
+    val name: String = "",
+    val output: String = "",
+    val done: Boolean = false,
+    val error: Boolean = false,
+    val mime: String = "",
+    /** An image, base64. */
+    val data: String = "",
+)
 
 @Serializable
 @SerialName("result")

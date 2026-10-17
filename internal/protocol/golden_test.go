@@ -38,6 +38,8 @@ func goldenClient(t *testing.T) []byte {
 		Rename{Window: "@2", Name: "logs ✓"},
 		Kill{Pane: "%2"},
 		Kill{Window: "@2"},
+		Transcript{Pane: "%2", On: true},
+		Transcript{Pane: "%2"},
 	} {
 		b = mustJSON(t, b, m)
 	}
@@ -51,7 +53,7 @@ func goldenServer(t *testing.T) []byte {
 		ID: "@1", Index: 1, Name: "base", Active: true, Zoomed: false, Cols: 56, Rows: 20,
 		Panes: []Pane{
 			{ID: "%2", Index: 0, Active: false, X: 0, Y: 0, Cols: 28, Rows: 20, Alt: true, Agent: "waiting",
-				Title: "✳ Fix tests", Path: "/Users/ahmedshaikh/dev/wallflower", Command: "2.1.300"},
+				Title: "✳ Fix tests", Path: "/Users/ahmedshaikh/dev/wallflower", Command: "claude", Transcript: "claude"},
 			{ID: "%3", Index: 1, Active: true, X: 4, Y: 2, Cols: 18, Rows: 3, Floating: true, Z: 0, Command: "zsh"},
 		},
 	}}})
@@ -62,6 +64,15 @@ func goldenServer(t *testing.T) []byte {
 	b = mustJSON(t, b, Result{ID: 3, Error: "tmux: no-such-command: unknown command"})
 	b = mustJSON(t, b, Error{Message: "bad id \"x\""})
 	b = mustJSON(t, b, Pong{ID: 4})
+	b = mustJSON(t, b, Entries{Pane: "%2", Reset: true, More: true, Entries: []Entry{
+		{ID: "u1", Role: "user", Kind: "text", Text: "fix the tests ✓"},
+		{ID: "a1", Role: "assistant", Kind: "tool", Text: "go test ./...", Name: "Bash", Output: "ok", Done: true},
+		{ID: "a2", Role: "assistant", Kind: "tool", Text: "rm -rf /", Name: "Bash", Output: "denied", Done: true, Error: true},
+		{ID: "u2", Role: "user", Kind: "image", Mime: "image/png", Data: "iVBORw0KGgo="},
+		{ID: "a3", Role: "assistant", Kind: "text", Text: "**Done.** All `3` pass."},
+	}})
+	b = mustJSON(t, b, Entries{Pane: "%2", Entries: []Entry{{ID: "n1", Role: "user", Kind: "note", Text: "[Request interrupted by user]"}}})
+	b = mustJSON(t, b, Entries{Pane: "%2", Reset: true, Error: "the conversation ended"})
 	return mustJSON(t, b, Bye{Reason: "tmux exited"})
 }
 

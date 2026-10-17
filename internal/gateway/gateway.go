@@ -19,11 +19,13 @@ import (
 
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
+	"github.com/ahmd-sh/wallflower/internal/transcript"
 )
 
 type Options struct {
-	Socket  string // tmux socket, see tmux.Options
-	Session string // default session when the client doesn't ask for one
+	Socket      string              // tmux socket, see tmux.Options
+	Session     string              // default session when the client doesn't ask for one
+	Transcripts []transcript.Source // CLIs whose conversations panes can show
 }
 
 const (
@@ -49,6 +51,10 @@ type gateway struct {
 	group      string            // the session the client asked for; its own session is grouped with it
 	programs   map[string]string // tty and versioned command -> the name it was run as
 	client     string            // this control client's name, for keys sent through bindings
+	ctx        context.Context
+	sources    []transcript.Source
+	ttys       map[int]string                // pid -> its tty, to find the pane a transcript's process runs in
+	following  map[string]context.CancelFunc // pane -> the follower sending its conversation
 	lastState  []byte
 	dirty      bool
 	exitReason string
@@ -66,7 +72,10 @@ type pane struct {
 func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	g := &gateway{out: newOutbox(out), panes: map[string]*pane{}, zoomed: map[string]bool{}, programs: map[string]string{}}
+	g := &gateway{
+		out: newOutbox(out), panes: map[string]*pane{}, zoomed: map[string]bool{}, programs: map[string]string{},
+		ctx: ctx, sources: opts.Transcripts, ttys: map[int]string{}, following: map[string]context.CancelFunc{},
+	}
 	defer g.out.close(2 * time.Second)
 
 	r := protocol.NewReader(in)
@@ -339,6 +348,16 @@ func (g *gateway) handle(f protocol.Frame) error {
 		}
 		return g.focus(m.Pane)
 
+	case *protocol.Transcript:
+		if err := checkID(paneID, m.Pane); err != nil {
+			return err
+		}
+		g.unfollow(m.Pane)
+		if m.On {
+			g.follow(m.Pane)
+		}
+		return nil
+
 	case *protocol.Split:
 		if err := checkID(paneID, m.Pane); err != nil {
 			return err
@@ -480,7 +499,8 @@ func (g *gateway) sendState() {
 		return
 	}
 	g.session = s
-	st := stateOf(s, g.program)
+	convs := g.conversations()
+	st := stateOf(s, g.program, func(p tmux.Pane) string { return convs[p.TTY].name })
 	st.Name = g.group // the client's own session is an implementation detail
 	if b, _ := protocol.AppendJSON(nil, st); !bytes.Equal(b, g.lastState) {
 		g.out.push(b)
@@ -493,6 +513,11 @@ func (g *gateway) sendState() {
 	for _, w := range s.Windows {
 		for _, p := range w.Panes {
 			sizes[p.ID] = [2]int{p.Width, p.Height}
+		}
+	}
+	for id := range g.following {
+		if _, ok := sizes[id]; !ok {
+			g.unfollow(id)
 		}
 	}
 	for id, p := range g.panes {
@@ -508,7 +533,7 @@ func (g *gateway) sendState() {
 	}
 }
 
-func stateOf(s *tmux.Session, program func(tmux.Pane) string) protocol.State {
+func stateOf(s *tmux.Session, program, transcript func(tmux.Pane) string) protocol.State {
 	st := protocol.State{Session: s.ID, Name: s.Name, Windows: []protocol.Window{}}
 	for _, w := range s.Windows {
 		pw := protocol.Window{
@@ -519,7 +544,7 @@ func stateOf(s *tmux.Session, program func(tmux.Pane) string) protocol.State {
 			pw.Panes = append(pw.Panes, protocol.Pane{
 				ID: p.ID, Index: p.Index, Active: p.Active, X: p.Left, Y: p.Top,
 				Cols: p.Width, Rows: p.Height, Floating: p.Floating, Z: p.Z, Alt: p.AltScreen,
-				Agent: p.Agent, Title: p.Title, Path: p.Path, Command: program(p),
+				Agent: p.Agent, Title: p.Title, Path: p.Path, Command: program(p), Transcript: transcript(p),
 			})
 		}
 		st.Windows = append(st.Windows, pw)
@@ -562,6 +587,70 @@ func foreground(tty string) string {
 		}
 	}
 	return ""
+}
+
+// A conversation is a process recording a transcript, in some pane.
+type conversation struct {
+	name string // its source's
+	src  transcript.Source
+	pid  int
+}
+
+// conversations finds the transcripts being written, by the tty of the
+// process writing each.
+func (g *gateway) conversations() map[string]conversation {
+	found := map[string]conversation{}
+	for _, src := range g.sources {
+		for pid := range src.Running() {
+			if tty := g.tty(pid); tty != "" {
+				found[tty] = conversation{src.Name(), src, pid}
+			}
+		}
+	}
+	return found
+}
+
+func (g *gateway) tty(pid int) string {
+	tty, ok := g.ttys[pid]
+	if !ok {
+		out, _ := exec.Command("ps", "-o", "tty=", "-p", strconv.Itoa(pid)).Output()
+		if t := strings.TrimSpace(string(out)); t != "" && !strings.HasPrefix(t, "?") {
+			tty = "/dev/" + t
+		}
+		g.ttys[pid] = tty
+	}
+	return tty
+}
+
+// follow sends the conversation in pane as it's written, until unfollow.
+func (g *gateway) follow(pane string) {
+	var c conversation
+	for _, w := range g.windows() {
+		for _, p := range w.Panes {
+			if p.ID == pane {
+				c = g.conversations()[p.TTY]
+			}
+		}
+	}
+	if c.src == nil {
+		g.send(protocol.Entries{Pane: pane, Reset: true, Error: "no conversation in this pane"})
+		return
+	}
+	ctx, cancel := context.WithCancel(g.ctx)
+	g.following[pane] = cancel
+	go transcript.Follow(ctx, c.src, c.pid, func(e protocol.Entries) {
+		if ctx.Err() == nil { // a follower being replaced says nothing more
+			e.Pane = pane
+			g.send(e)
+		}
+	})
+}
+
+func (g *gateway) unfollow(pane string) {
+	if cancel, ok := g.following[pane]; ok {
+		cancel()
+		delete(g.following, pane)
+	}
 }
 
 func (g *gateway) windows() []tmux.Window {
