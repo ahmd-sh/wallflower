@@ -63,6 +63,8 @@ type gateway struct {
 	lastState  []byte
 	dirty      bool
 	exitReason string
+	held       []protocol.Frame // the client's frames waiting for resume, in order
+	resume     <-chan time.Time // while a pane settles; see hold
 }
 
 type pane struct {
@@ -220,8 +222,13 @@ func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readEr
 			}
 			g.notify(n)
 		case f := <-frames:
-			if err := g.handle(f); err != nil {
-				g.send(protocol.Error{Message: err.Error()})
+			g.take(f)
+		case <-g.resume:
+			g.resume = nil
+			held := g.held
+			g.held = nil
+			for _, f := range held {
+				g.take(f) // held again behind any that holds once more
 			}
 		case err := <-readErr:
 			if errors.Is(err, io.EOF) {
@@ -260,6 +267,26 @@ func (g *gateway) notify(n tmux.Notification) {
 	case "exit":
 		g.exitReason = n.Value
 	}
+}
+
+// take handles a frame from the client, or keeps it behind those still held.
+func (g *gateway) take(f protocol.Frame) {
+	if g.resume != nil {
+		g.held = append(g.held, f)
+		return
+	}
+	if err := g.handle(f); err != nil {
+		g.send(protocol.Error{Message: err.Error()})
+	}
+}
+
+// hold gives a program a moment with what it was just sent: the client's
+// frames after it, then wait (first, then the rest) until d has passed. Output
+// and state go on meanwhile, and input keeps its order, so a pong still means
+// everything sent before its ping reached tmux.
+func (g *gateway) hold(d time.Duration, first ...protocol.Frame) {
+	g.held = append(first, g.held...)
+	g.resume = time.After(d)
 }
 
 func (g *gateway) handle(f protocol.Frame) error {
@@ -347,7 +374,7 @@ func (g *gateway) handle(f protocol.Frame) error {
 		// An upload pasted on its own may be taken in as a file (Claude Code attaches an image), which
 		// takes the app a moment; keys right behind it, like Enter, would be lost meanwhile.
 		if err == nil && filepath.Dir(m.Text) == g.uploads.dir {
-			time.Sleep(uploadSettle)
+			g.hold(uploadSettle)
 		}
 		return err
 
@@ -726,11 +753,8 @@ func (g *gateway) claimSize(pane string) {
 // Code, takes it as a paste with the Enter in it, and nothing is submitted.
 func (g *gateway) sendText(pane string, data []byte) error {
 	if n := len(data) - 1; n > 0 && data[n] == '\r' {
-		if err := g.sendText(pane, data[:n]); err != nil {
-			return err
-		}
-		time.Sleep(enterSettle)
-		data = data[n:]
+		g.hold(enterSettle, protocol.Frame{Type: protocol.FrameData, ID: pane, Data: data[n:]})
+		data = data[:n]
 	}
 	const perCommand, perLine = 512, 16
 	var cmds []string

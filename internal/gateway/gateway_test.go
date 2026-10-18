@@ -421,14 +421,24 @@ func TestEnterOnItsOwn(t *testing.T) {
 	// isn't taken as a paste.
 	c.sendText(p, `perl -e 'system "stty raw -echo"; $|=1; print "<", length($b), ">" while sysread STDIN, $b, 4096'`+"\r")
 	time.Sleep(200 * time.Millisecond)
+	sent := time.Now()
 	c.sendText(p, "say just: ok\r")
+	// What follows waits for the Enter, a ping too: its pong still means all before it reached tmux.
+	c.send(protocol.Ping{ID: 9})
 	var out []byte
-	c.expect("two reads", func(f protocol.Frame, _ protocol.Message) bool {
+	var ponged time.Duration
+	c.expect("two reads and the pong", func(f protocol.Frame, m protocol.Message) bool {
 		if f.Type == protocol.FrameData && f.ID == p {
 			out = append(out, f.Data...)
 		}
-		return bytes.Contains(out, []byte("<12><1>"))
+		if pong, ok := m.(*protocol.Pong); ok && pong.ID == 9 {
+			ponged = time.Since(sent)
+		}
+		return bytes.Contains(out, []byte("<12><1>")) && ponged > 0
 	})
+	if ponged < enterSettle {
+		t.Errorf("pong after %v, before the Enter was typed", ponged)
+	}
 }
 
 func TestVersionedProgram(t *testing.T) {
