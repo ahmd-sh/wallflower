@@ -57,13 +57,13 @@ data class KeyProfile(
     }
 
     /**
-     * Keys that empty [line], as last read, row by row. Claude's vim mode may
-     * be in NORMAL (after an Esc), where keys are commands: A first goes back
-     * to INSERT at the row's end, and in INSERT it's typed and the first ^U
-     * takes it.
+     * Keys that empty [line], as last read, row by row. With [insert], for the
+     * read view where claude's vim mode can't be seen: it may be in NORMAL
+     * (after an Esc), where keys are commands, so A first goes back to INSERT
+     * at the row's end; in INSERT it's typed and the first ^U takes it.
      */
-    fun clear(line: InputLine): List<String> {
-        val ready = if (clear == null && programs.any { it.equals("claude", ignoreCase = true) }) listOf("A") else emptyList()
+    fun clear(line: InputLine, insert: Boolean = false): List<String> {
+        val ready = if (insert && clear == null && programs.any { it.equals("claude", ignoreCase = true) }) listOf("A") else emptyList()
         return ready + List(line.rows * 2 + 1) { clearKeys() }.flatten()
     }
 }

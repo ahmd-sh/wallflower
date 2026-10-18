@@ -397,7 +397,7 @@ private fun ContextButton(tokens: Int, onCompact: (() -> Unit)?) {
     Box {
         Text(
             "context ${count(tokens)}",
-            color = Palette.dim,
+            color = Palette.purple,
             fontFamily = words,
             fontSize = wordSize(11.sp, 13.sp),
             modifier = Modifier
@@ -530,7 +530,7 @@ private fun trace(steps: List<Entry>) = steps.joinToString("\n\n") { s ->
 private fun Running(modifier: Modifier) {
     val breath by rememberInfiniteTransition(label = "running")
         .animateFloat(0.3f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "breath")
-    Box(modifier.size(6.dp).graphicsLayer { alpha = breath }.clip(CircleShape).background(Palette.orange))
+    Box(modifier.size(6.dp).graphicsLayer { alpha = breath }.clip(CircleShape).background(Palette.purple))
 }
 
 @Composable
@@ -556,7 +556,7 @@ private fun Step(s: Entry) {
                 style = mono.copy(
                     color = when {
                         s.error -> Palette.red
-                        s.kind == "tool" && !s.done -> Palette.orange
+                        s.kind == "tool" && !s.done -> Palette.purple
                         else -> Palette.aqua
                     },
                     fontStyle = if (s.kind == "thinking") FontStyle.Italic else FontStyle.Normal,
@@ -658,7 +658,7 @@ private fun Working(since: Long) {
                     // A light passing along it.
                     val x = shine * size.width
                     drawRect(
-                        Brush.horizontalGradient(listOf(Palette.grey, Palette.fg, Palette.grey), startX = x - size.width / 3, endX = x + size.width / 3),
+                        Brush.horizontalGradient(listOf(Palette.grey, Palette.purple, Palette.grey), startX = x - size.width / 3, endX = x + size.width / 3),
                         blendMode = BlendMode.SrcIn,
                     )
                 },

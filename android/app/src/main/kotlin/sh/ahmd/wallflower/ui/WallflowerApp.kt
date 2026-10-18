@@ -480,7 +480,7 @@ private fun TerminalScreen(
                     menu = if (current) menu else null,
                     onKeys = { keys -> session.send(Keys(p.id, keys)) },
                     onCompact = if (current) {
-                        { session.submit(p.id, "/compact", clear = line?.let(bar.profileFor(p.command)::clear).orEmpty()) }
+                        { session.submit(p.id, "/compact", clear = line?.let { bar.profileFor(p.command).clear(it, insert = true) }.orEmpty()) }
                     } else {
                         null
                     },
@@ -572,7 +572,7 @@ private fun TerminalScreen(
                             onDismissUpload = model.uploads::dismiss,
                             onClear = if (profile.clearKeys().isEmpty()) null else {
                                 {
-                                    line?.let { session.send(Keys(pane.id, profile.clear(it))) }
+                                    line?.let { session.send(Keys(pane.id, profile.clear(it, insert = reading))) }
                                     line = null // gone at once; the next read says what's there now
                                 }
                             },
@@ -580,7 +580,7 @@ private fun TerminalScreen(
                             onSend = { text, enter ->
                                 // The box replaces whatever the app's line holds.
                                 val known = line
-                                val clear = known?.let(profile::clear).orEmpty()
+                                val clear = known?.let { profile.clear(it, insert = reading) }.orEmpty()
                                 session.submit(pane.id, text, enter, clear).also { sent ->
                                     if (sent && '\n' !in text && known?.text.isNullOrEmpty()) view?.predict(text)
                                 }
@@ -1072,7 +1072,7 @@ private val PAGE_PADDING = 4.dp
 
 private fun agentColor(state: String): Color = when (state) {
     "waiting" -> Palette.orange
-    "working" -> Palette.blue
+    "working" -> Palette.purple
     "done" -> Palette.green
     "error" -> Palette.red
     else -> Palette.grey

@@ -35,6 +35,7 @@ object Palette {
     val red = Color(0xFFE67E80)
     val aqua = Color(0xFF83C092)
     val blue = Color(0xFF7FBBB3)
+    val purple = Color(0xFFD699B6)
 }
 
 val Mono = FontFamily(

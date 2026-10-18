@@ -47,10 +47,11 @@ class KeyBarTest {
     }
 
     @Test
-    fun claudeIsInInsertModeBeforeItsLineIsCleared() {
+    fun claudeIsInInsertModeBeforeItsLineIsClearedFromTheReadView() {
         val line = InputLine("two\nrows", rows = 2)
-        assertEquals(listOf("A") + List(5) { "C-u" }, bar.profileFor("claude").clear(line))
-        assertEquals(List(5) { listOf("C-x", "C-u") }.flatten(), bar.profileFor("zsh").clear(line))
+        assertEquals(List(5) { "C-u" }, bar.profileFor("claude").clear(line))
+        assertEquals(listOf("A") + List(5) { "C-u" }, bar.profileFor("claude").clear(line, insert = true))
+        assertEquals(List(5) { listOf("C-x", "C-u") }.flatten(), bar.profileFor("zsh").clear(line, insert = true))
     }
 
     @Test
