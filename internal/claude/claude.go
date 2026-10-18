@@ -6,6 +6,7 @@
 package claude
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -226,12 +227,40 @@ type block struct {
 	} `json:"source"`
 }
 
+// content is what a message says: text, or blocks of it, decoded once.
+type content struct {
+	text   *string
+	blocks []block
+}
+
+func decode(raw json.RawMessage) (c content) {
+	raw = bytes.TrimLeft(raw, " \t\r\n")
+	if len(raw) == 0 {
+		return c
+	}
+	switch raw[0] {
+	case '"':
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			c.text = &s
+		}
+	case '[':
+		json.Unmarshal(raw, &c.blocks)
+	}
+	return c
+}
+
 func (p *parser) Line(b []byte) []readview.Entry {
 	var r record
 	if json.Unmarshal(b, &r) != nil || r.IsSidechain || r.UUID == "" {
 		return nil
 	}
-	if p.place(r); p.left[r.UUID] {
+	talk := !r.IsMeta && (r.Type == "user" || r.Type == "assistant")
+	var c content
+	if talk {
+		c = decode(r.Message.Content)
+	}
+	if p.place(r, c); p.left[r.UUID] {
 		return nil
 	}
 	if u := r.Message.Usage; r.Type == "assistant" && u != nil {
@@ -242,25 +271,17 @@ func (p *parser) Line(b []byte) []readview.Entry {
 	if r.Subtype == "compact_boundary" {
 		p.context = 0
 	}
-	if r.IsMeta {
+	if !talk {
 		return nil
 	}
-	if r.Type != "user" && r.Type != "assistant" {
-		return nil
-	}
-	var text string
-	if json.Unmarshal(r.Message.Content, &text) == nil {
-		if e, ok := p.said(r, 0, text); ok {
+	if c.text != nil {
+		if e, ok := p.said(r, 0, *c.text); ok {
 			return []readview.Entry{e}
 		}
 		return nil
 	}
-	var blocks []block
-	if json.Unmarshal(r.Message.Content, &blocks) != nil {
-		return nil
-	}
 	var out []readview.Entry
-	for i, bl := range blocks {
+	for i, bl := range c.blocks {
 		id := fmt.Sprintf("%s.%d", r.UUID, i)
 		switch bl.Type {
 		case "text":
@@ -282,7 +303,7 @@ func (p *parser) Line(b []byte) []readview.Entry {
 			if e, ok := p.tools[bl.ToolUseID]; ok {
 				delete(p.tools, bl.ToolUseID)
 				e.Done, e.Error, e.Output = true, bl.IsError, result(bl.Content)
-				if len(blocks) == 1 { // what the record says of the result is this one's
+				if len(c.blocks) == 1 { // what the record says of the result is this one's
 					e.Diff = diff(r.ToolUseResult)
 				}
 				out = append(out, e)
@@ -300,11 +321,11 @@ func (p *parser) Line(b []byte) []readview.Entry {
 // goes on from is the conversation taken back there, by a rewind or a
 // message taken back before its reply: what went on from it before is left
 // behind, as is anything later going on from that.
-func (p *parser) place(r record) {
+func (p *parser) place(r record, c content) {
 	switch {
 	case p.left[r.ParentUUID]:
 		p.left[r.UUID] = true
-	case r.prompt() && len(p.next[r.ParentUUID]) > 0:
+	case r.Type == "user" && c.prompt() && len(p.next[r.ParentUUID]) > 0:
 		gone := append([]string(nil), p.next[r.ParentUUID]...)
 		for len(gone) > 0 {
 			id := gone[len(gone)-1]
@@ -322,19 +343,13 @@ func (p *parser) place(r record) {
 	}
 }
 
-// prompt is whether r is something the user sent, rather than a tool's result
-// or a note claude adds.
-func (r record) prompt() bool {
-	if r.Type != "user" || r.IsMeta {
-		return false
-	}
-	var text string
-	if json.Unmarshal(r.Message.Content, &text) == nil {
+// prompt is whether a user's message is something they sent, rather than a
+// tool's result.
+func (c content) prompt() bool {
+	if c.text != nil {
 		return true
 	}
-	var blocks []block
-	json.Unmarshal(r.Message.Content, &blocks)
-	for _, b := range blocks {
+	for _, b := range c.blocks {
 		if b.Type == "text" || b.Type == "image" {
 			return true
 		}
