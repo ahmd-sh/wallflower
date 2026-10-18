@@ -38,15 +38,15 @@ func TestParse(t *testing.T) {
 		got = append(got, p.Line([]byte(l))...)
 	}
 	want := []readview.Entry{
-		{ID: "u1.0", Role: "user", Kind: "text", Text: "fix the tests"},
-		{ID: "a2.0", Role: "assistant", Kind: "tool", Name: "Bash", Text: "go test ./..."},
-		{ID: "a2.0", Role: "assistant", Kind: "tool", Name: "Bash", Text: "go test ./...", Output: "FAIL x_test.go", Done: true, Error: true},
-		{ID: "a4.0", Role: "assistant", Kind: "text", Text: "**Fixed.** All pass."},
-		{ID: "u5.0", Role: "user", Kind: "note", Text: "This session is being continued..."},
-		{ID: "u6.0", Role: "user", Kind: "image", Mime: "image/png", Data: "iVBORw0KGgo="},
-		{ID: "u6.1", Role: "user", Kind: "text", Text: "look"},
-		{ID: "u7.0", Role: "user", Kind: "note", Text: "[Request interrupted by user for tool use]"},
-		{ID: "u8.0", Role: "user", Kind: "note", Text: `Background command "Sleep" completed (exit code 0)`},
+		{ID: "u1.0", From: "user", Kind: "said", Text: "fix the tests"},
+		{ID: "a2.0", From: "program", Kind: "step", Name: "Bash", Text: "go test ./...", Status: "running"},
+		{ID: "a2.0", From: "program", Kind: "step", Name: "Bash", Text: "go test ./...", Status: "failed", Output: "FAIL x_test.go"},
+		{ID: "a4.0", From: "program", Kind: "said", Text: "**Fixed.** All pass."},
+		{ID: "u5.0", From: "user", Kind: "note", Text: "This session is being continued..."},
+		{ID: "u6.0", From: "user", Kind: "picture", Mime: "image/png", Data: "iVBORw0KGgo="},
+		{ID: "u6.1", From: "user", Kind: "said", Text: "look"},
+		{ID: "u7.0", From: "user", Kind: "note", Text: "[Request interrupted by user for tool use]"},
+		{ID: "u8.0", From: "user", Kind: "note", Text: `Background command "Sleep" completed (exit code 0)`},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got\n%+v\nwant\n%+v", got, want)
@@ -63,8 +63,9 @@ func TestBigImagesAndOutputs(t *testing.T) {
 	p.Line([]byte(`{"type":"assistant","uuid":"a","message":{"content":[{"type":"tool_use","id":"t","name":"Read","input":{"file_path":"/x"}}]}}`))
 	long := strings.Repeat("é", maxOutput)
 	got = p.Line([]byte(`{"type":"user","uuid":"r","message":{"content":[{"type":"tool_result","tool_use_id":"t","content":[{"type":"text","text":"` + long + `"},{"type":"image"}]}]}}`))
-	if len(got) != 1 || len(got[0].Output) > maxOutput+len("…") || !strings.HasSuffix(got[0].Output, "…") || !strings.HasPrefix(got[0].Output, "é") {
-		t.Errorf("long output: %d bytes", len(got[0].Output))
+	// é is 2 bytes: half of it fits; the rest, and "\n[image]", are cut.
+	if len(got) != 1 || len(got[0].Output) != maxOutput || got[0].OutputCut != maxOutput/2+len("\n[image]") || !strings.HasPrefix(got[0].Output, "é") {
+		t.Errorf("long output: %d bytes, %d cut", len(got[0].Output), got[0].OutputCut)
 	}
 }
 
@@ -132,7 +133,7 @@ func TestRewound(t *testing.T) {
 	if want := "u1.0=say just: one a1.0=one u2.0=two, with two tools a2.0=/a a3.0=/b a4.0=two u4.0=say just: edited a7.0=edited"; strings.Join(ids, " ") != want {
 		t.Errorf("got  %s\nwant %s", strings.Join(ids, " "), want)
 	}
-	if !got[3].Done || !got[4].Done {
+	if got[3].Status != readview.Done || got[4].Status != readview.Done {
 		t.Errorf("parallel results: %+v %+v", got[3], got[4])
 	}
 	if b := p.(readview.Brancher).Branches(); b != 1 {
@@ -167,7 +168,7 @@ func TestDiffs(t *testing.T) {
 	var diffs []string
 	for _, l := range lines {
 		for _, e := range p.Line([]byte(l)) {
-			if e.Done {
+			if e.Status != readview.Running {
 				diffs = append(diffs, e.Diff)
 			}
 		}
@@ -184,16 +185,16 @@ func TestDiffs(t *testing.T) {
 
 	// A big new file is cut at a line, saying how much is left.
 	big := strings.Repeat("0123456789\n", 1000)
-	got := diff([]byte(`{"type":"create","content":` + strconv.Quote(big) + `,"structuredPatch":[]}`))
-	if len(got) > maxDiff+100 || !strings.HasSuffix(got, "\n… 335 more lines") || !strings.HasPrefix(got, "@@ -0,0 +1,1000 @@\n+0123456789\n") {
-		t.Errorf("cut to %d characters, ending %q", len(got), got[len(got)-40:])
+	got, cut := diff([]byte(`{"type":"create","content":` + strconv.Quote(big) + `,"structuredPatch":[]}`))
+	if len(got) > maxDiff || cut != 335 || !strings.HasPrefix(got, "@@ -0,0 +1,1000 @@\n+0123456789\n") || !strings.HasSuffix(got, "\n+0123456789") {
+		t.Errorf("cut to %d characters and %d lines, ending %q", len(got), cut, got[len(got)-40:])
 	}
 }
 
 func TestPlans(t *testing.T) {
 	p := newParser()
 	got := p.Line([]byte(`{"type":"assistant","uuid":"a","message":{"content":[{"type":"tool_use","id":"t","name":"Write","input":{"file_path":"/Users/me/.claude/plans/fix-it.md","content":"# Plan\n\n1. fix it\n"}}]}}`))
-	if len(got) != 2 || got[0].Kind != "tool" || got[1].Kind != "text" || got[1].Text != "# Plan\n\n1. fix it" || got[1].ID != "a.0.plan" {
+	if len(got) != 2 || got[0].Kind != "step" || got[1].Kind != "said" || got[1].Text != "# Plan\n\n1. fix it" || got[1].ID != "a.0.plan" {
 		t.Errorf("plan: %+v", got)
 	}
 	got = p.Line([]byte(`{"type":"assistant","uuid":"b","message":{"content":[{"type":"tool_use","id":"u","name":"Write","input":{"file_path":"/Users/me/dev/plans/notes.md","content":"not a plan"}}]}}`))
@@ -223,9 +224,9 @@ func TestRunning(t *testing.T) {
 	write("projects/-Users-me-dev-x-moved/aaaa-1.jsonl", "")
 
 	got := New(dir).running()
-	want := map[int]readview.Recording{
-		me:     {Path: filepath.Join(dir, "projects/-Users-me-dev-x-moved/aaaa-1.jsonl"), Activity: readview.Waiting, Since: 1792209270006}, // where it is
-		parent: {Path: filepath.Join(dir, "projects/-Users-me-my-dir/bbbb-2.jsonl"), Activity: readview.Idle, Since: 1792209271000},         // where it will be; done, with a background task left running
+	want := map[int]session{
+		me:     {path: filepath.Join(dir, "projects/-Users-me-dev-x-moved/aaaa-1.jsonl"), activity: readview.Waiting, since: 1792209270006}, // where it is
+		parent: {path: filepath.Join(dir, "projects/-Users-me-my-dir/bbbb-2.jsonl"), activity: readview.Idle, since: 1792209271000},         // where it will be; done, with a background task left running
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v\nwant %v", got, want)

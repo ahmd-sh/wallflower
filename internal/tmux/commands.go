@@ -26,10 +26,9 @@ func check(re *regexp.Regexp, id string) error {
 
 // SnapshotChanges is a subscription format (refresh-client -B) whose value
 // changes whenever a pane's part of the snapshot changes in a way no
-// notification announces: its program, title, path, agent state, or screen.
+// notification announces: its program, title, path, or screen.
 var SnapshotChanges = "meta:%*:" + strings.Join([]string{
-	"#{pane_current_command}", "#{pane_title}", "#{pane_current_path}",
-	"#{@agent_state}", "#{alternate_on}",
+	"#{pane_current_command}", "#{pane_title}", "#{pane_current_path}", "#{alternate_on}",
 }, "\t")
 
 // ResolveSession names the session a client would attach to: session, or
@@ -149,24 +148,15 @@ func (c *Client) SelectPane(pane string) error {
 	return c.run("select-pane -t " + pane)
 }
 
-// Zoom toggles the zoom of a pane's window. It says which window that is,
-// and whether it was zoomed before.
-func (c *Client) Zoom(pane string) (window string, zoomed bool, err error) {
-	return c.zoom(pane, "resize-pane -Z -t "+pane)
-}
-
 // Focus makes a pane its window's active one, zoomed if the window has
 // others; select-pane -Z keeps a zoomed window zoomed on the new pane. It
 // says which window that is, and whether it was zoomed before.
 func (c *Client) Focus(pane string) (window string, zoomed bool, err error) {
-	return c.zoom(pane, fmt.Sprintf("select-pane -Z -t %[1]s ; if -F -t %[1]s '#{&&:#{!=:#{window_panes},1},#{!=:#{window_zoomed_flag},1}}' 'resize-pane -Z -t %[1]s'", pane))
-}
-
-func (c *Client) zoom(pane, cmd string) (string, bool, error) {
 	if err := check(paneID, pane); err != nil {
 		return "", false, err
 	}
-	r, err := c.Command(fmt.Sprintf("display -p -t %s '#{window_id} #{window_zoomed_flag}' ; %s", pane, cmd))
+	r, err := c.Command(fmt.Sprintf("display -p -t %[1]s '#{window_id} #{window_zoomed_flag}' ; select-pane -Z -t %[1]s ; "+
+		"if -F -t %[1]s '#{&&:#{!=:#{window_panes},1},#{!=:#{window_zoomed_flag},1}}' 'resize-pane -Z -t %[1]s'", pane))
 	if err != nil {
 		return "", false, err
 	}
@@ -174,8 +164,8 @@ func (c *Client) zoom(pane, cmd string) (string, bool, error) {
 	if len(lines) == 0 {
 		return "", false, errors.New("tmux: no window for " + pane)
 	}
-	window, zoomed, _ := strings.Cut(lines[0], " ")
-	return window, zoomed == "1", nil
+	w, flag, _ := strings.Cut(lines[0], " ")
+	return w, flag == "1", nil
 }
 
 // SetZoom zooms or unzooms windows, each to how it's given.
@@ -237,23 +227,6 @@ func (c *Client) KillWindow(window string) error {
 		return err
 	}
 	return c.run("kill-window -t " + window)
-}
-
-// Scrollback reads a pane's lines from start to end, in tmux's numbering (0
-// is the top visible line, negative is history), with their escapes, and
-// how much history the pane has.
-func (c *Client) Scrollback(pane string, start, end int) (history int, lines []string, err error) {
-	if err := check(paneID, pane); err != nil {
-		return 0, nil, err
-	}
-	r, err := c.Command(fmt.Sprintf("display -p -t %[1]s '#{history_size}' ; capture-pane -p -e -t %[1]s -S %[2]d -E %[3]d", pane, start, end))
-	if err != nil {
-		return 0, nil, err
-	}
-	if len(r.Blocks) != 2 || len(r.Blocks[0]) != 1 {
-		return 0, nil, errors.New("tmux: unexpected capture reply")
-	}
-	return atoi(r.Blocks[0][0]), r.Blocks[1], nil
 }
 
 func (c *Client) run(line string) error {

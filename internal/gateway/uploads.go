@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -31,8 +32,36 @@ func UploadDir() string {
 // uploads saves the files a client sends into dir as their frames arrive,
 // each under its own name, made safe for a shell and unique in dir.
 type uploads struct {
-	dir  string
-	open map[string]*upload // by the client's id
+	dir   string
+	open  map[string]*upload // by the client's id
+	paths *regexp.Regexp     // an upload's path in text
+}
+
+// A run is some text, or an upload's path.
+type run struct {
+	text   string
+	upload bool
+}
+
+// split cuts text into runs, each an upload's path or not.
+func (u *uploads) split(text string) []run {
+	if u.paths == nil {
+		// Names keep these characters, and never end in . or -.
+		u.paths = regexp.MustCompile(regexp.QuoteMeta(u.dir) + `/[A-Za-z0-9._-]*[A-Za-z0-9_]`)
+	}
+	var runs []run
+	at := 0
+	for _, m := range u.paths.FindAllStringIndex(text, -1) {
+		if m[0] > at {
+			runs = append(runs, run{text: text[at:m[0]]})
+		}
+		runs = append(runs, run{text: text[m[0]:m[1]], upload: true})
+		at = m[1]
+	}
+	if at < len(text) {
+		runs = append(runs, run{text: text[at:]})
+	}
+	return runs
 }
 
 type upload struct {

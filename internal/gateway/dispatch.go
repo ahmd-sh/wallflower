@@ -13,7 +13,7 @@ const maxSize = 1000 // columns or rows, at most
 func (g *gateway) handle(f protocol.Frame) error {
 	switch f.Type {
 	case protocol.FrameData:
-		return g.typeText(f.ID, f.Data)
+		return g.typeBytes(f.ID, f.Data)
 	case protocol.FrameUpload:
 		path, err := g.uploads.write(f.ID, f.Data)
 		if err != nil || path != "" {
@@ -36,8 +36,8 @@ func (g *gateway) handle(f protocol.Frame) error {
 		return nil
 	case *protocol.Keys:
 		return g.keys(m.Pane, m.Keys, m.Bindings)
-	case *protocol.Paste:
-		return g.paste(m.Pane, m.Text)
+	case *protocol.Submit:
+		return g.submit(m)
 	case *protocol.Upload:
 		path, err := g.uploads.begin(m)
 		if err != nil || path != "" {
@@ -52,8 +52,6 @@ func (g *gateway) handle(f protocol.Frame) error {
 			return g.selectWindow(m.Window)
 		}
 		return errors.New("select needs a window or pane")
-	case *protocol.Zoom:
-		return g.zoom(m.Pane)
 	case *protocol.Focus:
 		return g.focus(m.Pane)
 	case *protocol.Split:
@@ -75,28 +73,15 @@ func (g *gateway) handle(f protocol.Frame) error {
 			return g.tmux.KillWindow(m.Window)
 		}
 		return errors.New("kill needs a window or pane")
-	case *protocol.Transcript:
+	case *protocol.Read:
 		if m.On {
 			g.read(m.Pane)
 		} else {
 			g.unread(m.Pane)
 		}
 		return nil
-	case *protocol.ScrollbackRequest:
-		size, lines, err := g.tmux.Scrollback(m.Pane, m.Start, m.End)
-		if err != nil {
-			g.send(protocol.Result{ID: m.ID, Error: err.Error()})
-		} else {
-			g.send(protocol.ScrollbackReply{ID: m.ID, Pane: m.Pane, HistorySize: size, Lines: lines})
-		}
-		return nil
-	case *protocol.TmuxCommand:
-		lines, err := g.tmux.Run(m.Command)
-		res := protocol.Result{ID: m.ID, Lines: lines}
-		if err != nil {
-			res.Error = err.Error()
-		}
-		g.send(res)
+	case *protocol.Picture:
+		g.picture(m.Pane, m.ID)
 		return nil
 	case *protocol.Ping:
 		g.send(protocol.Pong{ID: m.ID})

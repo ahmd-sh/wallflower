@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -134,10 +134,15 @@ func (c *client) state(what string, match func(protocol.State) bool) protocol.St
 	return *m.(*protocol.State)
 }
 
+// output waits for the pane's output, from now on, to hold contains, however it's split into frames.
 func (c *client) output(pane, contains string) {
 	c.t.Helper()
+	var out []byte
 	c.expect("output "+contains, func(f protocol.Frame, _ protocol.Message) bool {
-		return f.Type == protocol.FrameData && f.ID == pane && bytes.Contains(f.Data, []byte(contains))
+		if f.Type == protocol.FrameData && f.ID == pane {
+			out = append(out, f.Data...)
+		}
+		return bytes.Contains(out, []byte(contains))
 	})
 }
 
@@ -149,6 +154,11 @@ func (c *client) until(what string, ok func() bool) {
 			c.t.Fatalf("timed out waiting for %s", what)
 		}
 	}
+}
+
+// zoomed is whether tmux has the session's current window zoomed.
+func (c *client) zoomed() bool {
+	return c.tmux("display", "-p", "-t", "t", "#{window_zoomed_flag}") == "1"
 }
 
 func activePane(s protocol.State) protocol.Pane {
@@ -181,7 +191,7 @@ func TestHelloStateOpenType(t *testing.T) {
 		t.Errorf("hello = %+v", h)
 	}
 	// The phone's size applies to the window it's looking at.
-	s := c.state("phone-sized state", func(s protocol.State) bool { return activeWindow(s).Cols == 56 })
+	s := c.state("phone-sized state", func(s protocol.State) bool { return activePane(s).Cols == 56 })
 	p := activePane(s)
 	if s.Name != "t" || p.ID == "" || p.Cols != 56 || p.Rows != 20 {
 		t.Fatalf("state = %+v", s)
@@ -203,7 +213,7 @@ func TestHelloStateOpenType(t *testing.T) {
 
 func TestRepaint(t *testing.T) {
 	c := connect(t, 60, 10)
-	s := c.state("state", func(s protocol.State) bool { return activeWindow(s).Cols == 60 })
+	s := c.state("state", func(s protocol.State) bool { return activePane(s).Cols == 60 })
 	p := activePane(s).ID
 
 	c.tmux("send-keys", "-t", "t", "for i in $(seq 1 30); do echo line-$i; done", "Enter")
@@ -232,12 +242,12 @@ func TestRepaint(t *testing.T) {
 
 func TestResizeAndReclaim(t *testing.T) {
 	c := connect(t, 50, 20)
-	s := c.state("phone-sized", func(s protocol.State) bool { return activeWindow(s).Cols == 50 })
+	s := c.state("phone-sized", func(s protocol.State) bool { return activePane(s).Cols == 50 })
 	p := activePane(s).ID
 	c.send(protocol.Open{Pane: p})
 
 	c.send(protocol.Resize{Cols: 70, Rows: 25})
-	c.state("resized", func(s protocol.State) bool { w := activeWindow(s); return w.Cols == 70 && w.Rows == 25 })
+	c.state("resized", func(s protocol.State) bool { p := activePane(s); return p.Cols == 70 && p.Rows == 25 })
 	c.expect("repaint at new size", func(_ protocol.Frame, m protocol.Message) bool {
 		r, ok := m.(*protocol.Reset)
 		return ok && r.Cols == 70 && r.Rows == 25
@@ -256,19 +266,19 @@ func TestResizeAndReclaim(t *testing.T) {
 	if _, err := desk.Run("refresh-client -C 120x40"); err != nil {
 		t.Fatal(err)
 	}
-	c.state("desktop-sized", func(s protocol.State) bool { return activeWindow(s).Cols == 120 })
+	c.state("desktop-sized", func(s protocol.State) bool { return activePane(s).Cols == 120 })
 	c.sendText(p, "x")
-	c.state("reclaimed", func(s protocol.State) bool { return activeWindow(s).Cols == 70 })
+	c.state("reclaimed", func(s protocol.State) bool { return activePane(s).Cols == 70 })
 
 	// So does the phone resizing (its keyboard opening) after the desktop took over.
 	if _, err := desk.Run("select-window -t " + tmux.Quote("t:"+s.Windows[0].ID)); err != nil {
 		t.Fatal(err)
 	}
-	c.state("desktop-sized again", func(s protocol.State) bool { return activeWindow(s).Cols == 120 })
+	c.state("desktop-sized again", func(s protocol.State) bool { return activePane(s).Cols == 120 })
 	c.send(protocol.Resize{Cols: 70, Rows: 15})
-	c.state("phone keyboard size", func(s protocol.State) bool { w := activeWindow(s); return w.Cols == 70 && w.Rows == 15 })
+	c.state("phone keyboard size", func(s protocol.State) bool { p := activePane(s); return p.Cols == 70 && p.Rows == 15 })
 	c.send(protocol.Resize{Cols: 70, Rows: 25})
-	c.state("phone size", func(s protocol.State) bool { return activeWindow(s).Rows == 25 })
+	c.state("phone size", func(s protocol.State) bool { return activePane(s).Rows == 25 })
 
 	// Typing into a window that isn't current for the phone (it shows what it
 	// likes) makes it current, at the phone's size.
@@ -284,7 +294,7 @@ func TestResizeAndReclaim(t *testing.T) {
 	c.sendText(other.Panes[0].ID, "x")
 	c.state("typed-into window is the phone's", func(s protocol.State) bool {
 		w := activeWindow(s)
-		return w.ID == other.ID && w.Cols == 70 && w.Rows == 25
+		return w.ID == other.ID && w.Panes[0].Cols == 70 && w.Panes[0].Rows == 25
 	})
 }
 
@@ -292,8 +302,8 @@ func TestZoomRestoredOnDisconnect(t *testing.T) {
 	c := connect(t, 60, 20)
 	c.tmux("split-window", "-t", "t")
 	s := c.state("two panes", func(s protocol.State) bool { return len(activeWindow(s).Panes) == 2 })
-	c.send(protocol.Zoom{Pane: activePane(s).ID})
-	c.state("zoomed", func(s protocol.State) bool { return activeWindow(s).Zoomed })
+	c.send(protocol.Focus{Pane: activeWindow(s).Panes[0].ID})
+	c.state("zoomed", func(protocol.State) bool { return c.zoomed() })
 
 	if err := c.disconnect(); err != nil {
 		t.Fatal(err)
@@ -313,10 +323,10 @@ func TestFocus(t *testing.T) {
 	// Focusing another pane selects it and zooms the window; focusing the
 	// next keeps the zoom.
 	c.send(protocol.Focus{Pane: first})
-	c.state("first zoomed", func(s protocol.State) bool { return activeWindow(s).Zoomed && activePane(s).ID == first })
+	c.state("first zoomed", func(s protocol.State) bool { return c.zoomed() && activePane(s).ID == first })
 	second := activeWindow(s).Panes[1].ID
 	c.send(protocol.Focus{Pane: second})
-	c.state("second zoomed", func(s protocol.State) bool { return activeWindow(s).Zoomed && activePane(s).ID == second })
+	c.state("second zoomed", func(s protocol.State) bool { return c.zoomed() && activePane(s).ID == second })
 
 	if err := c.disconnect(); err != nil {
 		t.Fatal(err)
@@ -334,7 +344,7 @@ func TestPaneAndWindowActions(t *testing.T) {
 	c.send(protocol.Split{Pane: first})
 	s = c.state("split, focused and zoomed", func(s protocol.State) bool {
 		w := activeWindow(s)
-		return len(w.Panes) == 2 && activePane(s).ID != first && w.Zoomed
+		return len(w.Panes) == 2 && activePane(s).ID != first && c.zoomed()
 	})
 	c.send(protocol.Kill{Pane: activePane(s).ID})
 	c.state("back to one pane", func(s protocol.State) bool { return len(activeWindow(s).Panes) == 1 })
@@ -371,8 +381,8 @@ func TestZoomRestoredOnSignal(t *testing.T) {
 	c := connectCtx(t, ctx, 60, 20)
 	c.tmux("split-window", "-t", "t")
 	s := c.state("two panes", func(s protocol.State) bool { return len(activeWindow(s).Panes) == 2 })
-	c.send(protocol.Zoom{Pane: activePane(s).ID})
-	c.state("zoomed", func(s protocol.State) bool { return activeWindow(s).Zoomed })
+	c.send(protocol.Focus{Pane: activeWindow(s).Panes[0].ID})
+	c.state("zoomed", func(protocol.State) bool { return c.zoomed() })
 
 	cancel()
 	select {
@@ -390,9 +400,6 @@ func TestStateFollowsTmux(t *testing.T) {
 	c := connect(t, 60, 20)
 	c.state("initial", func(s protocol.State) bool { return len(s.Windows) == 1 })
 
-	c.tmux("set", "-p", "-t", "t", "@agent_state", "waiting")
-	c.state("agent state", func(s protocol.State) bool { return activePane(s).Agent == "waiting" })
-
 	// A window opened on the desktop shows up, but doesn't take over the
 	// phone's current window.
 	c.tmux("new-window", "-t", "t:", "-n", "second")
@@ -400,7 +407,7 @@ func TestStateFollowsTmux(t *testing.T) {
 	s := c.state("floating pane", func(s protocol.State) bool {
 		return len(s.Windows) == 2 && len(s.Windows[1].Panes) == 2
 	})
-	if w := s.Windows[1]; w.Name != "second" || w.Active || !w.Panes[1].Floating {
+	if w := s.Windows[1]; w.Name != "second" || w.Active {
 		t.Errorf("window = %+v", w)
 	}
 	if s.Name != "t" {
@@ -418,8 +425,26 @@ func TestPaste(t *testing.T) {
 	// newlines as Enter the way a terminal sends them.
 	c.sendText(p, `printf '\033[?2004h'; stty raw -echo; echo RE""ADY; cat -v`+"\r")
 	c.output(p, "READY")
-	c.send(protocol.Paste{Pane: p, Text: "one $HOME\n'two'"})
+	c.send(protocol.Submit{Pane: p, Text: "one $HOME\n'two'"})
 	c.output(p, "^[[200~one $HOME^M'two'^[[201~")
+
+	// What empties the line goes first, then the text, then Enter.
+	c.send(protocol.Submit{Pane: p, Text: "hi", Enter: true, Clear: []string{"C-u"}})
+	c.output(p, "^Uhi^M")
+}
+
+// An upload's path is pasted on its own, so the program can take it in as a
+// file, and what follows waits for that.
+func TestSubmitPastesUploadsAlone(t *testing.T) {
+	dir := t.TempDir()
+	c := connectOpts(t, context.Background(), 60, 20, Options{Uploads: dir})
+	p := activePane(c.state("state", func(s protocol.State) bool { return true })).ID
+	c.send(protocol.Open{Pane: p})
+	c.output(p, "$")
+	c.sendText(p, `printf '\033[?2004h'; stty raw -echo; echo RE""ADY; cat -v`+"\r")
+	c.output(p, "READY")
+	c.send(protocol.Submit{Pane: p, Text: "see " + dir + "/PXL-1.jpg now", Enter: true})
+	c.output(p, "see ^[[200~"+dir+"/PXL-1.jpg^[[201~ now^M")
 }
 
 func TestEnterOnItsOwn(t *testing.T) {
@@ -433,7 +458,7 @@ func TestEnterOnItsOwn(t *testing.T) {
 	c.sendText(p, `perl -e 'system "stty raw -echo"; $|=1; print "RE", "ADY"; print "<", length($b), ">" while sysread STDIN, $b, 4096'`+"\r")
 	c.output(p, "READY")
 	sent := time.Now()
-	c.sendText(p, "say just: ok\r")
+	c.send(protocol.Submit{Pane: p, Text: "say just: ok", Enter: true})
 	// What follows waits for the Enter, a ping too: its pong still means all before it reached tmux.
 	c.send(protocol.Ping{ID: 9})
 	var out []byte
@@ -500,36 +525,10 @@ func TestOwnCurrentWindow(t *testing.T) {
 
 func TestRequests(t *testing.T) {
 	c := connect(t, 60, 20)
-	s := c.state("state", func(s protocol.State) bool { return true })
-	p := activePane(s).ID
+	c.state("state", func(s protocol.State) bool { return true })
 
 	c.send(protocol.Ping{ID: 1})
 	c.expect("pong", func(_ protocol.Frame, m protocol.Message) bool { r, ok := m.(*protocol.Pong); return ok && r.ID == 1 })
-
-	c.send(protocol.TmuxCommand{ID: 2, Command: "display -p '#{session_group}'"})
-	_, m := c.expect("result", func(_ protocol.Frame, m protocol.Message) bool { r, ok := m.(*protocol.Result); return ok && r.ID == 2 })
-	if r := m.(*protocol.Result); r.Error != "" || len(r.Lines) != 1 || r.Lines[0] != "t" {
-		t.Errorf("result = %+v", r)
-	}
-	c.send(protocol.TmuxCommand{ID: 3, Command: "no-such-command"})
-	_, m = c.expect("error result", func(_ protocol.Frame, m protocol.Message) bool { r, ok := m.(*protocol.Result); return ok && r.ID == 3 })
-	if m.(*protocol.Result).Error == "" {
-		t.Error("bad tmux command returned no error")
-	}
-
-	c.tmux("send-keys", "-t", "t", "seq 1 100", "Enter")
-	c.until("history", func() bool {
-		n, _ := strconv.Atoi(c.tmux("display", "-p", "-t", p, "#{history_size}"))
-		return n >= 60
-	})
-	c.send(protocol.ScrollbackRequest{ID: 4, Pane: p, Start: -50, End: -1})
-	_, m = c.expect("scrollback", func(_ protocol.Frame, m protocol.Message) bool {
-		r, ok := m.(*protocol.ScrollbackReply)
-		return ok && r.ID == 4
-	})
-	if r := m.(*protocol.ScrollbackReply); len(r.Lines) != 50 || r.HistorySize < 50 {
-		t.Errorf("scrollback = %d lines, history %d", len(r.Lines), r.HistorySize)
-	}
 
 	// Ids are spliced into tmux commands, so anything but %N / @N is refused.
 	c.send(protocol.Open{Pane: "%1 ; kill-server"})
@@ -633,5 +632,23 @@ func TestSafeName(t *testing.T) {
 		if got := safeName(in); got != want {
 			t.Errorf("safeName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestUploadsAreTheirOwnRuns(t *testing.T) {
+	u := uploads{dir: "/Users/me/Library/Caches/wallflower/uploads"}
+	got := u.split("what's in /Users/me/Library/Caches/wallflower/uploads/PXL_1.jpg and /Users/me/Library/Caches/wallflower/uploads/a-2.png. ok")
+	want := []run{
+		{text: "what's in "},
+		{text: "/Users/me/Library/Caches/wallflower/uploads/PXL_1.jpg", upload: true},
+		{text: " and "},
+		{text: "/Users/me/Library/Caches/wallflower/uploads/a-2.png", upload: true},
+		{text: ". ok"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v", got)
+	}
+	if got := u.split("no uploads"); len(got) != 1 || got[0].upload {
+		t.Errorf("plain text: %+v", got)
 	}
 }

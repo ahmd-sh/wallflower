@@ -40,13 +40,14 @@ type gateway struct {
 	snapshot  *tmux.Session // the last
 	lastState []byte
 	dirty     bool
-	programs  map[string]string // tty and versioned command -> the name it was run as
+	programs  map[string]string         // tty and versioned command -> the name it was run as
+	found     map[string]readview.Found // panes read, and what their programs are doing, as last sent
 
 	panes  map[string]*pane // panes the client has open
 	stale  bool             // some are, so repaintStale is due
 	zoomed map[string]bool  // windows the client zoomed -> zoomed before
 
-	held   []protocol.Frame // the client's frames waiting for resume, in order
+	held   []func() error   // work waiting for resume, in order: the client's frames, and the rest of what one asked
 	resume <-chan time.Time // while a pane settles; see hold
 
 	sources []readview.Source
@@ -162,6 +163,8 @@ func readHello(r *protocol.Reader) (*protocol.ClientHello, error) {
 
 func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readErr <-chan error) error {
 	var stateDue, repaintDue <-chan time.Time
+	activity := time.NewTicker(activityEvery)
+	defer activity.Stop()
 	for {
 		select {
 		case n, ok := <-g.tmux.Events():
@@ -182,8 +185,8 @@ func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readEr
 			g.resume = nil
 			held := g.held
 			g.held = nil
-			for _, f := range held {
-				g.take(f) // held again behind any that holds once more
+			for _, work := range held {
+				g.do(work) // held again behind any that holds once more
 			}
 		case err := <-readErr:
 			if errors.Is(err, io.EOF) {
@@ -196,6 +199,8 @@ func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readEr
 		case <-repaintDue:
 			repaintDue = nil
 			g.repaintStale()
+		case <-activity.C:
+			g.watchActivity()
 		case <-ctx.Done():
 			return ctx.Err()
 		}

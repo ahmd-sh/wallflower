@@ -18,6 +18,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ahmd-sh/wallflower/internal/proc"
 	"github.com/ahmd-sh/wallflower/internal/readview"
@@ -26,7 +27,7 @@ import (
 const (
 	maxOutput = 4000    // characters of a tool's result kept
 	maxDiff   = 8000    // characters of a change to a file kept, in whole lines
-	maxImage  = 2 << 20 // base64 bytes of an image sent; bigger ones are named, not shown
+	maxImage  = 8 << 20 // base64 bytes of an image kept to show; bigger ones are noted
 	reglob    = 5 * time.Second
 )
 
@@ -49,18 +50,19 @@ func New(dir string) *Source {
 
 func (s *Source) Name() string { return "claude" }
 
-// Find picks the panes a claude runs in, by the terminals they share.
-func (s *Source) Find(panes []readview.Pane) map[string]bool {
+// Find picks the panes a claude runs in, by the terminals they share, with
+// what each is doing.
+func (s *Source) Find(panes []readview.Pane) map[string]readview.Found {
 	ids := map[string]string{}
 	for _, p := range panes {
 		if p.TTY != "" {
 			ids[p.TTY] = p.ID
 		}
 	}
-	found := map[string]bool{}
-	for pid := range s.running() {
+	found := map[string]readview.Found{}
+	for pid, sess := range s.running() {
 		if id, ok := ids[s.tty(pid)]; ok {
-			found[id] = true
+			found[id] = readview.Found{Activity: sess.activity, Since: sess.since}
 		}
 	}
 	return found
@@ -80,8 +82,8 @@ func (s *Source) Read(ctx context.Context, pane readview.Pane, send func(readvie
 		return errNone
 	}
 	recording := func() (readview.Recording, bool) {
-		r, ok := s.running()[pid]
-		return r, ok
+		sess, ok := s.running()[pid]
+		return readview.Recording{Path: sess.path}, ok
 	}
 	return readview.Tail(ctx, recording, newParser, send)
 }
@@ -111,10 +113,18 @@ var activities = map[string]readview.Activity{
 	"idle":    readview.Idle,
 }
 
-// running maps the claude processes running now to their recordings.
-func (s *Source) running() map[int]readview.Recording {
+// A session is a running claude's conversation: where it's recorded, and
+// what claude is doing, since when.
+type session struct {
+	path     string
+	activity readview.Activity
+	since    int64
+}
+
+// running maps the claude processes running now to their sessions.
+func (s *Source) running() map[int]session {
 	files, _ := filepath.Glob(filepath.Join(s.dir, "sessions", "*.json"))
-	running := map[int]readview.Recording{}
+	running := map[int]session{}
 	for _, name := range files {
 		b, err := os.ReadFile(name)
 		if err != nil {
@@ -133,9 +143,9 @@ func (s *Source) running() map[int]readview.Recording {
 		if syscall.Kill(sess.PID, 0) != nil {
 			continue // left behind by a claude that crashed
 		}
-		r := readview.Recording{Path: s.transcript(sess.SessionID, sess.CWD), Activity: activities[sess.Status]}
-		if r.Activity != "" {
-			r.Since = sess.StatusUpdatedAt
+		r := session{path: s.transcript(sess.SessionID, sess.CWD), activity: activities[sess.Status]}
+		if r.activity != "" {
+			r.since = sess.StatusUpdatedAt
 		}
 		running[sess.PID] = r
 	}
@@ -290,26 +300,30 @@ func (p *parser) Line(b []byte) []readview.Entry {
 			}
 		case "thinking":
 			if strings.TrimSpace(bl.Thinking) != "" {
-				out = append(out, readview.Entry{ID: id, Role: readview.Assistant, Kind: readview.Thinking, Text: bl.Thinking})
+				out = append(out, readview.Entry{ID: id, From: readview.Program, Kind: readview.Thought, Text: bl.Thinking})
 			}
 		case "tool_use":
-			e := readview.Entry{ID: id, Role: readview.Assistant, Kind: readview.Tool, Name: bl.Name, Text: brief(bl.Input)}
+			e := readview.Entry{ID: id, From: readview.Program, Kind: readview.Step, Name: bl.Name, Text: brief(bl.Input), Status: readview.Running}
 			p.tools[bl.ID] = e
 			out = append(out, e)
 			if plan := planOf(bl); plan != "" {
-				out = append(out, readview.Entry{ID: id + ".plan", Role: readview.Assistant, Kind: readview.Text, Text: plan})
+				out = append(out, readview.Entry{ID: id + ".plan", From: readview.Program, Kind: readview.Said, Text: plan})
 			}
 		case "tool_result":
 			if e, ok := p.tools[bl.ToolUseID]; ok {
 				delete(p.tools, bl.ToolUseID)
-				e.Done, e.Error, e.Output = true, bl.IsError, result(bl.Content)
+				e.Status = readview.Done
+				if bl.IsError {
+					e.Status = readview.Failed
+				}
+				e.Output, e.OutputCut = result(bl.Content)
 				if len(c.blocks) == 1 { // what the record says of the result is this one's
-					e.Diff = diff(r.ToolUseResult)
+					e.Diff, e.DiffCut = diff(r.ToolUseResult)
 				}
 				out = append(out, e)
 			}
 		case "image":
-			out = append(out, image(id, r.Type, bl))
+			out = append(out, image(id, from(r.Type), bl))
 		}
 	}
 	return out
@@ -382,9 +396,9 @@ var (
 // their output as user text, wrapped in tags; those aren't shown. Nor is what
 // claude tells itself, like a background task finishing, but its summary is.
 func (p *parser) said(r record, i int, text string) (readview.Entry, bool) {
-	role := r.Type
+	who := from(r.Type)
 	text = strings.TrimSpace(text)
-	if role == readview.User {
+	if who == readview.User {
 		if strings.HasPrefix(text, "<command-") || strings.HasPrefix(text, "<local-command-") {
 			return readview.Entry{}, false
 		}
@@ -393,15 +407,15 @@ func (p *parser) said(r record, i int, text string) (readview.Entry, bool) {
 			if m == nil || strings.TrimSpace(m[1]) == "" {
 				return readview.Entry{}, false
 			}
-			return readview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), Role: role, Kind: readview.Note, Text: strings.TrimSpace(m[1])}, true
+			return readview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), From: who, Kind: readview.Note, Text: strings.TrimSpace(m[1])}, true
 		}
 		text = strings.TrimSpace(pasted.ReplaceAllString(text, ""))
 	}
 	if text == "" {
 		return readview.Entry{}, false
 	}
-	e := readview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), Role: role, Kind: readview.Text, Text: text}
-	if r.IsCompactSummary || (role == readview.User && interrupted.MatchString(text)) {
+	e := readview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), From: who, Kind: readview.Said, Text: text}
+	if r.IsCompactSummary || (who == readview.User && interrupted.MatchString(text)) {
 		e.Kind = readview.Note
 	}
 	return e, true
@@ -432,20 +446,31 @@ func brief(input json.RawMessage) string {
 	if json.Unmarshal(input, &m) == nil {
 		for _, k := range briefKeys {
 			if s, ok := m[k].(string); ok && s != "" {
-				return clip(s)
+				s, _ = clip(s)
+				return s
 			}
 		}
 	}
 	if s := string(input); s != "{}" && s != "null" {
-		return clip(s)
+		s, _ = clip(s)
+		return s
 	}
 	return ""
 }
 
+// from is who said a record of claude's type: the user, or claude.
+func from(typ string) string {
+	if typ == "user" {
+		return readview.User
+	}
+	return readview.Program
+}
+
 var ansi = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
 
-// result is a tool's output as text: a string, or blocks of text and images.
-func result(content json.RawMessage) string {
+// result is a tool's output as text (a string, or blocks of text and
+// images), trimmed, and how many characters were trimmed.
+func result(content json.RawMessage) (string, int) {
 	var s string
 	if json.Unmarshal(content, &s) != nil {
 		var blocks []block
@@ -464,8 +489,8 @@ func result(content json.RawMessage) string {
 	return clip(strings.TrimSpace(ansi.ReplaceAllString(s, "")))
 }
 
-func image(id, role string, b block) readview.Entry {
-	e := readview.Entry{ID: id, Role: role, Kind: readview.Image}
+func image(id, who string, b block) readview.Entry {
+	e := readview.Entry{ID: id, From: who, Kind: readview.Picture}
 	switch {
 	case b.Source == nil || b.Source.Type != "base64":
 		e.Kind, e.Text = readview.Note, "[image]"
@@ -492,11 +517,12 @@ type edit struct {
 }
 
 // diff is the change a file tool made, as unified diff hunks, from what
-// claude records of its result; "" for any other tool's.
-func diff(raw json.RawMessage) string {
+// claude records of its result ("" for any other tool's), cut in whole
+// lines, and how many lines were cut.
+func diff(raw json.RawMessage) (string, int) {
 	var e edit
 	if json.Unmarshal(raw, &e) != nil || e.Patch == nil {
-		return ""
+		return "", 0
 	}
 	var lines []string
 	for _, h := range *e.Patch {
@@ -513,21 +539,22 @@ func diff(raw json.RawMessage) string {
 	var b strings.Builder
 	for i, l := range lines {
 		if b.Len()+len(l) > maxDiff {
-			fmt.Fprintf(&b, "… %d more lines\n", len(lines)-i)
-			break
+			return strings.TrimSuffix(b.String(), "\n"), len(lines) - i
 		}
 		b.WriteString(l + "\n")
 	}
-	return strings.TrimSuffix(b.String(), "\n")
+	return strings.TrimSuffix(b.String(), "\n"), 0
 }
 
-func clip(s string) string {
+// clip trims s to maxOutput bytes, not mid-character, and says how many
+// characters went.
+func clip(s string) (string, int) {
 	if len(s) <= maxOutput {
-		return s
+		return s, 0
 	}
 	cut := maxOutput
-	for cut > 0 && s[cut]&0xC0 == 0x80 { // not mid-character
+	for cut > 0 && s[cut]&0xC0 == 0x80 {
 		cut--
 	}
-	return s[:cut] + "…"
+	return s[:cut], utf8.RuneCountInString(s[cut:])
 }

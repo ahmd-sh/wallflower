@@ -101,7 +101,6 @@ func TestSnapshot(t *testing.T) {
 	tmux("split-window", "-h", "-t", "t")
 	tmux("new-pane", "-t", "t", "-x", "20", "-y", "5")
 	tmux("rename-window", "-t", "t", "a name with spaces")
-	tmux("set", "-p", "-t", "t", "@agent_state", "waiting")
 	s, err := c.Snapshot()
 	if err != nil {
 		t.Fatal(err)
@@ -118,7 +117,7 @@ func TestSnapshot(t *testing.T) {
 		t.Fatalf("window = %+v", w)
 	}
 	// new-pane sizes include the floating border, so 20x5 leaves 18x3 for content.
-	if p := w.Panes[2]; !p.Floating || !p.Active || p.Width != 18 || p.Height != 3 || p.Agent != "waiting" {
+	if p := w.Panes[2]; !p.Floating || !p.Active || p.Width != 18 || p.Height != 3 {
 		t.Errorf("want active 18x3 floating pane last with agent state, got %+v", p)
 	}
 	if p := w.Panes[0]; p.Floating || p.Path == "" || p.Command == "" {

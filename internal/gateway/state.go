@@ -7,6 +7,7 @@ import (
 
 	"github.com/ahmd-sh/wallflower/internal/proc"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
+	"github.com/ahmd-sh/wallflower/internal/readview"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
@@ -22,13 +23,12 @@ func (g *gateway) sendState() {
 		return
 	}
 	g.snapshot = s
-	readers := g.readable(s)
-	st := stateOf(s, g.program, func(p tmux.Pane) string {
-		if src := readers[p.ID]; src != nil {
-			return src.Name()
-		}
-		return ""
-	})
+	readers := g.readers(s)
+	g.found = map[string]readview.Found{}
+	for id, r := range readers {
+		g.found[id] = r.found
+	}
+	st := stateOf(s, g.program, readers)
 	st.Name = g.target // the client's own session is an implementation detail
 	if b, _ := protocol.AppendJSON(nil, st); !bytes.Equal(b, g.lastState) {
 		g.out.push(b)
@@ -49,19 +49,19 @@ func (g *gateway) sendState() {
 	g.resized(sizes)
 }
 
-func stateOf(s *tmux.Session, program, reader func(tmux.Pane) string) protocol.State {
+func stateOf(s *tmux.Session, program func(tmux.Pane) string, readers map[string]reader) protocol.State {
 	st := protocol.State{Session: s.ID, Name: s.Name, Windows: []protocol.Window{}}
 	for _, w := range s.Windows {
-		pw := protocol.Window{
-			ID: w.ID, Index: w.Index, Name: w.Name, Active: w.Active, Zoomed: w.Zoomed,
-			Cols: w.Width, Rows: w.Height, Panes: []protocol.Pane{},
-		}
+		pw := protocol.Window{ID: w.ID, Index: w.Index, Name: w.Name, Active: w.Active, Panes: []protocol.Pane{}}
 		for _, p := range w.Panes {
-			pw.Panes = append(pw.Panes, protocol.Pane{
-				ID: p.ID, Index: p.Index, Active: p.Active, X: p.Left, Y: p.Top,
-				Cols: p.Width, Rows: p.Height, Floating: p.Floating, Z: p.Z, Alt: p.AltScreen,
-				Agent: p.Agent, Title: p.Title, Path: p.Path, Command: program(p), Transcript: reader(p),
-			})
+			pp := protocol.Pane{
+				ID: p.ID, Index: p.Index, Active: p.Active, Cols: p.Width, Rows: p.Height, Alt: p.AltScreen,
+				Title: p.Title, Path: p.Path, Command: program(p),
+			}
+			if r, ok := readers[p.ID]; ok {
+				pp.Reader, pp.Activity, pp.Since = r.src.Name(), string(r.found.Activity), r.found.Since
+			}
+			pw.Panes = append(pw.Panes, pp)
 		}
 		st.Windows = append(st.Windows, pw)
 	}

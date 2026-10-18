@@ -3,7 +3,7 @@ package gateway
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/protocol"
@@ -14,38 +14,91 @@ const (
 	uploadSettle = 150 * time.Millisecond
 )
 
-// take handles a frame from the client, or keeps it behind those still held.
+// take handles a frame from the client, or keeps it behind work still held.
 func (g *gateway) take(f protocol.Frame) {
+	g.do(func() error { return g.handle(f) })
+}
+
+// do does work now, or after what's held.
+func (g *gateway) do(work func() error) {
 	if g.resume != nil {
-		g.held = append(g.held, f)
+		g.held = append(g.held, work)
 		return
 	}
-	if err := g.handle(f); err != nil {
+	if err := work(); err != nil {
 		g.send(protocol.Error{Message: err.Error()})
 	}
 }
 
-// hold gives a program a moment with what it was just sent: the client's
-// frames after it, then wait (first, then the rest) until d has passed. Output
-// and state go on meanwhile, and input keeps its order, so a pong still means
-// everything sent before its ping reached tmux.
-func (g *gateway) hold(d time.Duration, first ...protocol.Frame) {
+// hold gives a program a moment with what it was just sent: the work after
+// it waits ([first], then the rest) until d has passed. Output and state go
+// on meanwhile, and input keeps its order, so a pong still means everything
+// sent before its ping reached tmux.
+func (g *gateway) hold(d time.Duration, first ...func() error) {
 	g.held = append(first, g.held...)
 	g.resume = time.After(d)
 }
 
-// typeText types data into the pane byte for byte. An Enter that ends more
-// than itself goes a moment after the rest: a program that reads it all at
-// once, like Claude Code, takes it as a paste with the Enter in it, and
-// nothing is submitted.
-func (g *gateway) typeText(pane string, data []byte) error {
+// typeBytes types data into the pane as it is, as a mouse wheel's.
+func (g *gateway) typeBytes(pane string, data []byte) error {
 	g.claimSize(pane)
-	if n := len(data) - 1; n > 0 && data[n] == '\r' {
-		g.hold(enterSettle, protocol.Frame{Type: protocol.FrameData, ID: pane, Data: data[n:]})
-		data = data[:n]
-	}
 	return g.tmux.SendBytes(pane, data)
 }
+
+// submit gives a pane's program composed text in place of what its input
+// line holds: the keys that empty the line, then the text as the program
+// takes it best (see typeOut), then Enter if asked.
+func (g *gateway) submit(m *protocol.Submit) error {
+	g.claimSize(m.Pane)
+	if len(m.Clear) > 0 {
+		if err := g.tmux.SendKeys(m.Pane, m.Clear...); err != nil {
+			return err
+		}
+	}
+	return g.typeOut(m.Pane, g.uploads.split(m.Text), m.Enter)
+}
+
+// typeOut types runs of text in order. An upload's path is pasted on its
+// own, as a file dropped on a terminal is, so the program can take it in as
+// one (Claude Code attaches an image); that takes it a moment, so what
+// follows waits. Text with newlines is pasted, bracketed if the program
+// asked, so its lines don't run one by one; the rest is typed. Enter
+// follows typed text a moment later: a program that reads them at once,
+// like Claude Code, takes it all as a paste, Enter and all, and nothing is
+// submitted.
+func (g *gateway) typeOut(pane string, runs []run, enter bool) error {
+	typed := false
+	for i, r := range runs {
+		var err error
+		switch {
+		case r.upload:
+			if err := g.tmux.Paste(pane, g.buffer(), r.text); err != nil {
+				return err
+			}
+			rest := runs[i+1:]
+			g.hold(uploadSettle, func() error { return g.typeOut(pane, rest, enter) })
+			return nil
+		case strings.Contains(r.text, "\n"):
+			err, typed = g.tmux.Paste(pane, g.buffer(), r.text), false
+		default:
+			err, typed = g.tmux.SendBytes(pane, []byte(r.text)), true
+		}
+		if err != nil {
+			return err
+		}
+	}
+	switch {
+	case !enter:
+		return nil
+	case typed:
+		g.hold(enterSettle, func() error { return g.tmux.SendKeys(pane, "Enter") })
+		return nil
+	}
+	return g.tmux.SendKeys(pane, "Enter")
+}
+
+// buffer names the paste buffer this gateway pastes through.
+func (g *gateway) buffer() string { return fmt.Sprintf("wallflower-%d", os.Getpid()) }
 
 // keys sends tmux key names, or, through bindings, keys as if typed on a
 // keyboard attached to tmux.
@@ -60,16 +113,3 @@ func (g *gateway) keys(pane string, keys []string, bindings bool) error {
 	return g.tmux.SendKeys(pane, keys...)
 }
 
-func (g *gateway) paste(pane, text string) error {
-	if text == "" {
-		return nil
-	}
-	g.claimSize(pane)
-	err := g.tmux.Paste(pane, fmt.Sprintf("wallflower-%d", os.Getpid()), text)
-	// An upload pasted on its own may be taken in as a file (Claude Code attaches an image), which
-	// takes the app a moment; keys right behind it, like Enter, would be lost meanwhile.
-	if err == nil && filepath.Dir(text) == g.uploads.dir {
-		g.hold(uploadSettle)
-	}
-	return err
-}

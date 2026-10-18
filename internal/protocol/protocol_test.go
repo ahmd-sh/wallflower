@@ -25,7 +25,7 @@ func TestRoundTrip(t *testing.T) {
 
 	r := NewReader(bytes.NewReader(buf))
 	want := []any{
-		&ClientHello{V: 1, Cols: 56, Rows: 40},
+		&ClientHello{V: Version, Cols: 56, Rows: 40},
 		Frame{Type: FrameData, ID: "%12", Data: []byte("ls\r\x1b[A ✓")},
 		&Keys{Pane: "%3", Keys: []string{"C-c", "Up"}},
 		nil, // Bye: server message, checked below
@@ -63,11 +63,11 @@ func TestRoundTrip(t *testing.T) {
 }
 
 func TestNoHTMLEscaping(t *testing.T) {
-	buf, err := AppendJSON(nil, Result{ID: 1, Lines: []string{"<a> & b"}})
+	buf, err := AppendJSON(nil, Error{Message: "<a> & b"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(buf[5:]); got != `{"t":"result","id":1,"lines":["<a> & b"]}` {
+	if got := string(buf[5:]); got != `{"t":"error","message":"<a> & b"}` {
 		t.Errorf("encoded %s", got)
 	}
 }
@@ -79,7 +79,6 @@ func TestReaderRejectsBadFrames(t *testing.T) {
 	cases := map[string][]byte{
 		"zero length":     frame(0),
 		"too long":        frame(MaxFrame + 1),
-		"unknown type":    frame(2, 9, 0),
 		"truncated pane":  frame(3, FrameData, 5, 'x'),
 		"truncated frame": frame(10, FrameJSON, '{'),
 	}
@@ -90,8 +89,19 @@ func TestReaderRejectsBadFrames(t *testing.T) {
 	}
 }
 
+// A frame of a type newer than the reader is passed over, so the protocol can
+// grow by adding them.
+func TestReaderSkipsUnknownFrames(t *testing.T) {
+	b := append(binary.BigEndian.AppendUint32(nil, 3), 9, 'h', 'i')
+	b = AppendData(b, "%1", []byte("x"))
+	f, err := NewReader(bytes.NewReader(b)).Next()
+	if err != nil || f.Type != FrameData || string(f.Data) != "x" {
+		t.Fatalf("got %+v, %v", f, err)
+	}
+}
+
 func TestWriterRefusesWhatNoReaderTakes(t *testing.T) {
-	big := Entries{Pane: "%1", Entries: []Entry{{ID: "a", Role: "user", Kind: "text", Text: strings.Repeat("x", MaxFrame)}}}
+	big := Entries{Pane: "%1", Entries: []Entry{{ID: "a", From: FromUser, Kind: KindSaid, Text: strings.Repeat("x", MaxFrame)}}}
 	if b, err := AppendJSON([]byte("keep"), big); !errors.Is(err, ErrTooBig) || string(b) != "keep" {
 		t.Fatalf("err %v, kept %q", err, b[:min(len(b), 8)])
 	}

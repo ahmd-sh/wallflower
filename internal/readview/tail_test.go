@@ -41,14 +41,6 @@ func (f *fake) set(pid int, path string) {
 	}
 }
 
-func (f *fake) activity(pid int, a Activity, since int64) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	r := f.running[pid]
-	r.Activity, r.Since = a, since
-	f.running[pid] = r
-}
-
 func newParser() Parser { return &fakeParser{} }
 
 // fakeParser reads {"id","text"} lines as entries, {"ctx"} lines as how full
@@ -87,7 +79,7 @@ func (p *fakeParser) Line(b []byte) []Entry {
 		return nil
 	}
 	p.read = append(p.read, e.ID)
-	return []Entry{{ID: e.ID, Role: "assistant", Kind: "text", Text: e.Text}}
+	return []Entry{{ID: e.ID, From: Program, Kind: Said, Text: e.Text}}
 }
 
 func (p *fakeParser) Context() int { return p.ctx }
@@ -168,19 +160,9 @@ func TestFollow(t *testing.T) {
 		t.Fatalf("appended: %+v", e)
 	}
 
-	// What the CLI is doing comes as it changes.
-	src.activity(7, Working, 1000)
-	if e := next(t, got); e.Reset || len(e.Entries) > 0 || e.Activity != Working || e.Since != 1000 {
-		t.Fatalf("working: %+v", e)
-	}
-	src.activity(7, Idle, 2000)
-	if e := next(t, got); e.Activity != Idle || e.Since != 2000 {
-		t.Fatalf("idle: %+v", e)
-	}
-
-	// So does how full its context is.
+	// How full its context is comes as it changes.
 	appendTo(t, one, `{"ctx":5000}`+"\n")
-	if e := next(t, got); e.Reset || len(e.Entries) > 0 || !e.Measured || e.Context != 5000 || e.Activity != Idle {
+	if e := next(t, got); e.Reset || len(e.Entries) > 0 || !e.Measured || e.Context != 5000 {
 		t.Fatalf("context: %+v", e)
 	}
 

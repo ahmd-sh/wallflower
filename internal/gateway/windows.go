@@ -59,10 +59,6 @@ func (g *gateway) focus(pane string) error {
 	return g.noteZoom(g.tmux.Focus(pane))
 }
 
-func (g *gateway) zoom(pane string) error {
-	return g.noteZoom(g.tmux.Zoom(pane))
-}
-
 // noteZoom remembers how a window the client zooms was at first, so
 // cleanup can put it back.
 func (g *gateway) noteZoom(window string, was bool, err error) error {

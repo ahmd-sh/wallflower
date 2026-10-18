@@ -35,7 +35,6 @@ type Pane struct {
 	Floating  bool   `json:"floating"`
 	Z         int    `json:"z"` // floating panes only; 0 is the front
 	AltScreen bool   `json:"alt_screen"`
-	Agent     string `json:"agent"` // the @agent_state pane option, set by hooks
 	Title     string `json:"title"`
 	Path      string `json:"path"`
 	Command   string `json:"command"`
@@ -51,7 +50,7 @@ var (
 	paneFormat = strings.Join([]string{
 		"#{pane_id}", "#{window_id}", "#{pane_index}", "#{pane_active}",
 		"#{pane_width}", "#{pane_height}", "#{pane_left}", "#{pane_top}",
-		"#{pane_floating_flag}", "#{alternate_on}", "#{@agent_state}",
+		"#{pane_floating_flag}", "#{alternate_on}",
 		"#{pane_title}", "#{pane_current_path}", "#{pane_current_command}", "#{pane_tty}",
 	}, "\t")
 )
@@ -89,7 +88,7 @@ func (c *Client) Snapshot() (*Session, error) {
 	}
 	for _, line := range r.Blocks[2] {
 		f := strings.Split(line, "\t")
-		if len(f) != 15 {
+		if len(f) != 14 {
 			return nil, fmt.Errorf("tmux: unexpected list-panes line %q", line)
 		}
 		i, ok := byID[f[1]]
@@ -100,7 +99,7 @@ func (c *Client) Snapshot() (*Session, error) {
 			ID: f[0], Index: atoi(f[2]), Active: f[3] == "1",
 			Width: atoi(f[4]), Height: atoi(f[5]), Left: atoi(f[6]), Top: atoi(f[7]),
 			Floating: f[8] == "1", AltScreen: f[9] == "1",
-			Agent: f[10], Title: f[11], Path: f[12], Command: f[13], TTY: f[14],
+			Title: f[10], Path: f[11], Command: f[12], TTY: f[13],
 		}
 		for _, cell := range windows[i].Layout.Root.Panes() {
 			if cell.Pane == p.ID && cell.Z != nil {

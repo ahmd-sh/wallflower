@@ -9,13 +9,10 @@ import (
 )
 
 // A Recording is where a program writes what's said as it goes, one JSON
-// object per line, as AI coding CLIs keep transcripts: the file, which may
-// not exist yet (a new conversation has none until its first message), and
-// what the program is doing, if it says.
+// object per line, as AI coding CLIs keep transcripts. The file may not
+// exist yet: a new conversation has none until its first message.
 type Recording struct {
-	Path     string
-	Activity Activity
-	Since    int64 // Unix milliseconds
+	Path string
 }
 
 // A Parser turns a recording's lines, in order, into the entries they add
@@ -82,8 +79,8 @@ var ErrEnded = errors.New("the conversation ended")
 // Tail sends a program's recording as it's written: its recent entries,
 // then entries as they come, starting over when the program moves to
 // another recording (a cleared conversation) or takes its conversation back
-// to an earlier point (a rewind), and what the program is doing, and how
-// full its context is, as those change. recording says where the program's
+// to an earlier point (a rewind), and how full its context is, as that
+// changes. recording says where the program's
 // is now, and false once the program is gone; parser reads one from its
 // start, or from any line. Tail returns when ctx is done, or ErrEnded.
 func Tail(ctx context.Context, recording func() (Recording, bool), parser func() Parser, send func(Update)) error {
@@ -93,9 +90,8 @@ func Tail(ctx context.Context, recording func() (Recording, bool), parser func()
 		p        Parser
 		offset   int64
 		partial  []byte
-		announce bool      // say there's a conversation, if its file isn't there yet
-		said     Recording // the activity last sent
-		measured int       // the context last sent
+		announce bool // say there's a conversation, if its file isn't there yet
+		measured int  // the context last sent
 		branched int       // the parser's branches, as of the entries sent
 	)
 	defer func() {
@@ -122,11 +118,11 @@ func Tail(ctx context.Context, recording func() (Recording, bool), parser func()
 				var entries []Entry
 				var more bool
 				entries, more, p, offset = recent(f, parser, Recent)
-				partial, announce, said, measured, branched = nil, false, cur, contextOf(p), branches(p)
-				send(Update{Reset: true, More: more, Entries: entries, Activity: cur.Activity, Since: cur.Since, Context: measured, Measured: measured != 0})
+				partial, announce, measured, branched = nil, false, contextOf(p), branches(p)
+				send(Update{Reset: true, More: more, Entries: entries, Context: measured, Measured: measured != 0})
 			} else if announce {
-				announce, said, measured = false, cur, 0
-				send(Update{Reset: true, Activity: cur.Activity, Since: cur.Since})
+				announce, measured = false, 0
+				send(Update{Reset: true})
 			}
 		} else if st, err := f.Stat(); err == nil && st.Size() < offset {
 			f.Close() // rewritten: read it afresh
@@ -152,13 +148,9 @@ func Tail(ctx context.Context, recording func() (Recording, bool), parser func()
 		if f != nil {
 			now = contextOf(p)
 		}
-		if (f != nil || !announce) && (cur.Activity != said.Activity || cur.Since != said.Since || now != measured) {
-			u := Update{Activity: cur.Activity, Since: cur.Since}
-			if now != measured {
-				u.Context, u.Measured = now, true
-			}
-			said, measured = cur, now
-			send(u)
+		if f != nil && now != measured {
+			measured = now
+			send(Update{Context: now, Measured: true})
 		}
 		select {
 		case <-ctx.Done():
@@ -198,9 +190,10 @@ func recent(f *os.File, parser func() Parser, n int) (entries []Entry, more bool
 	}
 }
 
-// weight is about what an entry adds to a message.
+// weight is about what an entry adds to an update on the wire, where a
+// picture's data doesn't go: it's asked for.
 func weight(e Entry) int {
-	return len(e.Text) + len(e.Output) + len(e.Diff) + len(e.Data) + 256
+	return len(e.Text) + len(e.Output) + len(e.Diff) + 256
 }
 
 // newest is where the newest entries from from on that fit in one message

@@ -12,12 +12,13 @@ import (
 	"io"
 )
 
-const Version = 1
+const Version = 2
 
 const (
-	FrameJSON   byte = 1
-	FrameData   byte = 2
-	FrameUpload byte = 3
+	FrameJSON    byte = 1
+	FrameData    byte = 2 // a pane's bytes: output from the gateway, typed by the client
+	FrameUpload  byte = 3 // the next of an upload's bytes
+	FramePicture byte = 4 // a picture entry's bytes, asked for with Picture
 )
 
 // MaxFrame bounds a frame's length field, so a corrupt stream can't make a
@@ -29,7 +30,7 @@ var ErrTooBig = errors.New("protocol: message too big for a frame")
 
 type Frame struct {
 	Type byte
-	ID   string // FrameData: the pane; FrameUpload: the upload
+	ID   string // FrameData: the pane; FrameUpload: the upload; FramePicture: the entry
 	Data []byte // FrameJSON: the JSON object; otherwise the bytes
 }
 
@@ -39,34 +40,44 @@ type Reader struct {
 
 func NewReader(r io.Reader) *Reader { return &Reader{r: bufio.NewReaderSize(r, 64<<10)} }
 
+// Next reads the next frame, skipping any of a type newer than this reader.
 func (r *Reader) Next() (Frame, error) {
+	for {
+		f, known, err := r.next()
+		if err != nil || known {
+			return f, err
+		}
+	}
+}
+
+func (r *Reader) next() (f Frame, known bool, err error) {
 	var hdr [5]byte
 	if _, err := io.ReadFull(r.r, hdr[:]); err != nil {
-		return Frame{}, err
+		return Frame{}, false, err
 	}
 	n := binary.BigEndian.Uint32(hdr[:4])
 	if n < 1 || n > MaxFrame {
-		return Frame{}, fmt.Errorf("protocol: bad frame length %d", n)
+		return Frame{}, false, fmt.Errorf("protocol: bad frame length %d", n)
 	}
 	buf := make([]byte, n-1)
 	if _, err := io.ReadFull(r.r, buf); err != nil {
-		return Frame{}, unexpected(err)
+		return Frame{}, false, unexpected(err)
 	}
 
-	f := Frame{Type: hdr[4]}
+	f = Frame{Type: hdr[4]}
 	switch f.Type {
 	case FrameJSON:
 		f.Data = buf
-	case FrameData, FrameUpload:
+	case FrameData, FrameUpload, FramePicture:
 		if len(buf) < 1 || int(buf[0]) > len(buf)-1 {
-			return Frame{}, errors.New("protocol: truncated id")
+			return Frame{}, false, errors.New("protocol: truncated id")
 		}
 		f.ID = string(buf[1 : 1+buf[0]])
 		f.Data = buf[1+buf[0]:]
 	default:
-		return Frame{}, fmt.Errorf("protocol: unknown frame type %d", f.Type)
+		return Frame{}, false, nil
 	}
-	return f, nil
+	return f, true, nil
 }
 
 func unexpected(err error) error {
@@ -84,6 +95,12 @@ func AppendData(dst []byte, pane string, data []byte) []byte {
 // AppendUpload appends an upload frame: the next of an upload's bytes.
 func AppendUpload(dst []byte, upload string, data []byte) []byte {
 	return appendBytes(dst, FrameUpload, upload, data)
+}
+
+// AppendPicture appends a picture frame: a picture entry's bytes, none if
+// they're gone.
+func AppendPicture(dst []byte, entry string, data []byte) []byte {
+	return appendBytes(dst, FramePicture, entry, data)
 }
 
 func appendBytes(dst []byte, typ byte, id string, data []byte) []byte {
