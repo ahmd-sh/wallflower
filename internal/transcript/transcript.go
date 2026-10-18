@@ -56,35 +56,6 @@ type Brancher interface {
 	Kept(entries []protocol.Entry) []protocol.Entry
 }
 
-// A Rewinder is a Source whose CLI can take its conversation back to before
-// one of the user's messages, driven through the terminal it runs in.
-type Rewinder interface {
-	// Rewind takes pid's conversation back to before the message entry id
-	// is from, restoring the files the CLI changed since if code, and
-	// leaves its prompt empty.
-	Rewind(ctx context.Context, t Terminal, pid int, id string, code bool) error
-}
-
-// A Terminal is the pane a CLI runs in.
-type Terminal interface {
-	// Screen is the rows on screen, as text.
-	Screen() ([]string, error)
-	// Keys presses keys, by tmux's names for them.
-	Keys(keys ...string) error
-	// Type types text as it is.
-	Type(text string) error
-}
-
-// Read parses the whole transcript at path, for the conversation as it stands.
-func Read(path string, p Parser) ([]protocol.Entry, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	lines, _ := split(b)
-	return kept(p, collect(p, lines)), nil
-}
-
 func kept(p Parser, entries []protocol.Entry) []protocol.Entry {
 	if b, ok := p.(Brancher); ok {
 		return b.Kept(entries)

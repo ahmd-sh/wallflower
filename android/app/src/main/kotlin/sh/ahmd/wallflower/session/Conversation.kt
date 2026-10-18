@@ -54,16 +54,7 @@ data class Conversation(
         )
     }
 
-    /** Whether the program changed files after the user's message [entry]: what rewinding to before it can restore. */
-    fun changedCodeAfter(entry: String): Boolean {
-        val at = entries.indexOfFirst { it.id == entry }
-        return at >= 0 && entries.drop(at + 1).any { it.kind == "tool" && it.name in EDITS && it.done && !it.error }
-    }
-
     companion object {
         const val MAX_ENTRIES = 1000
-
-        /** Claude Code's tools whose changes a rewind can undo (not bash's). */
-        private val EDITS = setOf("Edit", "Write", "MultiEdit", "NotebookEdit")
     }
 }

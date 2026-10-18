@@ -40,9 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -52,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.PopupProperties
 
-enum class Glyph { Plus, Close, Power, Chat, Terminal, Spark, Copy, Check, Pencil }
+enum class Glyph { Plus, Close, Power, Chat, Terminal, Spark, Copy, Check }
 
 /** Line icons, drawn to match the send button rather than pulled from an icon set. */
 @Composable
@@ -110,25 +108,6 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
                     color,
                     style = Stroke(w, cap = StrokeCap.Round),
                 )
-            }
-            Glyph.Pencil -> rotate(45f, c) {
-                // Upright, point down, then leant over to the left.
-                val half = r * 0.34f
-                val top = c.y - r * 1.2f
-                val shoulder = c.y + r * 0.55f
-                drawPath(
-                    Path().apply {
-                        moveTo(c.x - half, top)
-                        lineTo(c.x + half, top)
-                        lineTo(c.x + half, shoulder)
-                        lineTo(c.x, c.y + r * 1.2f)
-                        lineTo(c.x - half, shoulder)
-                        close()
-                    },
-                    color,
-                    style = Stroke(w, join = StrokeJoin.Round),
-                )
-                drawLine(color, Offset(c.x - half, top + r * 0.45f), Offset(c.x + half, top + r * 0.45f), w)
             }
             Glyph.Check -> {
                 drawLine(color, Offset(c.x - r, c.y + r * 0.05f), Offset(c.x - r * 0.3f, c.y + r * 0.7f), w, StrokeCap.Round)

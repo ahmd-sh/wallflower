@@ -3,8 +3,6 @@ package sh.ahmd.wallflower
 import android.content.SharedPreferences
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.placeCursorAtEnd
-import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.text.TextRange
 import kotlinx.coroutines.CoroutineScope
@@ -12,12 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-
-/** A message sent before, [entry], being edited in a pane's box in place of what was there, [stash]. */
-@Serializable
-data class Editing(val entry: String, val stash: String)
 
 /**
  * What's typed in the composer, per pane. It outlives reconnects, locking the
@@ -30,11 +23,6 @@ class Drafts(private val prefs: SharedPreferences, private val scope: CoroutineS
             .getOrDefault(emptyMap())
             .toMutableMap()
     private val states = HashMap<String, TextFieldState>()
-
-    /** Messages being edited, by pane. */
-    val editing = mutableStateMapOf<String, Editing>().apply {
-        putAll(runCatching { Json.decodeFromString<Map<String, Editing>>(prefs.getString(EDITING, null) ?: "{}") }.getOrDefault(emptyMap()))
-    }
 
     fun of(pane: String): TextFieldState = states.getOrPut(pane) {
         TextFieldState(saved[pane].orEmpty()).also { state ->
@@ -78,26 +66,8 @@ class Drafts(private val prefs: SharedPreferences, private val scope: CoroutineS
         }
     }
 
-    /** Puts [text], the message [entry], in [pane]'s box to edit, setting aside what's there until [endEdit]. */
-    fun edit(pane: String, entry: String, text: String) {
-        val box = of(pane)
-        editing[pane] = Editing(entry, editing[pane]?.stash ?: box.text.toString())
-        saveEditing()
-        box.setTextAndPlaceCursorAtEnd(text)
-    }
-
-    /** Stops editing in [pane], putting back what was set aside. */
-    fun endEdit(pane: String) {
-        val e = editing.remove(pane) ?: return
-        saveEditing()
-        of(pane).setTextAndPlaceCursorAtEnd(e.stash)
-    }
-
-    private fun saveEditing() = prefs.edit().putString(EDITING, Json.encodeToString(editing.toMap())).apply()
-
     private companion object {
         const val KEY = "drafts"
-        const val EDITING = "editing"
         const val SAVE_DELAY_MS = 400L
     }
 }

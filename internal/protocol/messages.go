@@ -88,16 +88,6 @@ type Upload struct {
 	Size int64  `json:"size"`
 }
 
-// Rewind takes the conversation in a pane back to before one of the user's
-// messages (Entry, its entry's ID), forgetting what came after, and restoring
-// files the program changed since if Code. The program's prompt is left
-// empty, to send the message anew. Rewound answers.
-type Rewind struct {
-	Pane  string `json:"pane"`
-	Entry string `json:"entry"`
-	Code  bool   `json:"code,omitempty"`
-}
-
 // Kill closes a window or a pane; closing a window's last pane closes it.
 type Kill struct {
 	Window string `json:"window,omitempty"`
@@ -145,7 +135,6 @@ func (Rename) Type() string            { return "rename" }
 func (Kill) Type() string              { return "kill" }
 func (Transcript) Type() string        { return "transcript" }
 func (Upload) Type() string            { return "upload" }
-func (Rewind) Type() string            { return "rewind" }
 
 // Gateway to client.
 
@@ -272,13 +261,6 @@ type Uploaded struct {
 	Error string `json:"error,omitempty"`
 }
 
-// Rewound says a Rewind is done, or why it couldn't be.
-type Rewound struct {
-	Pane  string `json:"pane"`
-	Entry string `json:"entry"`
-	Error string `json:"error,omitempty"`
-}
-
 type Bye struct {
 	Reason string `json:"reason"`
 }
@@ -293,16 +275,15 @@ func (Pong) Type() string            { return "pong" }
 func (Bye) Type() string             { return "bye" }
 func (Entries) Type() string         { return "entries" }
 func (Uploaded) Type() string        { return "uploaded" }
-func (Rewound) Type() string         { return "rewound" }
 
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Select{}, Zoom{},
 	ScrollbackRequest{}, TmuxCommand{}, Ping{}, Paste{}, Focus{}, Split{}, New{}, Rename{}, Kill{},
-	Transcript{}, Upload{}, Rewind{},
+	Transcript{}, Upload{},
 )
 
 var serverMessages = registry(
-	ServerHello{}, State{}, Reset{}, ScrollbackReply{}, Result{}, Error{}, Pong{}, Bye{}, Entries{}, Uploaded{}, Rewound{},
+	ServerHello{}, State{}, Reset{}, ScrollbackReply{}, Result{}, Error{}, Pong{}, Bye{}, Entries{}, Uploaded{},
 )
 
 // DecodeClient decodes a message sent by a client. It returns a pointer to

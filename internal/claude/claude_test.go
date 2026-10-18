@@ -109,15 +109,20 @@ var rewound = []string{
 }
 
 func TestRewound(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "s.jsonl")
-	if err := os.WriteFile(path, []byte(strings.Join(rewound, "\n")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	p := New("").Parser()
-	got, err := transcript.Read(path, p)
-	if err != nil {
-		t.Fatal(err)
+	var got []protocol.Entry
+	at := map[string]int{}
+	for _, l := range rewound {
+		for _, e := range p.Line([]byte(l)) {
+			if i, ok := at[e.ID]; ok {
+				got[i] = e // a tool's result
+			} else {
+				at[e.ID] = len(got)
+				got = append(got, e)
+			}
+		}
 	}
+	got = p.(transcript.Brancher).Kept(got)
 	var ids []string
 	for _, e := range got {
 		ids = append(ids, e.ID+"="+e.Text)

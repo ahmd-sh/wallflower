@@ -45,8 +45,6 @@ import sh.ahmd.wallflower.protocol.Ping
 import sh.ahmd.wallflower.protocol.Pong
 import sh.ahmd.wallflower.protocol.Reset
 import sh.ahmd.wallflower.protocol.Resize
-import sh.ahmd.wallflower.protocol.Rewind
-import sh.ahmd.wallflower.protocol.Rewound
 import sh.ahmd.wallflower.protocol.Select
 import sh.ahmd.wallflower.protocol.ServerHello
 import sh.ahmd.wallflower.protocol.ServerMessage
@@ -120,7 +118,6 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     /** Completes when the live connection ends. */
     @Volatile private var lost: CompletableDeferred<Unit>? = null
     private val uploaded = ConcurrentHashMap<String, CompletableDeferred<Uploaded>>()
-    private val rewound = ConcurrentHashMap<Pair<String, String>, CompletableDeferred<Rewound>>()
     /** By ping: complete once its pong says everything sent before it arrived. */
     private val arrivals = ConcurrentSkipListMap<Int, CompletableDeferred<Unit>>()
     @Volatile private var lastPing = 0L
@@ -288,7 +285,6 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 _status.value = Status.Connected(m.tmux)
             }
             is Uploaded -> uploaded[m.id]?.complete(m)
-            is Rewound -> rewound[m.pane to m.entry]?.complete(m)
             is State -> {
                 _state.value = m
                 // A pane picked on the phone gives way once tmux's active pane moves on (to it, or elsewhere).
@@ -479,26 +475,6 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         }
     }
 
-    /**
-     * Takes [pane]'s conversation back to before the user's message [entry],
-     * restoring the files changed since too if [code], and returns once the
-     * program's prompt is empty again. Throws why if it couldn't.
-     */
-    suspend fun rewind(pane: String, entry: String, code: Boolean) {
-        val (q, ended) = synchronized(pending) { (queue ?: throw IOException("not connected")) to lost!! }
-        val reply = CompletableDeferred<Rewound>()
-        rewound[pane to entry] = reply
-        try {
-            q.send(Outgoing.Message(Rewind(pane, entry, code)))
-            val r = withTimeoutOrNull(REWIND_TIMEOUT_MS) { reply.unlessLost(ended) } ?: throw IOException("the gateway didn't answer")
-            r.error?.let { throw IOException(it) }
-        } catch (_: ClosedSendChannelException) {
-            throw IOException("the connection dropped")
-        } finally {
-            rewound.remove(pane to entry)
-        }
-    }
-
     private suspend fun <T> Deferred<T>.unlessLost(ended: Deferred<Unit>): T = select {
         onAwait { it }
         ended.onAwait { throw IOException("the connection dropped") }
@@ -526,8 +502,6 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         const val RESIZE_SETTLE_MS = 120L
         const val UPLOAD_CHUNK = 32 * 1024
         const val UPLOAD_AHEAD = 8
-        /** A little past the gateway's own limit. */
-        const val REWIND_TIMEOUT_MS = 70_000L
 
         /** Upload paths: under [dir], names of the characters the gateway keeps, which never end in . or -. */
         fun uploadPaths(dir: String) = Regex(Regex.escape(dir) + "/[A-Za-z0-9._-]*[A-Za-z0-9_]")

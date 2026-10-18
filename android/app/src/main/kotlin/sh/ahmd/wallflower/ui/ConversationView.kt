@@ -6,7 +6,6 @@ import android.util.Base64
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
@@ -25,7 +24,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -42,7 +40,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -96,9 +94,7 @@ import sh.ahmd.wallflower.terminal.Menu
  * Below it, while the program works, a line says so; when its screen offers
  * a [menu] (a permission, a question), that's there to answer, and the keys
  * picking an option go to [onKeys]. Sideways drags go to [swipe], to move
- * between panes as on the terminal. The user's messages can be taken back
- * to edit, [onEdit]; while one is, [editing], what came after it fades, as
- * sending it will take those back too.
+ * between panes as on the terminal.
  */
 @Composable
 fun ConversationView(
@@ -109,8 +105,6 @@ fun ConversationView(
     onKeys: (List<String>) -> Unit = {},
     /** Sends the program its compact command, from the context button; null while it can't. */
     onCompact: (() -> Unit)? = null,
-    onEdit: ((Entry) -> Unit)? = null,
-    editing: String? = null,
 ) {
     var dragged by remember { mutableFloatStateOf(0f) }
     Box(
@@ -206,21 +200,9 @@ fun ConversationView(
                                 }
                             }
                         }
-                        val edited = items.indexOfFirst { it is Item.Said && it.entry.id == editing }
-                        itemsIndexed(items.asReversed(), key = { _, it -> it.key }) { i, it ->
-                            val gone by animateFloatAsState(if (edited >= 0 && items.size - 1 - i > edited) 0.35f else 1f, Motion.effect(), label = "edited")
-                            Box(
-                                Modifier
-                                    .animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())
-                                    .graphicsLayer { alpha = gone },
-                            ) {
-                                ItemView(
-                                    it,
-                                    ongoing = status != null && it === newest,
-                                    beside = context.takeIf { _ -> it === newest },
-                                    onEdit = onEdit.takeIf { status == null },
-                                    editing = editing,
-                                )
+                        items(items.asReversed(), key = { it.key }) {
+                            Box(Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())) {
+                                ItemView(it, ongoing = status != null && it === newest, beside = context.takeIf { _ -> it === newest })
                             }
                         }
                         if (conversation.more) item(key = "more") { Note("earlier messages are in the terminal") }
@@ -305,7 +287,7 @@ private fun Item.copies(ongoing: Boolean) =
 
 /** [ongoing]: the newest item of a turn still going, whose reply isn't the last word yet. [beside]: on its copy row's right. */
 @Composable
-private fun ItemView(item: Item, ongoing: Boolean, beside: (@Composable () -> Unit)?, onEdit: ((Entry) -> Unit)?, editing: String?) {
+private fun ItemView(item: Item, ongoing: Boolean, beside: (@Composable () -> Unit)? = null) {
     when (item) {
         is Item.Steps -> Steps(item.entries)
         is Item.Said -> {
@@ -313,19 +295,16 @@ private fun ItemView(item: Item, ongoing: Boolean, beside: (@Composable () -> Un
             when {
                 e.kind == "image" -> Picture(e)
                 e.kind == "note" -> Note(e.text)
-                e.role == "user" -> Prompt(e.text, onEdit?.let { { it(e) } }, editing = e.id == editing)
+                e.role == "user" -> Prompt(e.text)
                 else -> Reply(e.text, copyable = item.copies(ongoing), beside)
             }
         }
     }
 }
 
-/** One of the user's messages, with copy beneath, and edit when it can be. [editing]: it's being edited. */
 @Composable
-private fun Prompt(text: String, onEdit: (() -> Unit)?, editing: Boolean) {
+private fun Prompt(text: String) {
     var open by remember { mutableStateOf(false) }
-    val haptics = haptics()
-    val outline by animateColorAsState(if (editing) Palette.orange else Palette.bg2, Motion.effect(), label = "editing")
     Column(Modifier.fillMaxWidth().padding(start = 40.dp), horizontalAlignment = Alignment.End) {
         Text(
             text,
@@ -336,21 +315,10 @@ private fun Prompt(text: String, onEdit: (() -> Unit)?, editing: Boolean) {
                 .animateContentSize(Motion.spatial())
                 .clip(RoundedCornerShape(18.dp))
                 .background(Palette.bg2)
-                .border(1.dp, outline, RoundedCornerShape(18.dp))
                 .clickable { open = !open }
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         )
-        Row {
-            if (onEdit != null) {
-                Box(
-                    Modifier.clip(CircleShape).clickable {
-                        haptics.tick()
-                        onEdit()
-                    }.padding(6.dp),
-                ) { GlyphIcon(Glyph.Pencil, if (editing) Palette.orange else Palette.dim, size = 13.dp) }
-            }
-            CopyIcon(text)
-        }
+        CopyIcon(text)
     }
 }
 
