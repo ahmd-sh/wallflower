@@ -117,6 +117,8 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     @Volatile private var queue: Channel<Outgoing>? = null
     /** Completes when the live connection ends. */
     @Volatile private var lost: CompletableDeferred<Unit>? = null
+    /** The live connection, which [stop] closes: its reads don't heed cancellation. */
+    @Volatile private var live: Connection? = null
     private val uploaded = ConcurrentHashMap<String, CompletableDeferred<Uploaded>>()
     /** By ping: complete once its pong says everything sent before it arrived. */
     private val arrivals = ConcurrentSkipListMap<Int, CompletableDeferred<Unit>>()
@@ -152,7 +154,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 _status.value = Status.Connecting
                 retries.tryReceive() // a retry asked for before this attempt is this attempt
                 val reason = try {
-                    runOnce()
+                    runOnce(this)
                     backoff = 500L
                     "connection closed"
                 } catch (b: Blocked) {
@@ -172,6 +174,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     fun stop() {
         job?.cancel()
         job = null
+        live?.close()
     }
 
     /** Tries again now, after the user dealt with a [Status.NeedsUser]. */
@@ -196,13 +199,19 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         }
     }
 
-    private fun runOnce() {
+    /** One connection, until it ends; what it starts ends with [within]. */
+    private fun runOnce(within: CoroutineScope) {
         val conn = transport.open()
         conn.use {
+            live = conn
+            if (!within.isActive) { // stopped while connecting
+                live = null
+                return
+            }
             val w = FrameWriter(conn.output)
             w.send(ClientHello(cols = grid.first, rows = grid.second))
             val out = Channel<Outgoing>(Channel.UNLIMITED)
-            val writer = scope.launch(Dispatchers.IO) {
+            val writer = within.launch(Dispatchers.IO) {
                 try {
                     for (o in out) when (o) {
                         is Outgoing.Message -> w.send(o.message)
@@ -225,7 +234,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 following.clear()
             }
             follow(wanted)
-            val heartbeat = scope.launch(Dispatchers.IO) { heartbeat(conn) }
+            val heartbeat = within.launch(Dispatchers.IO) { heartbeat(conn) }
             try {
                 val r = FrameReader(conn.input)
                 while (true) {
@@ -239,6 +248,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                     }
                 }
             } finally {
+                live = null
                 heartbeat.cancel()
                 val dropped = synchronized(pending) {
                     queue = null
