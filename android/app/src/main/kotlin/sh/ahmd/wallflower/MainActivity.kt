@@ -25,9 +25,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val look by model.appearance.look.collectAsStateWithLifecycle()
+            val look by model.settings.look.flow.collectAsStateWithLifecycle()
             val view = LocalView.current
-            val haptics = remember(view) { Haptics(view, model.appearance.haptics) }
+            val haptics = remember(view) { Haptics(view, model.settings.haptics.flow) }
             CompositionLocalProvider(LocalHaptics provides haptics) {
                 WallflowerTheme(look) { WallflowerRoot(model, ::unlock, onExit = ::finish) }
             }

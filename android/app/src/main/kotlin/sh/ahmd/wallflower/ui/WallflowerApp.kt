@@ -219,9 +219,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                 Screen.Settings -> SettingsScreen(
                     host = host,
                     store = model.keyBar,
-                    confirm = model.confirm,
-                    appearance = model.appearance,
-                    conversations = model.conversationViews,
+                    settings = model.settings,
                     program = program,
                     onBack = { screen = Screen.Terminal },
                     onEditHost = { screen = Screen.Setup },
@@ -270,15 +268,14 @@ private fun TerminalScreen(
 
     // A pane whose program can be read shows its read view instead of its terminal.
     val readings by session.readings.collectAsStateWithLifecycle()
-    val offered by model.conversationViews.offered.collectAsStateWithLifecycle()
-    val conversing by model.conversationViews.panes.collectAsStateWithLifecycle()
-    val converses = offered && pane != null && pane.transcript.isNotEmpty()
+    val readViewOn by model.settings.readView.flow.collectAsStateWithLifecycle()
+    val readable = pane != null && pane.transcript.isNotEmpty()
     // The shown pane's neighbours too, so a swipe brings theirs in already loaded.
     val nearby = window?.panes?.sortedBy { it.index }?.let { panes ->
         val i = panes.indexOfFirst { it.id == pane?.id }
         if (i < 0) emptyList() else listOf(-1, 0, 1).map { panes[(i + it).mod(panes.size)] }.distinct()
     }.orEmpty()
-    val readViews = if (offered) nearby.filter { it.transcript.isNotEmpty() && it.id in conversing }.map { it.id }.toSet() else emptySet()
+    val readViews = if (readViewOn) nearby.filter { it.transcript.isNotEmpty() }.map { it.id }.toSet() else emptySet()
     LaunchedEffect(readViews) { session.read(readViews) }
 
     Column(
@@ -297,7 +294,7 @@ private fun TerminalScreen(
         }
         fun close(w: Window, p: Pane?) {
             val wholeWindow = p == null || w.panes.size == 1
-            val ask = if (wholeWindow) model.confirm.windows.value else model.confirm.panes.value
+            val ask = if (wholeWindow) model.settings.askClosingWindow.value else model.settings.askClosingPane.value
             if (ask) closing = w to p else kill(w, p)
         }
         renaming?.let { w ->
@@ -318,10 +315,10 @@ private fun TerminalScreen(
                 action = if (wholeWindow) "close tab" else "close pane",
                 onConfirm = { never ->
                     if (wholeWindow) {
-                        if (never) model.confirm.askForWindows(false)
+                        if (never) model.settings.askClosingWindow.set(false)
                         kill(w, null)
                     } else {
-                        if (never) model.confirm.askForPanes(false)
+                        if (never) model.settings.askClosingPane.set(false)
                         kill(w, p)
                     }
                     closing = null
@@ -566,14 +563,14 @@ private fun TerminalScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AnimatedVisibility(
-                                    converses,
+                                    readable,
                                     enter = fadeIn(Motion.effect()) + expandHorizontally(Motion.spatial()),
                                     exit = fadeOut(Motion.effect()) + shrinkHorizontally(Motion.spatial()),
                                 ) {
                                     val on = pane.id in readViews
                                     ViewToggle(reading = on) {
                                         haptics.toggle(!on)
-                                        model.conversationViews.toggle(pane.id)
+                                        model.settings.readView.set(!on)
                                     }
                                 }
                                 key(window.id) { PaneDots(window.panes.size, { position }, onClick = ::showCards) }

@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import sh.ahmd.wallflower.Look
+import sh.ahmd.wallflower.prefs.Look
 import sh.ahmd.wallflower.terminal.R
 
 /** Everforest Dark Hard, matching the terminal theme. */

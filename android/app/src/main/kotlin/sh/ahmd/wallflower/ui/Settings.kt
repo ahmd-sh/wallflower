@@ -39,14 +39,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
-import sh.ahmd.wallflower.Appearance
 import sh.ahmd.wallflower.BarKey
-import sh.ahmd.wallflower.Confirmations
-import sh.ahmd.wallflower.ConversationViews
 import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.KeyBarStore
 import sh.ahmd.wallflower.KeyProfile
-import sh.ahmd.wallflower.Look
+import sh.ahmd.wallflower.prefs.Look
+import sh.ahmd.wallflower.prefs.Preferences
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.session.Host
 
@@ -66,9 +64,7 @@ fun KeyBar.refFor(program: String?): ProfileRef {
 fun SettingsScreen(
     host: Host?,
     store: KeyBarStore,
-    confirm: Confirmations,
-    appearance: Appearance,
-    conversations: ConversationViews,
+    settings: Preferences,
     program: String?,
     onBack: () -> Unit,
     onEditHost: () -> Unit,
@@ -78,14 +74,14 @@ fun SettingsScreen(
     val focused = bar.refFor(program)
     Page("settings", onBack) {
         Section("look")
-        val look by appearance.look.collectAsStateWithLifecycle()
+        val look by settings.look.flow.collectAsStateWithLifecycle()
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Chip("terminal", look == Look.Terminal) { appearance.use(Look.Terminal) }
-            Chip("bricolage", look == Look.Grotesque, Grotesque) { appearance.use(Look.Grotesque) }
+            Chip("terminal", look == Look.Terminal) { settings.look.set(Look.Terminal) }
+            Chip("bricolage", look == Look.Grotesque, Grotesque) { settings.look.set(Look.Grotesque) }
         }
         Body("The terminal, what you type for it, keys and values stay in the terminal font.")
-        val feel by appearance.haptics.collectAsStateWithLifecycle()
-        Toggle("haptics for swipes, switches and sends", feel) { appearance.feel(it) }
+        val feel by settings.haptics.flow.collectAsStateWithLifecycle()
+        Toggle("haptics for swipes, switches and sends", feel) { settings.haptics.set(it) }
 
         Section("mac")
         if (host != null) {
@@ -99,15 +95,15 @@ fun SettingsScreen(
         }
 
         Section("closing")
-        val askPanes by confirm.panes.collectAsStateWithLifecycle()
-        val askWindows by confirm.windows.collectAsStateWithLifecycle()
-        Toggle("ask before closing a pane", askPanes) { confirm.askForPanes(it) }
-        Toggle("ask before closing a tab (or its last pane)", askWindows) { confirm.askForWindows(it) }
+        val askPanes by settings.askClosingPane.flow.collectAsStateWithLifecycle()
+        val askWindows by settings.askClosingWindow.flow.collectAsStateWithLifecycle()
+        Toggle("ask before closing a pane", askPanes) { settings.askClosingPane.set(it) }
+        Toggle("ask before closing a tab (or its last pane)", askWindows) { settings.askClosingWindow.set(it) }
 
-        Section("conversations")
-        val offered by conversations.offered.collectAsStateWithLifecycle()
-        Toggle("offer a conversation view for Claude Code", offered) { conversations.offer(it) }
-        Body("Replies as markdown, tool calls folded, read from what Claude Code records. The button by a pane's dots switches it; the terminal keeps running underneath.")
+        Section("read view")
+        val reading by settings.readView.flow.collectAsStateWithLifecycle()
+        Toggle("show panes as read views where they can be read", reading) { settings.readView.set(it) }
+        Body("Claude Code reads as its conversation: replies as markdown, steps folded. The button by a pane's dots switches every pane; the terminal keeps running underneath.")
 
         Section("key bar")
         Body(

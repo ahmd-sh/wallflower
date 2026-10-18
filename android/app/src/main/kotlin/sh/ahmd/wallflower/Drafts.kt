@@ -6,6 +6,7 @@ import androidx.compose.foundation.text.input.placeCursorAtEnd
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.text.TextRange
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
@@ -15,7 +16,8 @@ import kotlinx.serialization.json.Json
 /**
  * What's typed in the composer, per pane. It outlives reconnects, locking the
  * phone and the app being killed, and takes back text a dropped connection
- * may not have delivered. Used on the main thread.
+ * may not have delivered. A pane's draft goes with the pane. Used on the main
+ * thread.
  */
 class Drafts(private val prefs: SharedPreferences, private val scope: CoroutineScope) {
     private val saved: MutableMap<String, String> =
@@ -23,18 +25,33 @@ class Drafts(private val prefs: SharedPreferences, private val scope: CoroutineS
             .getOrDefault(emptyMap())
             .toMutableMap()
     private val states = HashMap<String, TextFieldState>()
+    private val saving = HashMap<String, Job>()
 
     fun of(pane: String): TextFieldState = states.getOrPut(pane) {
         TextFieldState(saved[pane].orEmpty()).also { state ->
-            scope.launch {
+            saving[pane] = scope.launch {
                 snapshotFlow { state.text.toString() }.drop(1).collectLatest {
                     delay(SAVE_DELAY_MS)
                     if (it.isEmpty()) saved.remove(pane) else saved[pane] = it
-                    prefs.edit().putString(KEY, Json.encodeToString(saved)).apply()
+                    save()
                 }
             }
         }
     }
+
+    /** Forgets the drafts of panes that are gone (tmux reuses their ids for new ones). */
+    fun keep(panes: Set<String>) {
+        val gone = (saved.keys + states.keys).filterNot { it in panes }
+        if (gone.isEmpty()) return
+        for (pane in gone) {
+            saving.remove(pane)?.cancel()
+            states.remove(pane)
+            saved.remove(pane)
+        }
+        save()
+    }
+
+    private fun save() = prefs.edit().putString(KEY, Json.encodeToString(saved)).apply()
 
     /** Puts back text that may not have been sent, ahead of anything typed since. */
     fun restore(pane: String, text: String) {

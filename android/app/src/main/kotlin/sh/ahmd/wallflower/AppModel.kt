@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.filterNotNull
+import sh.ahmd.wallflower.prefs.Preferences
 import sh.ahmd.wallflower.session.HardwareKey
 import sh.ahmd.wallflower.session.Host
 import sh.ahmd.wallflower.session.HostKeys
@@ -25,9 +26,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     val hostKeys = HostKeys(prefs)
     val drafts = Drafts(prefs, viewModelScope)
     val keyBar = KeyBarStore(prefs)
-    val confirm = Confirmations(prefs)
-    val appearance = Appearance(prefs)
-    val conversationViews = ConversationViews(prefs)
+    val settings = Preferences(prefs)
     val uploads = Uploads(app.contentResolver, prefs, drafts, File(app.cacheDir, "thumbs"), viewModelScope)
     private var listening: Job? = null
 
@@ -57,6 +56,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         val session = Session(transport, viewModelScope)
         listening = viewModelScope.launch {
             launch { session.undelivered.collect { drafts.restore(it.pane, it.text) } }
+            launch { session.state.filterNotNull().collect { s -> drafts.keep(s.windows.flatMapTo(HashSet()) { w -> w.panes.map { it.id } }) } }
             session.uploadDir.filterNotNull().collect(uploads::savedIn)
         }
         _session.value = session
