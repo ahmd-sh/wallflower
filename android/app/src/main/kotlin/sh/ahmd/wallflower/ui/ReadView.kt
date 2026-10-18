@@ -89,14 +89,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import sh.ahmd.wallflower.protocol.Entries
-import sh.ahmd.wallflower.protocol.Entry
-import sh.ahmd.wallflower.session.Conversation
+import sh.ahmd.wallflower.read.Activity
+import sh.ahmd.wallflower.read.Entry
+import sh.ahmd.wallflower.read.Item
+import sh.ahmd.wallflower.read.Party
+import sh.ahmd.wallflower.read.Reading
+import sh.ahmd.wallflower.read.items
+import sh.ahmd.wallflower.read.trace
 import sh.ahmd.wallflower.screen.Prompt
 
 /**
- * A pane's conversation in place of its terminal: what each side said, with
- * each run of tool calls and thinking folded into one line, to open when
+ * A pane's read view in place of its terminal: what each side said, with
+ * each run of steps and thinking folded into one line, to open when
  * wanted. The newest is at the bottom, which stays in view as entries come.
  * Below it, while the program works, a line says so; when its screen offers
  * a [prompt] (a permission, a question), that's there to answer, and the keys
@@ -104,8 +108,8 @@ import sh.ahmd.wallflower.screen.Prompt
  * drags go to [swipe], to move between panes as on the terminal.
  */
 @Composable
-fun ConversationView(
-    conversation: Conversation,
+fun ReadView(
+    reading: Reading,
     modifier: Modifier = Modifier,
     swipe: Swipe? = null,
     prompt: Prompt? = null,
@@ -132,22 +136,22 @@ fun ConversationView(
                 onDragStopped = { velocity -> swipe?.end(dragged, velocity) },
             ),
     ) {
-        val items = remember(conversation.entries, conversation.rewound) { items(conversation.shown) }
-        // A menu while the program says it's busy is one left on the screen, or a list that looks like one.
-        val asking = prompt?.takeIf { conversation.state != Entries.WORKING }
+        val items = remember(reading.entries, reading.rewound) { items(reading.shown) }
+        // A prompt while the program says it's busy is one left on the screen, or a list that looks like one.
+        val asking = prompt?.takeIf { reading.activity != Activity.Working }
         // The program says it's waiting a moment after its screen moved on (answered), so for that long it's working.
         var unread by remember { mutableStateOf(false) }
-        LaunchedEffect(conversation.state, asking == null) {
+        LaunchedEffect(reading.activity, asking == null) {
             unread = false
-            if (conversation.state == Entries.WAITING && asking == null) {
+            if (reading.activity == Activity.Waiting && asking == null) {
                 delay(UNREAD_MS)
                 unread = true
             }
         }
         val status = when {
             asking != null -> Status.Asking
-            conversation.state == Entries.WORKING -> Status.Working
-            conversation.state == Entries.WAITING -> if (unread) Status.Waiting else Status.Working
+            reading.activity == Activity.Working -> Status.Working
+            reading.activity == Activity.Waiting -> if (unread) Status.Waiting else Status.Working
             else -> null
         }
         // The card opening and shutting, felt even where the status line leaves with it.
@@ -162,14 +166,14 @@ fun ConversationView(
         LaunchedEffect(items.size, status) { if (follow) list.animateScrollToItem(0) }
 
         val phase = when {
-            !conversation.loaded -> Phase.Reading
+            !reading.loaded -> Phase.Reading
             items.isEmpty() -> Phase.Empty
             else -> Phase.Shown
         }
-        Crossfade(phase, animationSpec = Motion.effect(), label = "conversation") { p ->
+        Crossfade(phase, animationSpec = Motion.effect(), label = "read view") { p ->
             when (p) {
-                Phase.Reading -> Hint("reading the conversation…")
-                Phase.Empty -> Hint(conversation.error ?: "nothing said yet")
+                Phase.Reading -> Hint("reading…")
+                Phase.Empty -> Hint(reading.problem ?: "nothing said yet")
                 Phase.Shown -> Box(Modifier.fillMaxSize()) {
                     LazyColumn(
                         Modifier.fillMaxSize(),
@@ -181,7 +185,7 @@ fun ConversationView(
                         // How full the context is goes beside the last reply's copy; with no copy to go beside, on its own.
                         val newest = items.lastOrNull()
                         val context: (@Composable () -> Unit)? =
-                            if (conversation.context > 0) ({ ContextButton(conversation.context, onCompact) }) else null
+                            if (reading.context > 0) ({ ContextButton(reading.context, onCompact) }) else null
                         val besideCopy = newest?.copies(ongoing = status != null) == true
                         if (context != null && !besideCopy) {
                             item(key = "context") {
@@ -206,18 +210,18 @@ fun ConversationView(
                                         Status.Asking -> shown?.let { p ->
                                             PromptCard(p, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }) { picked -> onPicked(p, picked) }
                                         }
-                                        Status.Working -> Working(conversation.since)
+                                        Status.Working -> Working(reading.since)
                                         Status.Waiting -> Waiting()
                                     }
                                 }
                             }
                         }
-                        items(items.asReversed(), key = { it.key }) {
+                        items(items.asReversed(), key = { it.key }, contentType = { it::class }) {
                             Box(Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())) {
                                 ItemView(it, ongoing = status != null && it === newest, beside = context.takeIf { _ -> it === newest })
                             }
                         }
-                        if (conversation.more) item(key = "more") { Note("earlier messages are in the terminal") }
+                        if (reading.more) item(key = "more") { Note("earlier messages are in the terminal") }
                     }
                     AnimatedVisibility(
                         visible = away,
@@ -251,65 +255,19 @@ private enum class Status { Asking, Working, Waiting }
 /** How long the program can say it's waiting without a menu on screen before that's what it is. */
 private const val UNREAD_MS = 1_200L
 
-/** What the list shows: something said, or a run of steps (tool calls, thinking) between. */
-private sealed interface Item {
-    val key: String
-
-    /** [last]: the reply that ends its turn, which gets a copy button. */
-    data class Said(val entry: Entry, val last: Boolean = false) : Item {
-        override val key get() = entry.id
-    }
-
-    data class Steps(val entries: List<Entry>) : Item {
-        override val key get() = "steps " + entries.first().id
-    }
-}
-
-private fun items(entries: List<Entry>): List<Item> {
-    val out = mutableListOf<Item>()
-    var steps = mutableListOf<Entry>()
-    for (e in entries) {
-        if (e.kind == "tool" || e.kind == "thinking") {
-            steps += e
-            continue
-        }
-        if (steps.isNotEmpty()) out += Item.Steps(steps)
-        steps = mutableListOf()
-        out += Item.Said(e)
-    }
-    if (steps.isNotEmpty()) out += Item.Steps(steps)
-    // A turn ends where the user speaks next, or at the end.
-    var ended = true
-    for (i in out.indices.reversed()) {
-        val item = out[i] as? Item.Said ?: continue
-        when {
-            item.entry.role == "user" && item.entry.kind == "text" -> ended = true
-            item.entry.role == "assistant" && item.entry.kind == "text" && ended -> {
-                out[i] = item.copy(last = true)
-                ended = false
-            }
-        }
-    }
-    return out
-}
-
 /** Whether [this] ends with a copy button: the reply that ends a turn, once the turn is done. */
-private fun Item.copies(ongoing: Boolean) =
-    this is Item.Said && last && !ongoing && entry.role != "user" && entry.kind != "image" && entry.kind != "note"
+private fun Item.copies(ongoing: Boolean) = this is Item.Said && last && !ongoing
 
 /** [ongoing]: the newest item of a turn still going, whose reply isn't the last word yet. [beside]: on its copy row's right. */
 @Composable
 private fun ItemView(item: Item, ongoing: Boolean, beside: (@Composable () -> Unit)? = null) {
     when (item) {
         is Item.Steps -> Steps(item.entries)
-        is Item.Said -> {
-            val e = item.entry
-            when {
-                e.kind == "image" -> Picture(e)
-                e.kind == "note" -> Note(e.text)
-                e.role == "user" -> Prompt(e.text)
-                else -> Reply(e.text, copyable = item.copies(ongoing), beside)
-            }
+        is Item.Said -> when (val e = item.entry) {
+            is Entry.Picture -> Picture(e)
+            is Entry.Note -> Note(e.text)
+            is Entry.Said -> if (e.by == Party.User) Prompt(e.text) else Reply(e.text, copyable = item.copies(ongoing), beside)
+            is Entry.Step, is Entry.Thought -> Unit // folded into steps
         }
     }
 }
@@ -338,7 +296,7 @@ private fun Prompt(text: String) {
             // What's cut off is said on a line of its own, as something to open.
             if (cut && !open) Text("…", style = style.copy(color = Palette.blue, fontSize = 20.sp, fontWeight = FontWeight.Bold, lineHeight = 16.sp))
         }
-        CopyIcon(text)
+        CopyIcon { text }
     }
 }
 
@@ -389,11 +347,11 @@ private fun rememberCopier(): Copier {
     return copier
 }
 
-/** A small copy button, ticked a moment after. */
+/** A small copy button, ticked a moment after; [text] is what it copies, made when tapped. */
 @Composable
-private fun CopyIcon(text: String, modifier: Modifier = Modifier) {
+private fun CopyIcon(modifier: Modifier = Modifier, text: () -> String) {
     val copier = rememberCopier()
-    Box(modifier.clip(CircleShape).clickable { copier.copy(text) }.padding(6.dp)) {
+    Box(modifier.clip(CircleShape).clickable { copier.copy(text()) }.padding(6.dp)) {
         Crossfade(copier.copied, animationSpec = Motion.effect(), label = "copy") {
             GlyphIcon(if (it) Glyph.Check else Glyph.Copy, Palette.dim, size = 13.dp)
         }
@@ -435,7 +393,7 @@ private fun count(n: Int) = when {
 }
 
 @Composable
-private fun Picture(e: Entry) {
+private fun Picture(e: Entry.Picture) {
     val bitmap by produceState<ImageBitmap?>(null, e.data) {
         value = withContext(Dispatchers.Default) {
             runCatching {
@@ -444,7 +402,7 @@ private fun Picture(e: Entry) {
             }.getOrNull()
         }
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (e.role == "user") Arrangement.End else Arrangement.Start) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (e.by == Party.User) Arrangement.End else Arrangement.Start) {
         val shown by animateFloatAsState(if (bitmap != null) 1f else 0f, Motion.effect(), label = "picture")
         bitmap?.let {
             Image(
@@ -477,9 +435,10 @@ private fun Note(text: String) {
 private fun Steps(steps: List<Entry>) {
     var open by remember { mutableStateOf(false) }
     val feel = rememberFold()
-    val running = steps.lastOrNull { it.kind == "tool" }?.takeIf { !it.done }
-    val failed = steps.count { it.error }
-    val names = steps.filter { it.kind == "tool" }.map { it.name }.distinct()
+    val tools = steps.filterIsInstance<Entry.Step>()
+    val running = tools.lastOrNull()?.takeIf { it.status == Entry.Step.Status.Running }
+    val failed = tools.count { it.status == Entry.Step.Status.Failed }
+    val names = tools.map { it.name }.distinct()
     val summary = buildString {
         append(if (steps.size == 1) "1 step" else "${steps.size} steps")
         if (names.isNotEmpty()) append(" · ").append(names.take(3).joinToString(", ")).append(if (names.size > 3) " +${names.size - 3}" else "")
@@ -520,16 +479,10 @@ private fun Steps(steps: List<Entry>) {
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 for (s in steps) Step(s)
-                CopyIcon(trace(steps))
+                CopyIcon { trace(steps) }
             }
         }
     }
-}
-
-/** Steps as text: what each ran on, and what came of it. */
-private fun trace(steps: List<Entry>) = steps.joinToString("\n\n") { s ->
-    val name = if (s.kind == "thinking") "thinking" else s.name
-    listOf(if (s.text.isEmpty()) name else "$name: ${s.text}", s.diff.ifEmpty { s.output }).filter { it.isNotEmpty() }.joinToString("\n")
 }
 
 /** Whether the conversation is on screen, so its working marks move. */
@@ -548,6 +501,12 @@ private fun Running(modifier: Modifier) {
 
 @Composable
 private fun Step(s: Entry) {
+    val step = s as? Entry.Step
+    val name = step?.name ?: "thinking"
+    val input = step?.input ?: (s as? Entry.Thought)?.text.orEmpty()
+    val output = step?.output.orEmpty()
+    val diff = step?.diff.orEmpty()
+    val failed = step?.status == Entry.Step.Status.Failed
     var open by remember { mutableStateOf(false) }
     val feel = rememberFold()
     val mono = TextStyle(fontFamily = Mono, fontSize = 12.sp, lineHeight = 17.sp)
@@ -565,30 +524,30 @@ private fun Step(s: Entry) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (s.kind == "thinking") "thinking" else s.name,
+                name,
                 style = mono.copy(
                     color = when {
-                        s.error -> Palette.red
-                        s.kind == "tool" && !s.done -> Palette.purple
+                        failed -> Palette.red
+                        step?.status == Entry.Step.Status.Running -> Palette.purple
                         else -> Palette.aqua
                     },
-                    fontStyle = if (s.kind == "thinking") FontStyle.Italic else FontStyle.Normal,
+                    fontStyle = if (step == null) FontStyle.Italic else FontStyle.Normal,
                 ),
             )
             if (!open) {
                 Text(
-                    s.text.lineSequence().firstOrNull().orEmpty(),
+                    input.lineSequence().firstOrNull().orEmpty(),
                     style = mono.copy(color = Palette.grey),
                     maxLines = 1,
                     // A changed file's name is at its end.
-                    overflow = if (s.diff.isNotEmpty()) TextOverflow.MiddleEllipsis else TextOverflow.Ellipsis,
+                    overflow = if (diff.isNotEmpty()) TextOverflow.MiddleEllipsis else TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).padding(start = 8.dp),
                 )
             } else {
                 Spacer(Modifier.weight(1f))
             }
-            if (s.diff.isNotEmpty()) {
-                val (added, removed) = remember(s.diff) { diffCounts(s.diff) }
+            if (diff.isNotEmpty()) {
+                val (added, removed) = remember(diff) { diffCounts(diff) }
                 Text(
                     buildAnnotatedString {
                         if (added > 0) withStyle(SpanStyle(color = Palette.green)) { append("+$added") }
@@ -601,13 +560,13 @@ private fun Step(s: Entry) {
             }
         }
         if (open) {
-            if (s.text.isNotEmpty()) Text(s.text, style = mono.copy(color = Palette.fg), modifier = Modifier.padding(top = 4.dp))
-            if (s.diff.isNotEmpty() && !s.error) {
-                DiffView(s.diff, Modifier.padding(top = 6.dp))
-            } else if (s.output.isNotEmpty()) {
+            if (input.isNotEmpty()) Text(input, style = mono.copy(color = Palette.fg), modifier = Modifier.padding(top = 4.dp))
+            if (diff.isNotEmpty() && !failed) {
+                DiffView(diff, Modifier.padding(top = 6.dp))
+            } else if (output.isNotEmpty()) {
                 Text(
-                    s.output,
-                    style = mono.copy(color = if (s.error) Palette.red else Palette.grey, fontSize = 11.sp, lineHeight = 15.sp),
+                    output,
+                    style = mono.copy(color = if (failed) Palette.red else Palette.grey, fontSize = 11.sp, lineHeight = 15.sp),
                     softWrap = false,
                     modifier = Modifier
                         .padding(top = 6.dp)

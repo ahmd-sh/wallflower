@@ -54,6 +54,8 @@ import sh.ahmd.wallflower.protocol.Upload
 import sh.ahmd.wallflower.protocol.Uploaded
 import sh.ahmd.wallflower.protocol.VERSION
 import sh.ahmd.wallflower.protocol.Window
+import sh.ahmd.wallflower.read.Reading
+import sh.ahmd.wallflower.read.apply
 import sh.ahmd.wallflower.terminal.Terminal
 
 sealed interface Status {
@@ -100,9 +102,9 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     private val _chosen = MutableStateFlow<Map<String, PaneChoice>>(emptyMap())
     val chosen: StateFlow<Map<String, PaneChoice>> = _chosen.asStateFlow()
 
-    /** Conversations of the panes [follow] asked for, as they arrive. */
-    private val _conversations = MutableStateFlow<Map<String, Conversation>>(emptyMap())
-    val conversations: StateFlow<Map<String, Conversation>> = _conversations.asStateFlow()
+    /** Read views of the panes [read] asked for, as they arrive. */
+    private val _readings = MutableStateFlow<Map<String, Reading>>(emptyMap())
+    val readings: StateFlow<Map<String, Reading>> = _readings.asStateFlow()
 
     private val _undelivered = MutableSharedFlow<Undelivered>(extraBufferCapacity = 16)
     val undelivered: SharedFlow<Undelivered> = _undelivered.asSharedFlow()
@@ -132,7 +134,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     private val opened = LinkedHashMap<String, Int>() // pane -> history lines it has; least recently viewed first
     @Volatile private var awaitingWindow: Set<String>? = null // windows there were when the phone opened one
     @Volatile private var synced = false // this connection's session has the window being viewed current
-    private val following = HashSet<String>() // panes this connection asked for conversations of; guarded by pending
+    private val reading = HashSet<String>() // panes this connection asked for read views of; guarded by pending
     @Volatile private var wanted: Set<String> = emptySet()
     private val pings = AtomicInteger()
     private var grid = 80 to 24
@@ -235,9 +237,9 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 synchronized(opened) { opened.clear() }
                 queue = out
                 lost = ended
-                following.clear()
+                reading.clear()
             }
-            follow(wanted)
+            read(wanted)
             val heartbeat = within.launch(Dispatchers.IO) { heartbeat(conn) }
             try {
                 val r = FrameReader(conn.input)
@@ -332,7 +334,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 }
             }
             is Entries -> {
-                if (m.pane in wanted) _conversations.update { it + (m.pane to (it[m.pane] ?: Conversation()).apply(m)) }
+                if (m.pane in wanted) _readings.update { it + (m.pane to (it[m.pane] ?: Reading()).apply(m)) }
             }
             is Reset -> {
                 val term = Terminal(m.cols, m.rows)
@@ -399,18 +401,18 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         send(New)
     }
 
-    /** Has the gateway send these panes' conversations, and no others'. */
-    fun follow(panes: Set<String>) {
+    /** Has the gateway send these panes' read views, and no others'. */
+    fun read(panes: Set<String>) {
         wanted = panes
         synchronized(pending) {
             queue?.let { q ->
-                for (p in following - panes) q.trySend(Outgoing.Message(Transcript(p, on = false)))
-                for (p in panes - following) q.trySend(Outgoing.Message(Transcript(p, on = true)))
-                following.clear()
-                following += panes
+                for (p in reading - panes) q.trySend(Outgoing.Message(Transcript(p, on = false)))
+                for (p in panes - reading) q.trySend(Outgoing.Message(Transcript(p, on = true)))
+                reading.clear()
+                reading += panes
             }
         }
-        _conversations.update { c -> if (c.keys.all { it in panes }) c else c.filterKeys { it in panes } }
+        _readings.update { r -> if (r.keys.all { it in panes }) r else r.filterKeys { it in panes } }
     }
 
     fun send(m: ClientMessage) {
@@ -498,8 +500,8 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         ended.onAwait { throw IOException("the connection dropped") }
     }
 
-    /** [pane]'s conversation was rewound to before the user's message [said] matches: hidden from there until the transcript moves on. */
-    fun rewound(pane: String, said: (String) -> Boolean) = _conversations.update { all -> all[pane]?.let { all + (pane to it.rewoundTo(said)) } ?: all }
+    /** [pane]'s conversation was rewound to before the user's message [said] matches: hidden from there until the program records more. */
+    fun rewound(pane: String, said: (String) -> Boolean) = _readings.update { all -> all[pane]?.let { all + (pane to it.rewoundTo(said)) } ?: all }
 
     /** Tells tmux the size once it settles: the keyboard animates the view through every size in between. */
     /** Resizes once the size settles, or at once if it's known [ahead] (the keyboard says where it'll stop). */

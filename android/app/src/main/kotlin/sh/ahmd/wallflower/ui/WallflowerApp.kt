@@ -116,7 +116,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.KeyBar
-import sh.ahmd.wallflower.protocol.Entries
+import sh.ahmd.wallflower.read.Activity
+import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.protocol.Keys
 import sh.ahmd.wallflower.protocol.Kill
 import sh.ahmd.wallflower.protocol.Pane
@@ -124,7 +125,6 @@ import sh.ahmd.wallflower.protocol.Rename
 import sh.ahmd.wallflower.protocol.Split
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.session.Blocked
-import sh.ahmd.wallflower.session.Conversation
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Session.Companion.shownPane
 import sh.ahmd.wallflower.session.Status
@@ -268,8 +268,8 @@ private fun TerminalScreen(
     // Text the gateway never confirmed comes back into the box; it's felt, as it may not be seen.
     LaunchedEffect(session) { session.undelivered.collect { haptics.reject() } }
 
-    // A pane whose program records its conversation can show that instead of its terminal.
-    val conversations by session.conversations.collectAsStateWithLifecycle()
+    // A pane whose program can be read shows its read view instead of its terminal.
+    val readings by session.readings.collectAsStateWithLifecycle()
     val offered by model.conversationViews.offered.collectAsStateWithLifecycle()
     val conversing by model.conversationViews.panes.collectAsStateWithLifecycle()
     val converses = offered && pane != null && pane.transcript.isNotEmpty()
@@ -278,8 +278,8 @@ private fun TerminalScreen(
         val i = panes.indexOfFirst { it.id == pane?.id }
         if (i < 0) emptyList() else listOf(-1, 0, 1).map { panes[(i + it).mod(panes.size)] }.distinct()
     }.orEmpty()
-    val following = if (offered) nearby.filter { it.transcript.isNotEmpty() && it.id in conversing }.map { it.id }.toSet() else emptySet()
-    LaunchedEffect(following) { session.follow(following) }
+    val readViews = if (offered) nearby.filter { it.transcript.isNotEmpty() && it.id in conversing }.map { it.id }.toSet() else emptySet()
+    LaunchedEffect(readViews) { session.read(readViews) }
 
     Column(
         Modifier
@@ -386,7 +386,7 @@ private fun TerminalScreen(
         val uploadDir by model.uploads.dir.collectAsStateWithLifecycle()
         var prompt by remember { mutableStateOf<Prompt?>(null) }
         val terminal = pane?.let { terminals[it.id] }
-        val reading by rememberUpdatedState(pane != null && pane.id in following)
+        val readView by rememberUpdatedState(pane != null && pane.id in readViews)
         val reader by rememberUpdatedState(program)
         LaunchedEffect(pane?.id) { prompt = null } // another pane's; the same pane's new terminal (more history) offers the same
         LaunchedEffect(terminal) {
@@ -395,8 +395,8 @@ private fun TerminalScreen(
             for (tick in lineTicks) {
                 val (l, m) = withContext(Dispatchers.Default) {
                     val screen = terminal?.screen()
-                    // A prompt on screen while the program says it's working isn't one to answer (ConversationView drops it), so it isn't read.
-                    val asks = reading && session.conversations.value[shownId]?.state != Entries.WORKING
+                    // A prompt on screen while the program says it's working isn't one to answer (ReadView drops it), so it isn't read.
+                    val asks = readView && session.readings.value[shownId]?.activity != Activity.Working
                     val p = reader
                     screen?.let(p::line) to screen?.takeIf { asks }?.let(p::prompt)
                 }
@@ -405,11 +405,11 @@ private fun TerminalScreen(
                 delay(LINE_EVERY_MS)
             }
         }
-        LaunchedEffect(reading) { lineTicks.trySend(Unit) }
+        LaunchedEffect(readView) { lineTicks.trySend(Unit) }
         // The program can start asking with its screen already drawn, so what it's doing changing rereads it too.
         LaunchedEffect(session, pane?.id) {
             val id = pane?.id ?: return@LaunchedEffect
-            session.conversations.map { it[id]?.state }.distinctUntilChanged().collect { lineTicks.trySend(Unit) }
+            session.readings.map { it[id]?.activity }.distinctUntilChanged().collect { lineTicks.trySend(Unit) }
         }
 
         // The pane zooms out into its card among the window's others; a card zooms back in.
@@ -458,7 +458,7 @@ private fun TerminalScreen(
             }
         }
 
-        /** A pane's terminal, and its conversation over it while that's on. */
+        /** A pane's terminal, and its read view over it while that's on. */
         @Composable
         fun Page(p: Pane, current: Boolean, swipe: Swipe?) = Box(Modifier.fillMaxSize()) {
             var mine by remember { mutableStateOf<TerminalView?>(null) }
@@ -473,7 +473,7 @@ private fun TerminalScreen(
                 update = {
                     it.terminal = terminals[p.id]
                     it.settleHeight = settleHeight
-                    it.paused = covered || p.id in following // under its cards, or its conversation
+                    it.paused = covered || p.id in readViews // under its cards, or its read view
                     it.onSwipe = swipe?.let { s -> s::drag }
                     it.onSwipeEnd = swipe?.let { s -> s::end }
                     it.onAppScroll = { up, wheel ->
@@ -487,13 +487,13 @@ private fun TerminalScreen(
                 if (v != null) views.add(p.id, v)
                 onDispose { if (v != null) views.remove(p.id, v) }
             }
-            val conversation = conversations[p.id]?.takeIf { p.id in following } ?: if (p.id in following) Conversation() else null
-            var last by remember { mutableStateOf(Conversation()) }
-            if (conversation != null) last = conversation
-            androidx.compose.animation.AnimatedVisibility(conversation != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
+            val reading = if (p.id in readViews) readings[p.id] ?: Reading() else null
+            var last by remember { mutableStateOf(Reading()) }
+            if (reading != null) last = reading
+            androidx.compose.animation.AnimatedVisibility(reading != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
                 val its = remember(p.command) { Programs.of(p.command) }
                 val compact = its.compact
-                ConversationView(
+                ReadView(
                     last,
                     swipe = swipe,
                     prompt = if (current) prompt else null,
@@ -570,8 +570,8 @@ private fun TerminalScreen(
                                     enter = fadeIn(Motion.effect()) + expandHorizontally(Motion.spatial()),
                                     exit = fadeOut(Motion.effect()) + shrinkHorizontally(Motion.spatial()),
                                 ) {
-                                    val on = pane.id in following
-                                    ViewToggle(conversation = on) {
+                                    val on = pane.id in readViews
+                                    ViewToggle(reading = on) {
                                         haptics.toggle(!on)
                                         model.conversationViews.toggle(pane.id)
                                     }
@@ -598,7 +598,7 @@ private fun TerminalScreen(
                             onDismissUpload = model.uploads::dismiss,
                             onClear = if (clearing.isEmpty()) null else {
                                 {
-                                    line?.let { session.send(Keys(pane.id, program.clear(it, clearing, unseen = reading))) }
+                                    line?.let { session.send(Keys(pane.id, program.clear(it, clearing, unseen = readView))) }
                                     line = null // gone at once; the next read says what's there now
                                 }
                             },
@@ -606,7 +606,7 @@ private fun TerminalScreen(
                             onSend = { text, enter ->
                                 // The box replaces whatever the app's line holds.
                                 val known = line
-                                val clear = known?.let { program.clear(it, clearing, unseen = reading) }.orEmpty()
+                                val clear = known?.let { program.clear(it, clearing, unseen = readView) }.orEmpty()
                                 session.submit(pane.id, text, enter, clear).also { sent ->
                                     if (sent && '\n' !in text && known?.text.isNullOrEmpty()) view?.predict(text)
                                 }
@@ -856,9 +856,9 @@ private fun NewPaneCard(modifier: Modifier, onClick: () -> Unit) {
     }
 }
 
-/** Switches a pane between its terminal and its conversation. */
+/** Switches a pane between its terminal and its read view. */
 @Composable
-private fun ViewToggle(conversation: Boolean, onClick: () -> Unit) {
+private fun ViewToggle(reading: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .padding(vertical = 8.dp)
@@ -868,7 +868,7 @@ private fun ViewToggle(conversation: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 9.dp, vertical = 4.dp),
     ) {
-        Crossfade(conversation, animationSpec = Motion.effect(), label = "view") {
+        Crossfade(reading, animationSpec = Motion.effect(), label = "view") {
             GlyphIcon(if (it) Glyph.Terminal else Glyph.Chat, Palette.fg, size = 14.dp)
         }
     }
