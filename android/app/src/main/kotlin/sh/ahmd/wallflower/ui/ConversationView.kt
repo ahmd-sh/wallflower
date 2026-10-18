@@ -77,6 +77,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -318,19 +319,27 @@ private fun ItemView(item: Item, ongoing: Boolean, beside: (@Composable () -> Un
 @Composable
 private fun Prompt(text: String) {
     var open by remember { mutableStateOf(false) }
+    var cut by remember { mutableStateOf(false) }
+    val style = TextStyle(color = Palette.fg, fontFamily = words, fontSize = wordSize(14.sp, 15.sp), lineHeight = wordSize(21.sp, 22.sp))
     Column(Modifier.fillMaxWidth().padding(start = 40.dp), horizontalAlignment = Alignment.End) {
-        Text(
-            text,
-            style = TextStyle(color = Palette.fg, fontFamily = words, fontSize = wordSize(14.sp, 15.sp), lineHeight = wordSize(21.sp, 22.sp)),
-            maxLines = if (open) Int.MAX_VALUE else 12,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
+        Column(
+            Modifier
                 .animateContentSize(Motion.spatial())
                 .clip(RoundedCornerShape(18.dp))
                 .background(Palette.bg2)
                 .clickable { open = !open }
                 .padding(horizontal = 14.dp, vertical = 10.dp),
-        )
+        ) {
+            Text(
+                text,
+                style = style,
+                maxLines = if (open) Int.MAX_VALUE else 12,
+                overflow = TextOverflow.Clip,
+                onTextLayout = { if (!open) cut = it.hasVisualOverflow },
+            )
+            // What's cut off is said on a line of its own, as something to open.
+            if (cut && !open) Text("…", style = style.copy(color = Palette.blue, fontSize = 20.sp, fontWeight = FontWeight.Bold, lineHeight = 16.sp))
+        }
         CopyIcon(text)
     }
 }
