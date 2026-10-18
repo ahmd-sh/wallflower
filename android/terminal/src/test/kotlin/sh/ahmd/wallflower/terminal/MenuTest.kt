@@ -232,6 +232,39 @@ class MenuTest {
     }
 
     @Test
+    fun aRealRewindListPickedWithTheCursor() {
+        val menu = Menu.read(captured("claude-rewind-list.ansi", 54))!!
+        assertEquals(listOf(Line("Rewind", false), Line("Restore the code and/or conversation to the point before…", false)), menu.lines)
+        assertEquals(
+            listOf(
+                Option(null, "↑ 1 more", "", null, current = false, muted = true, scroll = -1),
+                Option(null, "say just: two", "No code changes", null, current = false, muted = false),
+                Option(null, "Use the Write tool to create /private/tmp/c…", "rw.txt +1", null, current = true, muted = false),
+                Option(null, "↓ 1 more", "", null, current = false, muted = true, scroll = 1),
+            ),
+            menu.options.map { it.copy(muted = it.scroll != 0) },
+        )
+        assertEquals(listOf("Up", "Enter"), menu.keys(menu.options[1]))
+        assertEquals(listOf("Up", "Up"), menu.keys(menu.options[0]))
+        assertEquals(listOf("Down"), menu.keys(menu.options[3]))
+    }
+
+    @Test
+    fun aRealRewindConfirmationQuotesItsMessage() {
+        val menu = Menu.read(captured("claude-rewind-confirm.ansi", 54))!!
+        assertEquals(
+            listOf("Restore code and conversation", "Restore conversation", "Restore code", "Summarize from here", "Summarize up to here"),
+            menu.options.map { it.label },
+        )
+        assertEquals(listOf(true, false, false, false, false), menu.options.map { it.current })
+        assertEquals(listOf("5"), menu.keys(menu.options[4]))
+        assertEquals(
+            "UsetheWritetooltocreate/private/tmp/claude-502/-Users-ahmedshaikh-dev-dotfiles/9fb53435-c5d1-4202-adc7-69292faff226/scratchpad/rw.txtcontaininghi,thensayjust:done",
+            menu.quote.replace(" ", ""),
+        )
+    }
+
+    @Test
     fun aNumberedListIsNotAMenu() {
         val s = screen(
             plain("⏺ Two steps:"),

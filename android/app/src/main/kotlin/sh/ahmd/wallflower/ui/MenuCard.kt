@@ -32,10 +32,11 @@ import sh.ahmd.wallflower.terminal.Menu
  * A menu the program's screen offers, to answer by touch: what it's about,
  * its questions as tabs, its options. Picking one sends [onKeys] the keys
  * that pick it on the screen, so the program, and the Mac, see the same
- * answer as if typed. The card goes when the screen moves on.
+ * answer as if typed, and [onPick] the option. The card goes when the screen
+ * moves on.
  */
 @Composable
-fun MenuCard(menu: Menu, onKeys: (List<String>) -> Unit, modifier: Modifier = Modifier) {
+fun MenuCard(menu: Menu, onKeys: (List<String>) -> Unit, modifier: Modifier = Modifier, onPick: (Menu.Option) -> Unit = {}) {
     val haptics = haptics()
     Box(modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Palette.bg1).padding(10.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -71,6 +72,7 @@ fun MenuCard(menu: Menu, onKeys: (List<String>) -> Unit, modifier: Modifier = Mo
                     Choice(option) {
                         if (option.checked != null) haptics.toggle(option.checked != true) else haptics.confirm()
                         onKeys(menu.keys(option))
+                        onPick(option)
                     }
                 }
             }

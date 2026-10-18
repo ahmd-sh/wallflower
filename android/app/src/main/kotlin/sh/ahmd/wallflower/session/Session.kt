@@ -480,6 +480,9 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
         ended.onAwait { throw IOException("the connection dropped") }
     }
 
+    /** [pane]'s conversation was rewound to before the user's message [quote] is from: hidden from there until the transcript moves on. */
+    fun rewound(pane: String, quote: String) = _conversations.update { all -> all[pane]?.let { all + (pane to it.rewoundTo(quote)) } ?: all }
+
     /** Tells tmux the size once it settles: the keyboard animates the view through every size in between. */
     /** Resizes once the size settles, or at once if it's known [ahead] (the keyboard says where it'll stop). */
     fun resize(cols: Int, rows: Int, ahead: Boolean = false) {

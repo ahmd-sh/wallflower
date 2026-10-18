@@ -8,8 +8,13 @@ package sh.ahmd.wallflower.terminal
  * questions. Rows beneath an option continue it when its last word couldn't
  * fit the row before (the app wrapped it) and they're in its color; others
  * describe it. The bottom-most menu on the screen is the live one.
+ *
+ * Or a list picked from with the cursor alone, its foot saying how ("Enter
+ * to continue · Esc to cancel"), as Claude Code's /rewind: each option is a
+ * row, what the rows under it say, and a blank row; ↑ / ↓ N more say it
+ * scrolls. [quote] is what either quotes (│ rows), a message it's about.
  */
-data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List<Tab>) {
+data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List<Tab>, val quote: String = "") {
     data class Line(val text: String, val code: Boolean)
 
     data class Option(
@@ -23,6 +28,8 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
         val current: Boolean,
         /** Drawn in grey, as a lesser option is (Type something). */
         val muted: Boolean,
+        /** Not an option but more of them, above (-1) or below (1) those shown. */
+        val scroll: Int = 0,
     )
 
     /** A question's chip, with its mark (☐ ☒ ✔) as shown. */
@@ -36,6 +43,12 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
         val n = option.number
         if (n != null && n in 1..9) return listOf(n.toString())
         val from = options.indexOfFirst { it.current }.coerceAtLeast(0)
+        if (option.scroll != 0) {
+            // One past the last shown that way, which scrolls the list.
+            val shown = options.indices.filter { options[it].scroll == 0 }
+            val edge = if (option.scroll < 0) shown.first() else shown.last()
+            return List(kotlin.math.abs(edge - from) + 1) { if (option.scroll < 0) "Up" else "Down" }
+        }
         val to = options.indexOf(option)
         return List(kotlin.math.abs(to - from)) { if (to > from) "Down" else "Up" } + "Enter"
     }
@@ -48,8 +61,10 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
     }
 
     companion object {
-        private val option = Regex("""^(\s*)([❯›▶]\s*)?(\d{1,2})\.\s+(.*\S)\s*$""")
+        private val option = Regex("""^(\s*)([❯›▶]\s*|[↑↓]\s*)?(\d{1,2})\.\s+(.*\S)\s*$""")
+        private val more = Regex("""^([↑↓])\s*\d+ more$""")
         private val marker = Regex("""^\s*[❯›▶]\s""")
+        private val ago = Regex("""^\(.*\bago\)$""")
         private val box = Regex("""^\[(.)]\s+(.*)$""")
         private val chips = Regex("""([☐☒✔☑✓])\s*([^☐☒✔☑✓←→]*)""")
         private const val CONTEXT = 24 // rows above the options at most
@@ -62,8 +77,10 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
                 if (m.groupValues[3] != "1") continue
                 block(rows, y)?.let { return it }
             }
-            return null
+            return picker(rows)
         }
+
+        private fun cursor(m: MatchResult) = m.groups[2]?.value?.trim() in setOf("❯", "›", "▶")
 
         /** A row's text, and the cell under each of its characters, with what the cells are. */
         private class Row(val text: String, private val cells: IntArray, private val muted: BooleanArray, private val lit: BooleanArray) {
@@ -137,7 +154,7 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
                             label = row.substring(labelAt, at).trim().removeSuffix("·").trim()
                         }
                         labelMuted = rows[y].mutedFrom(labelAt, labelAt + label.length)
-                        options += Option(next, label, detail, checked, m.groups[2] != null, labelMuted)
+                        options += Option(next, label, detail, checked, cursor(m), labelMuted)
                         next++
                     }
                     rule(row) -> {
@@ -166,8 +183,49 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
                 y++
             }
             if (options.count { it.number != null } < 2 || options.none { it.current }) return null
+            val (lines, tabs, quote) = about(rows, top)
+            return Menu(lines, options, tabs, quote)
+        }
 
-            // What it's about: up to the rule that opens its box.
+        /** A list picked from with the cursor, above its foot. */
+        private fun picker(rows: List<Row>): Menu? {
+            val foot = rows.indexOfLast { it.text.trim().let { t -> t.startsWith("Enter to ") && "Esc to cancel" in t } }
+            if (foot < 0) return null
+            // Up to the first row that isn't the list's: blank, indented, or the cursor's.
+            var top = foot
+            while (top > 0) {
+                val row = rows[top - 1].text
+                if (row.isNotBlank() && indent(row) < 4 && !marker.containsMatchIn(row)) break
+                top--
+            }
+            val options = mutableListOf<Option>()
+            var fresh = true // the next row starts an option
+            for (y in top until foot) {
+                val row = rows[y].text
+                val text = row.trim()
+                val scroll = more.matchEntire(text)
+                when {
+                    text.isEmpty() -> fresh = true
+                    scroll != null -> {
+                        options += Option(null, text, "", null, current = false, muted = true, scroll = if (scroll.groupValues[1] == "↑") -1 else 1)
+                        fresh = true
+                    }
+                    fresh -> {
+                        val current = marker.containsMatchIn(row)
+                        val label = text.removePrefix("❯").removePrefix("›").removePrefix("▶").trim()
+                        options += Option(null, label, "", null, current, rows[y].mutedFrom(indent(row)))
+                        fresh = false
+                    }
+                    options.isNotEmpty() -> options[options.lastIndex] = options.last().let { it.copy(detail = (it.detail + "\n" + text).trim()) }
+                }
+            }
+            if (options.count { it.scroll == 0 } < 2 || options.none { it.current }) return null
+            val (lines, tabs, quote) = about(rows, top)
+            return Menu(lines, options, tabs, quote)
+        }
+
+        /** What a menu whose options start on row [top] is about: up to the rule that opens its box. */
+        private fun about(rows: List<Row>, top: Int): Triple<List<Line>, List<Tab>, String> {
             val above = mutableListOf<Int>()
             var r = top - 1
             while (r >= 0 && top - r <= CONTEXT && !rule(rows[r].text)) {
@@ -191,7 +249,9 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
                 }
                 previous = text.takeIf { !code && !dashed(it) }
             }
-            return Menu(dedent(lines), options, tabs)
+            val quote = above.reversed().map { rows[it].text.trim() }.filter { it.startsWith("│") }
+                .map { it.removePrefix("│").trim() }.filterNot { ago.matches(it) }.joinToString(" ")
+            return Triple(dedent(lines), tabs, quote)
         }
 
         private fun tabs(row: Row) = chips.findAll(row.text).map { m ->

@@ -484,6 +484,7 @@ private fun TerminalScreen(
                     } else {
                         null
                     },
+                    onRewound = { quote -> session.rewound(p.id, quote) },
                 )
             }
         }

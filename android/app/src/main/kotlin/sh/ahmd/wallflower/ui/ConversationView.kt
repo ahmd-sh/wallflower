@@ -94,7 +94,8 @@ import sh.ahmd.wallflower.terminal.Menu
  * Below it, while the program works, a line says so; when its screen offers
  * a [menu] (a permission, a question), that's there to answer, and the keys
  * picking an option go to [onKeys]. Sideways drags go to [swipe], to move
- * between panes as on the terminal.
+ * between panes as on the terminal. Restoring the conversation to before a
+ * message it quotes, [onRewound] hears the quote.
  */
 @Composable
 fun ConversationView(
@@ -105,6 +106,7 @@ fun ConversationView(
     onKeys: (List<String>) -> Unit = {},
     /** Sends the program its compact command, from the context button; null while it can't. */
     onCompact: (() -> Unit)? = null,
+    onRewound: (quote: String) -> Unit = {},
 ) {
     var dragged by remember { mutableFloatStateOf(0f) }
     Box(
@@ -122,7 +124,7 @@ fun ConversationView(
                 onDragStopped = { velocity -> swipe?.end(dragged, velocity) },
             ),
     ) {
-        val items = remember(conversation.entries) { items(conversation.entries) }
+        val items = remember(conversation.entries, conversation.rewound) { items(conversation.shown) }
         // A menu while the program says it's busy is one left on the screen, or a list that looks like one.
         val asking = menu?.takeIf { conversation.state != Entries.WORKING }
         // The program says it's waiting a moment after its screen moved on (answered), so for that long it's working.
@@ -193,7 +195,11 @@ fun ConversationView(
                                     label = "status",
                                 ) { now ->
                                     when (now) {
-                                        Status.Asking -> shown?.let { MenuCard(it, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }) }
+                                        Status.Asking -> shown?.let { menu ->
+                                            MenuCard(menu, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }) { picked ->
+                                                if (picked.label in RESTORES) onRewound(menu.quote)
+                                            }
+                                        }
                                         Status.Working -> Working(conversation.since)
                                         Status.Waiting -> Waiting()
                                     }
@@ -235,6 +241,9 @@ private enum class Phase { Reading, Empty, Shown }
 
 /** What's below the conversation: a menu to answer, the program working, or waiting on something unread. */
 private enum class Status { Asking, Working, Waiting }
+
+/** Claude Code's rewind choices that take the conversation back. */
+private val RESTORES = setOf("Restore conversation", "Restore code and conversation")
 
 /** How long the program can say it's waiting without a menu on screen before that's what it is. */
 private const val UNREAD_MS = 1_200L

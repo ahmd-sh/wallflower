@@ -20,6 +20,18 @@ class ConversationTest {
     }
 
     @Test
+    fun rewoundItHidesTheMessageQuotedAndWhatFollowedUntilAReset() {
+        val said = Entry("u2", "user", "text", "Use the Write tool to create /private/tmp/claude-502/rw.txt containing hi")
+        var c = Conversation().apply(Entries("%1", reset = true, entries = listOf(Entry("u1", "user", "text", "one"), text("a1"), said, text("a2"))))
+        c = c.rewoundTo("Use the Write tool to create /private/tmp/claude -502/rw.txt containing hi")
+        assertEquals(listOf("u1", "a1"), c.shown.map { it.id })
+        assertEquals(listOf("u1", "a1"), c.apply(Entries("%1", state = Entries.IDLE)).shown.map { it.id })
+        assertEquals(listOf("u1", "a1"), c.rewoundTo("…create /private/tmp/claude…").shown.map { it.id })
+        assertEquals(listOf("u1", "a1", "u2", "a2"), c.apply(Entries("%1", reset = true, entries = c.entries)).shown.map { it.id })
+        assertEquals(4, Conversation().apply(Entries("%1", reset = true, entries = c.entries)).rewoundTo("something else").shown.size)
+    }
+
+    @Test
     fun aResetStartsOver() {
         val c = Conversation()
             .apply(Entries("%1", reset = true, entries = listOf(text("a"))))
