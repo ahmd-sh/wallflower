@@ -105,11 +105,16 @@ var notAlnum = regexp.MustCompile(`[^A-Za-z0-9]`)
 
 func projectDir(cwd string) string { return notAlnum.ReplaceAllString(cwd, "-") }
 
-func (s *Source) Parser() transcript.Parser { return &parser{tools: map[string]protocol.Entry{}} }
+func (s *Source) Parser() transcript.Parser {
+	return &parser{tools: map[string]protocol.Entry{}, next: map[string][]string{}, left: map[string]bool{}}
+}
 
 type parser struct {
-	tools   map[string]protocol.Entry // calls waiting for their result, by tool_use id
-	context int                       // tokens in context as of the latest reply or compaction
+	tools    map[string]protocol.Entry // calls waiting for their result, by tool_use id
+	context  int                       // tokens in context as of the latest reply or compaction
+	next     map[string][]string       // record -> the records going on from it
+	left     map[string]bool           // records a rewind left behind
+	branches int
 }
 
 // Context is what the latest reply's request held, cached or not, and the
@@ -121,6 +126,7 @@ func (p *parser) Context() int { return p.context }
 type record struct {
 	Type             string `json:"type"`
 	UUID             string `json:"uuid"`
+	ParentUUID       string `json:"parentUuid"`
 	IsMeta           bool   `json:"isMeta"`
 	IsSidechain      bool   `json:"isSidechain"`
 	IsCompactSummary bool   `json:"isCompactSummary"`
@@ -156,6 +162,9 @@ type block struct {
 func (p *parser) Line(b []byte) []protocol.Entry {
 	var r record
 	if json.Unmarshal(b, &r) != nil || r.IsSidechain || r.UUID == "" {
+		return nil
+	}
+	if p.place(r); p.left[r.UUID] {
 		return nil
 	}
 	if u := r.Message.Usage; r.Type == "assistant" && u != nil {
@@ -210,6 +219,69 @@ func (p *parser) Line(b []byte) []protocol.Entry {
 			}
 		case "image":
 			out = append(out, image(id, r.Type, bl))
+		}
+	}
+	return out
+}
+
+// place puts r in the conversation, which is a tree: each record goes on
+// from the one before it in the conversation (its parent), not necessarily
+// the line before. A prompt going on from a record that something already
+// goes on from is the conversation taken back there, by a rewind or a
+// message taken back before its reply: what went on from it before is left
+// behind, as is anything later going on from that.
+func (p *parser) place(r record) {
+	switch {
+	case p.left[r.ParentUUID]:
+		p.left[r.UUID] = true
+	case r.prompt() && len(p.next[r.ParentUUID]) > 0:
+		gone := append([]string(nil), p.next[r.ParentUUID]...)
+		for len(gone) > 0 {
+			id := gone[len(gone)-1]
+			gone = gone[:len(gone)-1]
+			if !p.left[id] {
+				p.left[id] = true
+				gone = append(gone, p.next[id]...)
+			}
+		}
+		p.branches++
+		p.context = 0 // until the next reply: the last was on the branch left behind
+	}
+	if r.ParentUUID != "" {
+		p.next[r.ParentUUID] = append(p.next[r.ParentUUID], r.UUID)
+	}
+}
+
+// prompt is whether r is something the user sent, rather than a tool's result
+// or a note claude adds.
+func (r record) prompt() bool {
+	if r.Type != "user" || r.IsMeta {
+		return false
+	}
+	var text string
+	if json.Unmarshal(r.Message.Content, &text) == nil {
+		return true
+	}
+	var blocks []block
+	json.Unmarshal(r.Message.Content, &blocks)
+	for _, b := range blocks {
+		if b.Type == "text" || b.Type == "image" {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *parser) Branches() int { return p.branches }
+
+func (p *parser) Kept(entries []protocol.Entry) []protocol.Entry {
+	if len(p.left) == 0 {
+		return entries
+	}
+	var out []protocol.Entry
+	for _, e := range entries {
+		if uuid, _, _ := strings.Cut(e.ID, "."); !p.left[uuid] {
+			out = append(out, e)
 		}
 	}
 	return out

@@ -87,6 +87,64 @@ func TestContext(t *testing.T) {
 	}
 }
 
+// A conversation rewound from three to edited, as claude 2.1.302 wrote it, with
+// parallel tool calls on the way: each result goes on from its own call.
+var rewound = []string{
+	`{"type":"user","uuid":"u1","parentUuid":null,"message":{"content":"say just: one"}}`,
+	`{"type":"assistant","uuid":"a1","parentUuid":"u1","message":{"content":[{"type":"text","text":"one"}],"usage":{"input_tokens":100}}}`,
+	`{"type":"system","subtype":"turn_duration","uuid":"s1","parentUuid":"a1"}`,
+	`{"type":"user","uuid":"u2","parentUuid":"s1","message":{"content":"two, with two tools"}}`,
+	`{"type":"assistant","uuid":"a2","parentUuid":"u2","message":{"content":[{"type":"tool_use","id":"A","name":"Read","input":{"file_path":"/a"}}]}}`,
+	`{"type":"assistant","uuid":"a3","parentUuid":"a2","message":{"content":[{"type":"tool_use","id":"B","name":"Read","input":{"file_path":"/b"}}]}}`,
+	`{"type":"user","uuid":"r1","parentUuid":"a2","message":{"content":[{"type":"tool_result","tool_use_id":"A","content":"a"}]}}`,
+	`{"type":"user","uuid":"r2","parentUuid":"a3","message":{"content":[{"type":"tool_result","tool_use_id":"B","content":"b"}]}}`,
+	`{"type":"assistant","uuid":"a4","parentUuid":"r2","message":{"content":[{"type":"text","text":"two"}],"usage":{"input_tokens":200}}}`,
+	`{"type":"system","subtype":"turn_duration","uuid":"s2","parentUuid":"a4"}`,
+	`{"type":"user","uuid":"u3","parentUuid":"s2","message":{"content":"say just: three"}}`,
+	`{"type":"assistant","uuid":"a5","parentUuid":"u3","message":{"content":[{"type":"text","text":"three"}],"usage":{"input_tokens":300}}}`,
+	`{"type":"system","subtype":"turn_duration","uuid":"s3","parentUuid":"a5"}`,
+	`{"type":"user","uuid":"u4","parentUuid":"s2","message":{"content":"say just: edited"}}`,
+	`{"type":"assistant","uuid":"a6","parentUuid":"s3","message":{"content":[{"type":"text","text":"late, on the branch left behind"}]}}`,
+	`{"type":"assistant","uuid":"a7","parentUuid":"u4","message":{"content":[{"type":"text","text":"edited"}],"usage":{"input_tokens":250}}}`,
+}
+
+func TestRewound(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.jsonl")
+	if err := os.WriteFile(path, []byte(strings.Join(rewound, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := New("").Parser()
+	got, err := transcript.Read(path, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, e := range got {
+		ids = append(ids, e.ID+"="+e.Text)
+	}
+	if want := "u1.0=say just: one a1.0=one u2.0=two, with two tools a2.0=/a a3.0=/b a4.0=two u4.0=say just: edited a7.0=edited"; strings.Join(ids, " ") != want {
+		t.Errorf("got  %s\nwant %s", strings.Join(ids, " "), want)
+	}
+	if !got[3].Done || !got[4].Done {
+		t.Errorf("parallel results: %+v %+v", got[3], got[4])
+	}
+	if b := p.(transcript.Brancher).Branches(); b != 1 {
+		t.Errorf("branches: %d", b)
+	}
+	if c := p.(transcript.Measure).Context(); c != 250 {
+		t.Errorf("context: %d", c)
+	}
+
+	// Until the reply on the new branch, how full the context is isn't known.
+	p = New("").Parser()
+	for _, l := range rewound[:14] {
+		p.Line([]byte(l))
+	}
+	if c := p.(transcript.Measure).Context(); c != 0 {
+		t.Errorf("context after going back: %d", c)
+	}
+}
+
 func TestPlans(t *testing.T) {
 	p := New("").Parser()
 	got := p.Line([]byte(`{"type":"assistant","uuid":"a","message":{"content":[{"type":"tool_use","id":"t","name":"Write","input":{"file_path":"/Users/me/.claude/plans/fix-it.md","content":"# Plan\n\n1. fix it\n"}}]}}`))

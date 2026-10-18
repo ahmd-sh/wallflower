@@ -53,13 +53,20 @@ func (f *fake) state(pid int, state string, since int64) {
 
 func (f *fake) Parser() Parser { return &fakeParser{} }
 
-// fakeParser reads {"id","text"} lines as entries, and {"ctx"} lines as how full the context is.
-type fakeParser struct{ ctx int }
+// fakeParser reads {"id","text"} lines as entries, {"ctx"} lines as how full
+// the context is, and {"back"} lines as the conversation going back to before
+// that entry.
+type fakeParser struct {
+	ctx      int
+	read     []string
+	left     map[string]bool
+	branches int
+}
 
 func (p *fakeParser) Line(b []byte) []protocol.Entry {
 	var e struct {
-		ID, Text string
-		Ctx      int
+		ID, Text, Back string
+		Ctx            int
 	}
 	if json.Unmarshal(b, &e) != nil {
 		return nil
@@ -67,13 +74,37 @@ func (p *fakeParser) Line(b []byte) []protocol.Entry {
 	if e.Ctx > 0 {
 		p.ctx = e.Ctx
 	}
+	if e.Back != "" {
+		p.branches++
+		if p.left == nil {
+			p.left = map[string]bool{}
+		}
+		gone := false
+		for _, id := range p.read {
+			gone = gone || id == e.Back
+			p.left[id] = p.left[id] || gone
+		}
+	}
 	if e.ID == "" {
 		return nil
 	}
+	p.read = append(p.read, e.ID)
 	return []protocol.Entry{{ID: e.ID, Role: "assistant", Kind: "text", Text: e.Text}}
 }
 
 func (p *fakeParser) Context() int { return p.ctx }
+
+func (p *fakeParser) Branches() int { return p.branches }
+
+func (p *fakeParser) Kept(entries []protocol.Entry) []protocol.Entry {
+	var out []protocol.Entry
+	for _, e := range entries {
+		if !p.left[e.ID] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
 
 func line(id, text string) string { return fmt.Sprintf(`{"id":%q,"text":%q}`+"\n", id, text) }
 
@@ -168,6 +199,25 @@ func TestFollow(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestFollowGoesBack(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "one.jsonl")
+	appendTo(t, path, line("a", "one")+line("b", "two")+line("c", "three")+`{"back":"c"}`+"\n"+line("d", "three, again"))
+	got, _ := follow(t, &fake{running: map[int]Session{7: {Path: path}}}, 7)
+	if e := next(t, got); !e.Reset || texts(e) != "a=one b=two d=three, again" {
+		t.Fatalf("first: %+v", e)
+	}
+
+	// Going back as it's written starts the client over, without what was left behind.
+	appendTo(t, path, line("e", "four")+`{"back":"b"}`+"\n"+line("f", "two, edited"))
+	if e := next(t, got); !e.Reset || texts(e) != "a=one f=two, edited" {
+		t.Fatalf("went back: %+v", e)
+	}
+	appendTo(t, path, line("g", "after"))
+	if e := next(t, got); e.Reset || texts(e) != "g=after" {
+		t.Fatalf("after: %+v", e)
 	}
 }
 

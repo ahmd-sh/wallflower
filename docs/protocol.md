@@ -62,6 +62,7 @@ client never has to resync on its own.
 | `scrollback` | `id`, `pane`, `start`, `end` | lines in tmux numbering: 0 is the top visible line, negative is history |
 | `transcript` | `pane`, `on` | start or stop the pane's conversation arriving as `entries`; for panes whose `transcript` is set |
 | `upload` | `id`, `name`, `size` | send a file: `size` bytes follow in upload frames with this `id`, see below |
+| `rewind` | `pane`, `entry`, `code`? | take the pane's conversation back to before the user's message `entry` (its entry's `id`), restoring files changed since too if `code`; see below |
 | `tmux` | `id`, `command` | run a raw tmux command line (escape hatch) |
 | `ping` | `id` | |
 
@@ -85,6 +86,7 @@ Messages are handled in order, so a `pong` means everything sent before its
 | `pong` | `id` | |
 | `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `state`?, `since`?, `context`? | a pane's conversation, see below |
 | `uploaded` | `id`, `path`?, `error`? | where an upload was saved, or why it wasn't |
+| `rewound` | `pane`, `entry`, `error`? | a `rewind` done, or why it couldn't be |
 | `bye` | `reason` | the gateway is exiting |
 
 A window is `id`, `index`, `name`, `active`, `zoomed`, `cols`, `rows` and
@@ -116,7 +118,9 @@ entries (200; `more` says there are earlier ones), then `entries` without
 `reset` as the program writes more. An entry with an `id` already sent
 replaces it: a tool call gets its result. An `error` says there's no
 conversation (any more), e.g. the program exited. A new conversation in the
-same process (`/clear`) arrives as another `reset`.
+same process (`/clear`) arrives as another `reset`, as does the
+conversation going back to an earlier point (a rewind), without what it
+left behind.
 
 `context` is how many tokens the conversation takes of the program's
 context, as of its latest reply, sent like `state` when it says and
@@ -146,6 +150,12 @@ The gateway finds a Claude Code session's transcript, and its state, from
 A plan written in plan mode (`~/.claude/plans/*.md`) arrives as a `text`
 entry after its write, to read as a reply. Neither file format is
 documented; entries it can't read are skipped.
+
+`rewind` goes through the program's own rewind, as typed: for Claude Code,
+`/rewind` from an empty prompt, up its list to the message, and its
+confirmation, reading the screen at each step and backing out if it isn't
+as expected. The program has to be idle at its prompt. Once `rewound`
+arrives without an `error`, the prompt is empty, to send the message anew.
 
 ## Presentation is the client's
 

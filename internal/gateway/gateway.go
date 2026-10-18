@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/protocol"
@@ -34,6 +35,7 @@ const (
 	lowWater     = 256 << 10 // repaint stale panes once the backlog is below this
 	stateDelay   = 15 * time.Millisecond
 	uploadSettle = 150 * time.Millisecond
+	rewindLimit  = time.Minute
 	maxSize      = 1000
 )
 
@@ -57,6 +59,7 @@ type gateway struct {
 	sources    []transcript.Source
 	ttys       map[int]string                // pid -> its tty, to find the pane a transcript's process runs in
 	following  map[string]context.CancelFunc // pane -> the follower sending its conversation
+	rewinding  sync.Map                      // panes being rewound
 	uploads    uploads
 	lastState  []byte
 	dirty      bool
@@ -324,6 +327,13 @@ func (g *gateway) handle(f protocol.Frame) error {
 			cmd += " " + tmux.Quote(k)
 		}
 		return g.run(cmd)
+
+	case *protocol.Rewind:
+		if err := checkID(paneID, m.Pane); err != nil {
+			return err
+		}
+		g.rewind(m)
+		return nil
 
 	case *protocol.Upload:
 		path, err := g.uploads.begin(m)
@@ -650,16 +660,21 @@ func (g *gateway) tty(pid int) string {
 	return tty
 }
 
-// follow sends the conversation in pane as it's written, until unfollow.
-func (g *gateway) follow(pane string) {
-	var c conversation
+// conversationIn is the conversation being recorded in pane, if there is one.
+func (g *gateway) conversationIn(pane string) conversation {
 	for _, w := range g.windows() {
 		for _, p := range w.Panes {
 			if p.ID == pane {
-				c = g.conversations()[p.TTY]
+				return g.conversations()[p.TTY]
 			}
 		}
 	}
+	return conversation{}
+}
+
+// follow sends the conversation in pane as it's written, until unfollow.
+func (g *gateway) follow(pane string) {
+	c := g.conversationIn(pane)
 	if c.src == nil {
 		g.send(protocol.Entries{Pane: pane, Reset: true, Error: "no conversation in this pane"})
 		return
@@ -672,6 +687,56 @@ func (g *gateway) follow(pane string) {
 			g.send(e)
 		}
 	})
+}
+
+// rewind takes the conversation in m.Pane back, in the background: it's a
+// back and forth with the program's screen that takes a moment.
+func (g *gateway) rewind(m *protocol.Rewind) {
+	reply := protocol.Rewound{Pane: m.Pane, Entry: m.Entry}
+	c := g.conversationIn(m.Pane)
+	r, ok := c.src.(transcript.Rewinder)
+	if !ok {
+		reply.Error = "nothing to rewind in this pane"
+		g.send(reply)
+		return
+	}
+	if _, busy := g.rewinding.LoadOrStore(m.Pane, true); busy {
+		reply.Error = "already rewinding"
+		g.send(reply)
+		return
+	}
+	g.claimSize(m.Pane)
+	go func() {
+		defer g.rewinding.Delete(m.Pane)
+		ctx, cancel := context.WithTimeout(g.ctx, rewindLimit)
+		defer cancel()
+		if err := r.Rewind(ctx, paneTerminal{g.tmux, m.Pane}, c.pid, m.Entry, m.Code); err != nil {
+			reply.Error = err.Error()
+		}
+		g.send(reply)
+	}()
+}
+
+// paneTerminal is a pane, for a program's transcript.Rewinder to drive.
+type paneTerminal struct {
+	tmux *tmux.Client
+	pane string
+}
+
+func (p paneTerminal) Screen() ([]string, error) { return p.tmux.Run("capture-pane -p -t " + p.pane) }
+
+func (p paneTerminal) Keys(keys ...string) error {
+	cmd := "send-keys -t " + p.pane + " --"
+	for _, k := range keys {
+		cmd += " " + tmux.Quote(k)
+	}
+	_, err := p.tmux.Run(cmd)
+	return err
+}
+
+func (p paneTerminal) Type(text string) error {
+	_, err := p.tmux.Run("send-keys -t " + p.pane + " -l -- " + tmux.QuoteText(text))
+	return err
 }
 
 func (g *gateway) unfollow(pane string) {

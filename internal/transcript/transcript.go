@@ -46,6 +46,59 @@ type Measure interface {
 	Context() int
 }
 
+// A Brancher is a Parser of a CLI that can take its conversation back to an
+// earlier point and go on from there, as a rewind does: what came after that
+// point is left behind, no longer in the conversation.
+type Brancher interface {
+	// Branches counts the times the conversation went back, in the lines read.
+	Branches() int
+	// Kept is entries this parser read, less those left behind.
+	Kept(entries []protocol.Entry) []protocol.Entry
+}
+
+// A Rewinder is a Source whose CLI can take its conversation back to before
+// one of the user's messages, driven through the terminal it runs in.
+type Rewinder interface {
+	// Rewind takes pid's conversation back to before the message entry id
+	// is from, restoring the files the CLI changed since if code, and
+	// leaves its prompt empty.
+	Rewind(ctx context.Context, t Terminal, pid int, id string, code bool) error
+}
+
+// A Terminal is the pane a CLI runs in.
+type Terminal interface {
+	// Screen is the rows on screen, as text.
+	Screen() ([]string, error)
+	// Keys presses keys, by tmux's names for them.
+	Keys(keys ...string) error
+	// Type types text as it is.
+	Type(text string) error
+}
+
+// Read parses the whole transcript at path, for the conversation as it stands.
+func Read(path string, p Parser) ([]protocol.Entry, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	lines, _ := split(b)
+	return kept(p, collect(p, lines)), nil
+}
+
+func kept(p Parser, entries []protocol.Entry) []protocol.Entry {
+	if b, ok := p.(Brancher); ok {
+		return b.Kept(entries)
+	}
+	return entries
+}
+
+func branches(p Parser) int {
+	if b, ok := p.(Brancher); ok {
+		return b.Branches()
+	}
+	return 0
+}
+
 // known is n to send, if there's anything to say.
 func known(n int) *int {
 	if n == 0 {
@@ -73,9 +126,10 @@ const (
 
 // Follow sends pid's conversation: its recent entries, then entries as
 // they're written, starting over when the process moves to another
-// transcript (a cleared conversation), and what the process is doing, and
-// how full its context is, as those change. It returns when ctx is done, or after saying so when the
-// process stops having a transcript.
+// transcript (a cleared conversation) or takes its conversation back to an
+// earlier point (a rewind), and what the process is doing, and how full its
+// context is, as those change. It returns when ctx is done, or after saying
+// so when the process stops having a transcript.
 func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries)) error {
 	var (
 		f        *os.File
@@ -86,6 +140,7 @@ func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries
 		announce bool    // say there's a conversation, if its file isn't there yet
 		said     Session // the state last sent
 		measured int     // the context last sent
+		branched int     // the parser's branches, as of the entries sent
 	)
 	defer func() {
 		if f != nil {
@@ -112,7 +167,7 @@ func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries
 				var entries []protocol.Entry
 				var more bool
 				entries, more, p, offset = recent(f, src, Recent)
-				partial, announce, said, measured = nil, false, cur, contextOf(p)
+				partial, announce, said, measured, branched = nil, false, cur, contextOf(p), branches(p)
 				send(protocol.Entries{Reset: true, More: more, Entries: entries, State: cur.State, Since: cur.Since, Context: known(measured)})
 			} else if announce {
 				announce, said, measured = false, cur, 0
@@ -128,7 +183,13 @@ func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries
 			offset += int64(n)
 			var lines [][]byte
 			lines, partial = split(append(partial, buf[:n]...))
-			if changed := collect(p, lines); len(changed) > 0 {
+			changed := collect(p, lines)
+			if branches(p) != branched {
+				f.Close() // gone back: entries sent are no longer all in it
+				f = nil
+				continue
+			}
+			if len(changed) > 0 {
 				send(protocol.Entries{Entries: changed})
 			}
 		}
@@ -173,7 +234,7 @@ func recent(f *os.File, src Source, n int) (entries []protocol.Entry, more bool,
 		}
 		lines, rest := split(buf[cut:])
 		p = src.Parser()
-		entries = collect(p, lines)
+		entries = kept(p, collect(p, lines))
 		end = start + int64(got-len(rest))
 		if len(entries) >= n || start == 0 {
 			more = start > 0 || len(entries) > n

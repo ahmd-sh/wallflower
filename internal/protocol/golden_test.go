@@ -41,6 +41,8 @@ func goldenClient(t *testing.T) []byte {
 		Transcript{Pane: "%2", On: true},
 		Transcript{Pane: "%2"},
 		Upload{ID: "u1", Name: "PXL 1 ✓.jpg", Size: 3},
+		Rewind{Pane: "%2", Entry: "u1.0"},
+		Rewind{Pane: "%2", Entry: "u1.0", Code: true},
 	} {
 		b = mustJSON(t, b, m)
 	}
@@ -79,6 +81,8 @@ func goldenServer(t *testing.T) []byte {
 	b = mustJSON(t, b, Entries{Pane: "%2", Reset: true, Error: "the conversation ended"})
 	b = mustJSON(t, b, Uploaded{ID: "u1", Path: "/Users/me/Library/Caches/wallflower/uploads/PXL-1.jpg"})
 	b = mustJSON(t, b, Uploaded{ID: "u2", Error: "too big"})
+	b = mustJSON(t, b, Rewound{Pane: "%2", Entry: "u1.0"})
+	b = mustJSON(t, b, Rewound{Pane: "%2", Entry: "u1.0", Error: "Claude is busy"})
 	return mustJSON(t, b, Bye{Reason: "tmux exited"})
 }
 
