@@ -153,6 +153,44 @@ func TestRewound(t *testing.T) {
 	}
 }
 
+func TestDiffs(t *testing.T) {
+	p := New(t.TempDir()).Parser()
+	lines := []string{
+		`{"type":"assistant","uuid":"a1","message":{"content":[{"type":"tool_use","id":"t1","name":"Edit","input":{"file_path":"/x/main.go","old_string":"old","new_string":"new"}}]}}`,
+		`{"type":"user","uuid":"u1","toolUseResult":{"filePath":"/x/main.go","oldString":"old","newString":"new","originalFile":"…","structuredPatch":[{"oldStart":3,"oldLines":3,"newStart":3,"newLines":3,"lines":[" a","-old","+new"]},{"oldStart":40,"oldLines":1,"newStart":40,"newLines":2,"lines":[" b","+c"]}]},"message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"The file /x/main.go has been updated successfully."}]}}`,
+		`{"type":"assistant","uuid":"a2","message":{"content":[{"type":"tool_use","id":"t2","name":"Write","input":{"file_path":"/x/new.txt","content":"one\ntwo\n"}}]}}`,
+		`{"type":"user","uuid":"u2","toolUseResult":{"type":"create","filePath":"/x/new.txt","content":"one\ntwo\n","structuredPatch":[],"originalFile":null},"message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":"File created successfully at: /x/new.txt"}]}}`,
+		`{"type":"assistant","uuid":"a3","message":{"content":[{"type":"tool_use","id":"t3","name":"Edit","input":{"file_path":"/x/main.go"}}]}}`,
+		`{"type":"user","uuid":"u3","toolUseResult":"Error: String to replace not found in file.","message":{"content":[{"type":"tool_result","tool_use_id":"t3","is_error":true,"content":"String to replace not found in file."}]}}`,
+		`{"type":"assistant","uuid":"a4","message":{"content":[{"type":"tool_use","id":"t4","name":"Bash","input":{"command":"ls"}}]}}`,
+		`{"type":"user","uuid":"u4","toolUseResult":{"stdout":"main.go","stderr":"","interrupted":false},"message":{"content":[{"type":"tool_result","tool_use_id":"t4","content":"main.go"}]}}`,
+	}
+	var diffs []string
+	for _, l := range lines {
+		for _, e := range p.Line([]byte(l)) {
+			if e.Done {
+				diffs = append(diffs, e.Diff)
+			}
+		}
+	}
+	want := []string{
+		"@@ -3,3 +3,3 @@\n a\n-old\n+new\n@@ -40,1 +40,2 @@\n b\n+c",
+		"@@ -0,0 +1,2 @@\n+one\n+two",
+		"",
+		"",
+	}
+	if !reflect.DeepEqual(diffs, want) {
+		t.Errorf("got %q\nwant %q", diffs, want)
+	}
+
+	// A big new file is cut at a line, saying how much is left.
+	big := strings.Repeat("0123456789\n", 1000)
+	got := diff([]byte(`{"type":"create","content":` + strconv.Quote(big) + `,"structuredPatch":[]}`))
+	if len(got) > maxDiff+100 || !strings.HasSuffix(got, "\n… 335 more lines") || !strings.HasPrefix(got, "@@ -0,0 +1,1000 @@\n+0123456789\n") {
+		t.Errorf("cut to %d characters, ending %q", len(got), got[len(got)-40:])
+	}
+}
+
 func TestPlans(t *testing.T) {
 	p := New("").Parser()
 	got := p.Line([]byte(`{"type":"assistant","uuid":"a","message":{"content":[{"type":"tool_use","id":"t","name":"Write","input":{"file_path":"/Users/me/.claude/plans/fix-it.md","content":"# Plan\n\n1. fix it\n"}}]}}`))

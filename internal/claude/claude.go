@@ -22,6 +22,7 @@ import (
 
 const (
 	maxOutput = 4000    // characters of a tool's result kept
+	maxDiff   = 8000    // characters of a change to a file kept, in whole lines
 	maxImage  = 2 << 20 // base64 bytes of an image sent; bigger ones are named, not shown
 	reglob    = 5 * time.Second
 )
@@ -125,14 +126,15 @@ type parser struct {
 func (p *parser) Context() int { return p.context }
 
 type record struct {
-	Type             string `json:"type"`
-	UUID             string `json:"uuid"`
-	ParentUUID       string `json:"parentUuid"`
-	IsMeta           bool   `json:"isMeta"`
-	IsSidechain      bool   `json:"isSidechain"`
-	IsCompactSummary bool   `json:"isCompactSummary"`
-	PromptSource     string `json:"promptSource"`
-	Subtype          string `json:"subtype"`
+	Type             string          `json:"type"`
+	UUID             string          `json:"uuid"`
+	ParentUUID       string          `json:"parentUuid"`
+	IsMeta           bool            `json:"isMeta"`
+	IsSidechain      bool            `json:"isSidechain"`
+	IsCompactSummary bool            `json:"isCompactSummary"`
+	PromptSource     string          `json:"promptSource"`
+	Subtype          string          `json:"subtype"`
+	ToolUseResult    json.RawMessage `json:"toolUseResult"`
 	Message          struct {
 		Content json.RawMessage `json:"content"`
 		Usage   *struct {
@@ -217,6 +219,9 @@ func (p *parser) Line(b []byte) []protocol.Entry {
 			if e, ok := p.tools[bl.ToolUseID]; ok {
 				delete(p.tools, bl.ToolUseID)
 				e.Done, e.Error, e.Output = true, bl.IsError, result(bl.Content)
+				if len(blocks) == 1 { // what the record says of the result is this one's
+					e.Diff = diff(r.ToolUseResult)
+				}
 				out = append(out, e)
 			}
 		case "image":
@@ -392,6 +397,50 @@ func image(id, role string, b block) protocol.Entry {
 		e.Mime, e.Data = b.Source.MediaType, b.Source.Data
 	}
 	return e
+}
+
+// edit is what claude records of a file tool's result: the change it made
+// as hunks, which a new file has none of, and the file's content.
+type edit struct {
+	Type    string `json:"type"`
+	Content string `json:"content"`
+	Patch   *[]struct {
+		OldStart int      `json:"oldStart"`
+		OldLines int      `json:"oldLines"`
+		NewStart int      `json:"newStart"`
+		NewLines int      `json:"newLines"`
+		Lines    []string `json:"lines"`
+	} `json:"structuredPatch"`
+}
+
+// diff is the change a file tool made, as unified diff hunks, from what
+// claude records of its result; "" for any other tool's.
+func diff(raw json.RawMessage) string {
+	var e edit
+	if json.Unmarshal(raw, &e) != nil || e.Patch == nil {
+		return ""
+	}
+	var lines []string
+	for _, h := range *e.Patch {
+		lines = append(lines, fmt.Sprintf("@@ -%d,%d +%d,%d @@", h.OldStart, h.OldLines, h.NewStart, h.NewLines))
+		lines = append(lines, h.Lines...)
+	}
+	if len(lines) == 0 && e.Type == "create" && e.Content != "" {
+		added := strings.Split(strings.TrimSuffix(e.Content, "\n"), "\n")
+		lines = append(lines, fmt.Sprintf("@@ -0,0 +1,%d @@", len(added)))
+		for _, l := range added {
+			lines = append(lines, "+"+l)
+		}
+	}
+	var b strings.Builder
+	for i, l := range lines {
+		if b.Len()+len(l) > maxDiff {
+			fmt.Fprintf(&b, "… %d more lines\n", len(lines)-i)
+			break
+		}
+		b.WriteString(l + "\n")
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 func clip(s string) string {
