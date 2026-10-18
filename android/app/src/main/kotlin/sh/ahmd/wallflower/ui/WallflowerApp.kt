@@ -111,8 +111,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import sh.ahmd.wallflower.AppModel
+import sh.ahmd.wallflower.protocol.Entries
 import sh.ahmd.wallflower.protocol.Keys
 import sh.ahmd.wallflower.protocol.Kill
 import sh.ahmd.wallflower.protocol.Pane
@@ -386,7 +389,9 @@ private fun TerminalScreen(
             for (tick in lineTicks) {
                 val (l, m) = withContext(Dispatchers.Default) {
                     val screen = terminal?.screen()
-                    screen?.let(InputLine::read) to screen?.takeIf { reading }?.let(Menu::read)
+                    // A menu on screen while the program says it's working isn't one to answer (ConversationView drops it), so it isn't read.
+                    val asks = reading && session.conversations.value[shownId]?.state != Entries.WORKING
+                    screen?.let(InputLine::read) to screen?.takeIf { asks }?.let(Menu::read)
                 }
                 line = l
                 menu = m
@@ -394,6 +399,11 @@ private fun TerminalScreen(
             }
         }
         LaunchedEffect(reading) { lineTicks.trySend(Unit) }
+        // The program can start asking with its screen already drawn, so what it's doing changing rereads it too.
+        LaunchedEffect(session, pane?.id) {
+            val id = pane?.id ?: return@LaunchedEffect
+            session.conversations.map { it[id]?.state }.distinctUntilChanged().collect { lineTicks.trySend(Unit) }
+        }
 
         // The pane zooms out into its card among the window's others; a card zooms back in.
         var overview by remember { mutableStateOf(false) }
@@ -456,7 +466,7 @@ private fun TerminalScreen(
                 update = {
                     it.terminal = terminals[p.id]
                     it.settleHeight = settleHeight
-                    it.paused = covered
+                    it.paused = covered || p.id in following // under its cards, or its conversation
                     it.onSwipe = swipe?.let { s -> s::drag }
                     it.onSwipeEnd = swipe?.let { s -> s::end }
                     it.onAppScroll = { up, wheel ->
@@ -485,6 +495,7 @@ private fun TerminalScreen(
                         null
                     },
                     onRewound = { quote -> session.rewound(p.id, quote) },
+                    live = current,
                 )
             }
         }

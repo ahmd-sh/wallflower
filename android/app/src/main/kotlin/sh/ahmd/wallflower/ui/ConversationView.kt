@@ -49,6 +49,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
@@ -112,7 +114,9 @@ fun ConversationView(
     /** Sends the program its compact command, from the context button; null while it can't. */
     onCompact: (() -> Unit)? = null,
     onRewound: (quote: String) -> Unit = {},
-) {
+    /** On screen, so what moves moves; a page beside it holds still. */
+    live: Boolean = true,
+) = CompositionLocalProvider(LocalLive provides live) {
     var dragged by remember { mutableFloatStateOf(0f) }
     Box(
         modifier
@@ -538,12 +542,18 @@ private fun trace(steps: List<Entry>) = steps.joinToString("\n\n") { s ->
     listOf(if (s.text.isEmpty()) name else "$name: ${s.text}", s.diff.ifEmpty { s.output }).filter { it.isNotEmpty() }.joinToString("\n")
 }
 
+/** Whether the conversation is on screen, so its working marks move. */
+private val LocalLive = compositionLocalOf { true }
+
 /** A dot that breathes while a tool runs. */
 @Composable
 private fun Running(modifier: Modifier) {
-    val breath by rememberInfiniteTransition(label = "running")
-        .animateFloat(0.3f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "breath")
-    Box(modifier.size(6.dp).graphicsLayer { alpha = breath }.clip(CircleShape).background(Palette.purple))
+    val breath = if (LocalLive.current) {
+        rememberInfiniteTransition(label = "running").animateFloat(0.3f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "breath")
+    } else {
+        null
+    }
+    Box(modifier.size(6.dp).graphicsLayer { alpha = breath?.value ?: 1f }.clip(CircleShape).background(Palette.purple))
 }
 
 @Composable
@@ -673,14 +683,18 @@ private fun rememberFold(): Fold {
 /** The program working on its turn, and for how long; gone when it's done. */
 @Composable
 private fun Working(since: Long) {
-    val seconds by produceState(elapsed(since), since) {
-        while (true) {
+    val live = LocalLive.current
+    val seconds by produceState(elapsed(since), since, live) {
+        while (live) {
             value = elapsed(since)
             delay(1_000 - System.currentTimeMillis() % 1_000)
         }
     }
-    val shine by rememberInfiniteTransition(label = "working")
-        .animateFloat(-0.5f, 1.5f, infiniteRepeatable(tween(1_600, easing = LinearEasing)), label = "shine")
+    val shine = if (live) {
+        rememberInfiniteTransition(label = "working").animateFloat(-0.5f, 1.5f, infiniteRepeatable(tween(1_600, easing = LinearEasing)), label = "shine")
+    } else {
+        null
+    }
     Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Running(Modifier)
         Text(
@@ -692,7 +706,7 @@ private fun Working(since: Long) {
                 .drawWithContent {
                     drawContent()
                     // A light passing along it.
-                    val x = shine * size.width
+                    val x = (shine?.value ?: -0.5f) * size.width
                     drawRect(
                         Brush.horizontalGradient(listOf(Palette.grey, Palette.purple, Palette.grey), startX = x - size.width / 3, endX = x + size.width / 3),
                         blendMode = BlendMode.SrcIn,
