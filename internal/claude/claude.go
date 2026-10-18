@@ -44,11 +44,12 @@ func (s *Source) Name() string { return "claude" }
 
 var sessionID = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
-// states are what claude says it's doing: busy on a turn, running a
-// shell command (!), waiting on a prompt or question mid-turn, or idle.
+// states are what claude says it's doing: busy on a turn, waiting on a
+// prompt or question mid-turn, or idle. Shell is idle with background tasks
+// still running, which can go on long after the turn.
 var states = map[string]string{
 	"busy":    protocol.StateWorking,
-	"shell":   protocol.StateWorking,
+	"shell":   protocol.StateIdle,
 	"waiting": protocol.StateWaiting,
 	"idle":    protocol.StateIdle,
 }
@@ -130,6 +131,7 @@ type record struct {
 	IsMeta           bool   `json:"isMeta"`
 	IsSidechain      bool   `json:"isSidechain"`
 	IsCompactSummary bool   `json:"isCompactSummary"`
+	PromptSource     string `json:"promptSource"`
 	Subtype          string `json:"subtype"`
 	Message          struct {
 		Content json.RawMessage `json:"content"`
@@ -289,17 +291,26 @@ func (p *parser) Kept(entries []protocol.Entry) []protocol.Entry {
 
 var (
 	pasted      = regexp.MustCompile(`</?pasted_content[^>]*>`)
+	summary     = regexp.MustCompile(`(?s)<summary>(.*?)</summary>`)
 	interrupted = regexp.MustCompile(`^\[Request interrupted by user[^\]]*\]$`)
 )
 
 // said is text either side wrote. claude also records slash commands and
-// their output as user text, wrapped in tags; those aren't shown.
+// their output as user text, wrapped in tags; those aren't shown. Nor is what
+// claude tells itself, like a background task finishing, but its summary is.
 func (p *parser) said(r record, i int, text string) (protocol.Entry, bool) {
 	role := r.Type
 	text = strings.TrimSpace(text)
 	if role == "user" {
 		if strings.HasPrefix(text, "<command-") || strings.HasPrefix(text, "<local-command-") {
 			return protocol.Entry{}, false
+		}
+		if r.PromptSource == "system" {
+			m := summary.FindStringSubmatch(text)
+			if m == nil || strings.TrimSpace(m[1]) == "" {
+				return protocol.Entry{}, false
+			}
+			return protocol.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), Role: role, Kind: "note", Text: strings.TrimSpace(m[1])}, true
 		}
 		text = strings.TrimSpace(pasted.ReplaceAllString(text, ""))
 	}

@@ -27,6 +27,8 @@ var conversation = []string{
 	`{"type":"user","uuid":"u5","isCompactSummary":true,"message":{"role":"user","content":"This session is being continued..."}}`,
 	`{"type":"user","uuid":"u6","message":{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}},{"type":"text","text":"look"}]}}`,
 	`{"type":"user","uuid":"u7","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user for tool use]"}]}}`,
+	`{"type":"user","uuid":"u8","promptSource":"system","message":{"role":"user","content":"<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n<summary>Background command \"Sleep\" completed (exit code 0)</summary>\n</task-notification>"}}`,
+	`{"type":"user","uuid":"u9","promptSource":"system","message":{"role":"user","content":"<something-else>no summary</something-else>"}}`,
 	`not json`,
 }
 
@@ -45,6 +47,7 @@ func TestParse(t *testing.T) {
 		{ID: "u6.0", Role: "user", Kind: "image", Mime: "image/png", Data: "iVBORw0KGgo="},
 		{ID: "u6.1", Role: "user", Kind: "text", Text: "look"},
 		{ID: "u7.0", Role: "user", Kind: "note", Text: "[Request interrupted by user for tool use]"},
+		{ID: "u8.0", Role: "user", Kind: "note", Text: `Background command "Sleep" completed (exit code 0)`},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got\n%+v\nwant\n%+v", got, want)
@@ -176,7 +179,7 @@ func TestRunning(t *testing.T) {
 	me := os.Getpid()
 	parent := os.Getppid()
 	write("sessions/"+strconv.Itoa(me)+".json", `{"pid":`+strconv.Itoa(me)+`,"sessionId":"aaaa-1","cwd":"/Users/me/dev/x","status":"waiting","statusUpdatedAt":1792209270006}`)
-	write("sessions/"+strconv.Itoa(parent)+".json", `{"pid":`+strconv.Itoa(parent)+`,"sessionId":"bbbb-2","cwd":"/Users/me/my.dir"}`)
+	write("sessions/"+strconv.Itoa(parent)+".json", `{"pid":`+strconv.Itoa(parent)+`,"sessionId":"bbbb-2","cwd":"/Users/me/my.dir","status":"shell","statusUpdatedAt":1792209271000}`)
 	write("sessions/1.key", `{}`)
 	write("sessions/999999.json", `{"pid":999999,"sessionId":"cccc-3","cwd":"/"}`) // no such process
 	write("sessions/bad.json", `{"pid":`+strconv.Itoa(me)+`,"sessionId":"../../etc"}`)
@@ -185,7 +188,7 @@ func TestRunning(t *testing.T) {
 	got := New(dir).Running()
 	want := map[int]transcript.Session{
 		me:     {Path: filepath.Join(dir, "projects/-Users-me-dev-x-moved/aaaa-1.jsonl"), State: protocol.StateWaiting, Since: 1792209270006}, // where it is
-		parent: {Path: filepath.Join(dir, "projects/-Users-me-my-dir/bbbb-2.jsonl")},                                                          // where it will be; no status said
+		parent: {Path: filepath.Join(dir, "projects/-Users-me-my-dir/bbbb-2.jsonl"), State: protocol.StateIdle, Since: 1792209271000},         // where it will be; done, with a background task left running
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v\nwant %v", got, want)
