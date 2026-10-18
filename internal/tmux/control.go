@@ -19,10 +19,10 @@ type Options struct {
 	Session string   // target session; empty lets tmux pick
 	Flags   []string // client flags, see attach-session -f
 
-	// Group, if set, names a new session created in Session's group and
+	// NewSession, if set, names a new session created in Session's group and
 	// attached instead: it shares Session's windows but has its own current
 	// window. tmux destroys it when the client detaches.
-	Group string
+	NewSession string
 }
 
 // Client is one control-mode client attached to a tmux server.
@@ -76,9 +76,9 @@ func (e *CommandError) Error() string {
 	return fmt.Sprintf("tmux: %s: %s", e.Command, strings.Join(e.Output, "; "))
 }
 
-// Binary finds tmux: $PATH first, then Homebrew's prefixes, since ssh
+// binary finds tmux: $PATH first, then Homebrew's prefixes, since ssh
 // sessions get a minimal PATH.
-func Binary() string {
+func binary() string {
 	if p, err := exec.LookPath("tmux"); err == nil {
 		return p
 	}
@@ -90,7 +90,7 @@ func Binary() string {
 	return "tmux"
 }
 
-func SocketArgs(socket string) []string {
+func socketArgs(socket string) []string {
 	switch {
 	case strings.Contains(socket, "/"):
 		return []string{"-S", socket}
@@ -103,9 +103,9 @@ func SocketArgs(socket string) []string {
 func Start(ctx context.Context, opts Options) (*Client, error) {
 	// -u: without a UTF-8 locale (ssh may not pass one) tmux replaces tabs
 	// and non-ASCII in replies with "_".
-	args := append(SocketArgs(opts.Socket), "-u", "-C")
-	if opts.Group != "" {
-		args = append(args, "new-session", "-t", opts.Session, "-s", opts.Group)
+	args := append(socketArgs(opts.Socket), "-u", "-C")
+	if opts.NewSession != "" {
+		args = append(args, "new-session", "-t", opts.Session, "-s", opts.NewSession)
 	} else {
 		args = append(args, "attach-session")
 		if opts.Session != "" {
@@ -115,12 +115,12 @@ func Start(ctx context.Context, opts Options) (*Client, error) {
 	if len(opts.Flags) > 0 {
 		args = append(args, "-f", strings.Join(opts.Flags, ","))
 	}
-	if opts.Group != "" {
-		args = append(args, ";", "set-option", "-t", opts.Group, "destroy-unattached", "on")
+	if opts.NewSession != "" {
+		args = append(args, ";", "set-option", "-t", opts.NewSession, "destroy-unattached", "on")
 	}
 
 	c := &Client{events: newQueue(), done: make(chan struct{})}
-	c.cmd = exec.CommandContext(ctx, Binary(), args...)
+	c.cmd = exec.CommandContext(ctx, binary(), args...)
 	c.cmd.Stderr = &c.stderr
 	var err error
 	if c.stdin, err = c.cmd.StdinPipe(); err != nil {

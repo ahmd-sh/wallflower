@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -78,7 +79,8 @@ func TestTranscript(t *testing.T) {
 		f.Close()
 	}
 	write(`{"id":"a","text":"hello"}` + "\n")
-	src.set(atoi(c.tmux("display", "-p", "-t", p.ID, "#{pane_pid}")), path)
+	pid, _ := strconv.Atoi(c.tmux("display", "-p", "-t", p.ID, "#{pane_pid}"))
+	src.set(pid, path)
 	c.tmux("rename-window", "-t", "t", "chat") // state is re-sent on changes
 	c.state("pane with a transcript", func(s protocol.State) bool { return activePane(s).Transcript == "lines" })
 

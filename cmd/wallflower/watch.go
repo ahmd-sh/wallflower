@@ -12,13 +12,6 @@ import (
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
-// subscriptions the gateway will forward: agent state set by hooks, and what
-// each pane is running.
-var subscriptions = []string{
-	"agent:%*:#{@agent_state}",
-	"cmd:%*:#{pane_current_command}",
-}
-
 // event shadows the layout strings with raw JSON so they print as objects.
 type event struct {
 	tmux.Notification
@@ -74,11 +67,10 @@ func watch(args []string) error {
 	}
 	enc.Encode(map[string]any{"type": "snapshot", "session": snap})
 
-	for _, s := range subscriptions {
-		if _, err := c.Run("refresh-client -B '" + s + "'"); err != nil {
-			c.Close()
-			return err
-		}
+	// The pane changes the gateway watches for, as it does.
+	if _, err := c.Run("refresh-client -B " + tmux.Quote(tmux.SnapshotChanges)); err != nil {
+		c.Close()
+		return err
 	}
 
 	for n := range c.Events() {

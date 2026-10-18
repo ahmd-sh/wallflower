@@ -9,93 +9,27 @@ import (
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
-var metaFormat = strings.Join([]string{
-	"#{pane_width}", "#{pane_height}", "#{cursor_x}", "#{cursor_y}", "#{cursor_flag}",
-	"#{alternate_on}", "#{history_size}", "#{scroll_region_upper}", "#{scroll_region_lower}",
-	"#{mouse_standard_flag}", "#{mouse_button_flag}", "#{mouse_all_flag}", "#{mouse_sgr_flag}", "#{mouse_utf8_flag}",
-}, "\t")
-
-// The pane's mouse modes, in metaFormat's order: the client needs them to
-// send a full-screen app its scroll wheel.
-var mouseModes = []int{1000, 1002, 1003, 1006, 1005}
-
-// capture is a pane's screen as tmux holds it, read in one atomic command
-// line so it lines up with the pane's output stream.
-type capture struct {
-	cols, rows   int
-	cx, cy       int
-	cursorHidden bool
-	alt          bool
-	top, bottom  int      // scroll region
-	mouse        []int    // mouse modes the app turned on
-	history      []string // normal screen scrollback, oldest first
-	normal       []string // normal screen; covered by the alternate screen if alt
-	altScreen    []string
-}
-
-// captureCommand reads the pane's metadata, its normal-screen history, the
-// normal screen saved behind an alternate screen (empty if none), and the
-// visible screen.
-func captureCommand(pane string, history int) string {
-	return fmt.Sprintf("display -p -t %[1]s %[2]s ; capture-pane -p -e -t %[1]s -S -%[3]d -E -1 ; "+
-		"capture-pane -p -e -q -a -t %[1]s ; capture-pane -p -e -t %[1]s",
-		pane, tmux.Quote(metaFormat), max(history, 1))
-}
-
-func parseCapture(r tmux.Reply, history int) (*capture, error) {
-	if len(r.Blocks) != 4 || len(r.Blocks[0]) != 1 {
-		return nil, fmt.Errorf("unexpected capture reply (%d blocks)", len(r.Blocks))
-	}
-	f := strings.Split(r.Blocks[0][0], "\t")
-	if len(f) != 9+len(mouseModes) {
-		return nil, fmt.Errorf("unexpected pane metadata %q", r.Blocks[0][0])
-	}
-	c := &capture{
-		cols: atoi(f[0]), rows: atoi(f[1]), cx: atoi(f[2]), cy: atoi(f[3]),
-		cursorHidden: f[4] == "0", alt: f[5] == "1",
-		top: atoi(f[7]), bottom: atoi(f[8]),
-	}
-	for i, mode := range mouseModes {
-		if f[9+i] == "1" {
-			c.mouse = append(c.mouse, mode)
-		}
-	}
-
-	// With no history tmux clamps the range onto the screen, so trust
-	// history_size over the line count.
-	hist := r.Blocks[1]
-	n := min(history, atoi(f[6]), len(hist))
-	c.history = hist[len(hist)-n:]
-
-	if c.alt {
-		c.normal = fit(r.Blocks[2], c.rows)
-		c.altScreen = fit(r.Blocks[3], c.rows)
-	} else {
-		c.normal = fit(r.Blocks[3], c.rows)
-	}
-	return c, nil
-}
-
-// repaint returns bytes that rebuild the pane in a fresh terminal of the
-// same size: history scrolls into the scrollback, then the screen, then the
-// alternate screen on top if one is active, then cursor state.
-func (c *capture) repaint() []byte {
+// repaint returns bytes that rebuild a captured pane in a fresh terminal of
+// the same size: history scrolls into the scrollback, then the screen, then
+// the alternate screen on top if one is active, then cursor state, and the
+// mouse modes, which a full-screen app needs to get its scroll wheel.
+func repaint(c *tmux.Capture) []byte {
 	var b bytes.Buffer
 	b.WriteString("\x1b[0m\x1b[H\x1b[2J")
-	paint(&b, append(c.history[:len(c.history):len(c.history)], c.normal...))
-	if c.alt {
+	paint(&b, append(c.History[:len(c.History):len(c.History)], c.Normal...))
+	if c.Alt {
 		b.WriteString("\x1b[0m\x1b[?1049h\x1b[H\x1b[2J")
-		paint(&b, c.altScreen)
+		paint(&b, c.AltScreen)
 	}
 	b.WriteString("\x1b[0m")
-	if c.top != 0 || c.bottom != c.rows-1 {
-		fmt.Fprintf(&b, "\x1b[%d;%dr", c.top+1, c.bottom+1)
+	if c.Top != 0 || c.Bottom != c.Rows-1 {
+		fmt.Fprintf(&b, "\x1b[%d;%dr", c.Top+1, c.Bottom+1)
 	}
-	fmt.Fprintf(&b, "\x1b[%d;%dH", c.cy+1, c.cx+1)
-	if c.cursorHidden {
+	fmt.Fprintf(&b, "\x1b[%d;%dH", c.Y+1, c.X+1)
+	if c.CursorHidden {
 		b.WriteString("\x1b[?25l")
 	}
-	for _, mode := range c.mouse {
+	for _, mode := range c.Mouse {
 		fmt.Fprintf(&b, "\x1b[?%dh", mode)
 	}
 	return b.Bytes()
@@ -152,12 +86,4 @@ func background(bg, line string) string {
 		}
 	}
 	return bg
-}
-
-// fit pads or trims lines to exactly n.
-func fit(lines []string, n int) []string {
-	if len(lines) >= n {
-		return lines[:n]
-	}
-	return append(lines[:len(lines):len(lines)], make([]string, n-len(lines))...)
 }

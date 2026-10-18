@@ -23,7 +23,6 @@ type Cell struct {
 	Index    int    `json:"i"`
 	Pane     string `json:"I,omitempty"`
 	Active   bool   `json:"a,omitempty"`
-	LastUsed *int   `json:"l,omitempty"` // position in the window's recently-used pane list
 	Z        *int   `json:"z,omitempty"`
 	Children []Cell `json:"c,omitempty"`
 }

@@ -150,3 +150,11 @@ func create(dir, name string) (*os.File, error) {
 		}
 	}
 }
+
+func (g *gateway) sendUploaded(id, path string, err error) {
+	if err != nil {
+		g.send(protocol.Uploaded{ID: id, Error: err.Error()})
+		return
+	}
+	g.send(protocol.Uploaded{ID: id, Path: path})
+}

@@ -39,35 +39,20 @@ func TestPaintDropsBackgroundAtBreaks(t *testing.T) {
 	}
 }
 
-func TestParseCapture(t *testing.T) {
-	reply := tmux.Reply{Blocks: [][]string{
-		{"10\t3\t4\t1\t1\t0\t2\t0\t2\t0\t0\t0\t0\t0"},
-		{"h1", "h2", "h3"}, // tmux returned more than history_size
-		nil,
-		{"a", "b"}, // fewer lines than rows
-	}}
-	c, err := parseCapture(reply, 1000)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(c.history) != 2 || c.history[0] != "h2" || len(c.normal) != 3 || c.alt {
-		t.Fatalf("capture = %+v", c)
-	}
+func TestRepaintEscapes(t *testing.T) {
+	c := &tmux.Capture{Cols: 10, Rows: 3, X: 4, Y: 1, Bottom: 2, History: []string{"h2", "h3"}, Normal: []string{"a", "b", ""}}
 	want := "\x1b[0m\x1b[H\x1b[2Jh2\r\nh3\r\na\r\nb\r\n\x1b[0m\x1b[2;5H"
-	if got := string(c.repaint()); got != want {
+	if got := string(repaint(c)); got != want {
 		t.Errorf("repaint = %q\nwant      %q", got, want)
 	}
 
 	// A full-screen app with the mouse on, as Claude Code runs: any-event tracking, SGR encoding.
-	reply.Blocks[0][0] = "10\t3\t0\t0\t0\t1\t0\t1\t2\t0\t0\t1\t1\t0"
-	reply.Blocks[2] = []string{"n1", "n2", "n3"}
-	reply.Blocks[3] = []string{"x", "y", "z"}
-	c, err = parseCapture(reply, 1000)
-	if err != nil {
-		t.Fatal(err)
+	c = &tmux.Capture{
+		Cols: 10, Rows: 3, CursorHidden: true, Alt: true, Top: 1, Bottom: 2, Mouse: []int{1003, 1006},
+		Normal: []string{"n1", "n2", "n3"}, AltScreen: []string{"x", "y", "z"},
 	}
 	want = "\x1b[0m\x1b[H\x1b[2Jn1\r\nn2\r\nn3\x1b[0m\x1b[?1049h\x1b[H\x1b[2Jx\r\ny\r\nz\x1b[0m\x1b[2;3r\x1b[1;1H\x1b[?25l\x1b[?1003h\x1b[?1006h"
-	if got := string(c.repaint()); got != want {
+	if got := string(repaint(c)); got != want {
 		t.Errorf("alt repaint = %q\nwant          %q", got, want)
 	}
 }
