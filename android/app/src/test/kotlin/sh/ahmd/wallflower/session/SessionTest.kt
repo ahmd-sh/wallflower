@@ -30,7 +30,8 @@ import sh.ahmd.wallflower.protocol.Pong
 import sh.ahmd.wallflower.protocol.ServerHello
 import sh.ahmd.wallflower.protocol.ServerMessage
 import sh.ahmd.wallflower.protocol.State
-import sh.ahmd.wallflower.protocol.Transcript
+import sh.ahmd.wallflower.protocol.Submit
+import sh.ahmd.wallflower.protocol.Read
 import sh.ahmd.wallflower.protocol.VERSION
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.protocol.WireJson
@@ -105,7 +106,7 @@ class SessionTest {
 
     private val state = State(
         "\$1", "o",
-        listOf(Window("@1", 0, "zsh", active = true, zoomed = false, cols = 56, rows = 20, panes = listOf(Pane("%1", 0, true, 0, 0, 56, 20, command = "claude", transcript = "claude")))),
+        listOf(Window("@1", 0, "zsh", active = true, panes = listOf(Pane("%1", 0, true, 56, 20, command = "claude", reader = "claude")))),
     )
 
     private fun <T> eventually(block: suspend () -> T): T = runBlocking { withTimeout(5_000) { block() } }
@@ -116,7 +117,7 @@ class SessionTest {
         session.start(56, 20)
         assertEquals(ClientHello(VERSION, 56, 20), g.message<ClientHello>())
         session.read(setOf("%1"))
-        assertEquals(Transcript("%1", on = true), g.message<Transcript>())
+        assertEquals(Read("%1", on = true), g.message<Read>())
         g.send(ServerHello(VERSION, "3.8", uploads = "/up"))
         g.send(state)
         assertEquals("%1", g.message<Open>().pane)
@@ -132,8 +133,8 @@ class SessionTest {
         g.send(ServerHello(VERSION, "3.8"))
         eventually { session.status.first { it is Status.Connected } }
 
-        assertTrue(session.submit("%1", "say just: ok"))
-        assertEquals("say just: ok\r", g.expect { (it as? Sent.Typed)?.text })
+        assertTrue(session.submit("%1", "say just: ok", clear = listOf("C-u")))
+        assertEquals(Submit("%1", "say just: ok", enter = true, clear = listOf("C-u")), g.message<Submit>())
         val confirmed = g.message<Ping>()
         g.send(Pong(confirmed.id))
         assertTrue(session.submit("%1", "never confirmed"))
@@ -156,7 +157,7 @@ class SessionTest {
 
         val second = connect()
         first.close()
-        assertEquals(Transcript("%1", on = true), second.message<Transcript>())
+        assertEquals(Read("%1", on = true), second.message<Read>())
         second.send(ServerHello(VERSION, "3.8"))
         second.send(state)
         assertEquals("%1", second.message<Open>().pane)

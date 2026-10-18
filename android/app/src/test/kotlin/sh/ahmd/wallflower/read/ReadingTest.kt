@@ -6,10 +6,11 @@ import sh.ahmd.wallflower.program.Claude
 import sh.ahmd.wallflower.program.Effect
 import sh.ahmd.wallflower.protocol.Entries
 import sh.ahmd.wallflower.protocol.Entry as WireEntry
+import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.screen.Prompt
 
 class ReadingTest {
-    private fun text(id: String) = WireEntry(id, "assistant", "text", id)
+    private fun text(id: String) = WireEntry(id, "program", "said", id)
 
     /** Whether a message is the one Claude's /rewind quotes as [quote], as restoring it says. */
     private fun quoting(quote: String): (String) -> Boolean {
@@ -20,10 +21,10 @@ class ReadingTest {
     @Test
     fun entriesReplaceTheirsByIdOrComeLast() {
         val r = Reading()
-            .apply(Entries("%1", reset = true, more = true, entries = listOf(text("a"), WireEntry("t", "assistant", "tool", "ls", name = "Bash"))))
-            .apply(Entries("%1", entries = listOf(WireEntry("t", "assistant", "tool", "ls", name = "Bash", output = "x", done = true), text("b"))))
+            .apply(Entries("%1", reset = true, more = true, entries = listOf(text("a"), WireEntry("t", "program", "step", "ls", name = "Bash", status = "running"))))
+            .apply(Entries("%1", entries = listOf(WireEntry("t", "program", "step", "ls", name = "Bash", status = "done", output = "x", outputCut = 3), text("b"))))
         assertEquals(listOf("a", "t", "b"), r.entries.map { it.id })
-        assertEquals(Entry.Step("t", "Bash", "ls", "x", status = Entry.Step.Status.Done), r.entries[1])
+        assertEquals(Entry.Step("t", "Bash", "ls", "x", status = Entry.Step.Status.Done, outputCut = 3), r.entries[1])
         assertEquals(true, r.more)
         assertEquals(true, r.loaded)
     }
@@ -34,12 +35,12 @@ class ReadingTest {
             Entries(
                 "%1", reset = true,
                 entries = listOf(
-                    WireEntry("u", "user", "text", "hi"),
-                    WireEntry("th", "assistant", "thinking", "hmm"),
-                    WireEntry("f", "assistant", "tool", "rm x", name = "Bash", done = true, error = true),
-                    WireEntry("i", "user", "image", mime = "image/png", data = "AA=="),
+                    WireEntry("u", "user", "said", "hi"),
+                    WireEntry("th", "program", "thought", "hmm"),
+                    WireEntry("f", "program", "step", "rm x", name = "Bash", status = "failed", diff = "@@", diffCut = 2),
+                    WireEntry("i", "user", "picture", mime = "image/png", size = 2),
                     WireEntry("n", "user", "note", "compacted"),
-                    WireEntry("z", "assistant", "something newer", "shown as a note"),
+                    WireEntry("z", "program", "something newer", "shown as a note"),
                 ),
             ),
         )
@@ -47,8 +48,8 @@ class ReadingTest {
             listOf(
                 Entry.Said("u", Party.User, "hi"),
                 Entry.Thought("th", "hmm"),
-                Entry.Step("f", "Bash", "rm x", status = Entry.Step.Status.Failed),
-                Entry.Picture("i", Party.User, "image/png", "AA=="),
+                Entry.Step("f", "Bash", "rm x", diff = "@@", status = Entry.Step.Status.Failed, diffCut = 2),
+                Entry.Picture("i", Party.User, "image/png", 2),
                 Entry.Note("n", "compacted"),
                 Entry.Note("z", "shown as a note"),
             ),
@@ -58,14 +59,14 @@ class ReadingTest {
 
     @Test
     fun rewoundItHidesTheMessageQuotedAndWhatFollowedUntilAReset() {
-        val said = WireEntry("u2", "user", "text", "Use the Write tool to create /private/tmp/claude-502/rw.txt containing hi")
-        var r = Reading().apply(Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "text", "one"), text("a1"), said, text("a2"))))
+        val said = WireEntry("u2", "user", "said", "Use the Write tool to create /private/tmp/claude-502/rw.txt containing hi")
+        var r = Reading().apply(Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "said", "one"), text("a1"), said, text("a2"))))
         val all = r
         r = r.rewoundTo(quoting("Use the Write tool to create /private/tmp/claude -502/rw.txt containing hi"))
         assertEquals(listOf("u1", "a1"), r.shown.map { it.id })
-        assertEquals(listOf("u1", "a1"), r.apply(Entries("%1", state = Entries.IDLE)).shown.map { it.id })
+        assertEquals(listOf("u1", "a1"), r.apply(Entries("%1", context = 5)).shown.map { it.id })
         assertEquals(listOf("u1", "a1"), r.rewoundTo(quoting("…create /private/tmp/claude…")).shown.map { it.id })
-        assertEquals(listOf("u1", "a1", "u2", "a2"), r.apply(Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "text", "one"), text("a1"), said, text("a2")))).shown.map { it.id })
+        assertEquals(listOf("u1", "a1", "u2", "a2"), r.apply(Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "said", "one"), text("a1"), said, text("a2")))).shown.map { it.id })
         assertEquals(4, all.rewoundTo(quoting("something else")).shown.size)
     }
 
@@ -73,7 +74,7 @@ class ReadingTest {
     fun aRepeatedMessageRewoundHidesFromItsLatestSoNothingStillSaidIsHidden() {
         // The quote can't tell two "yes"es apart: hiding from the later one may leave some of what was
         // taken back showing until the transcript says (the next message), but never hides what's still there.
-        val entries = listOf(WireEntry("u1", "user", "text", "yes"), text("a1"), WireEntry("u2", "user", "text", "yes"), text("a2"))
+        val entries = listOf(WireEntry("u1", "user", "said", "yes"), text("a1"), WireEntry("u2", "user", "said", "yes"), text("a2"))
         val r = Reading().apply(Entries("%1", reset = true, entries = entries)).rewoundTo(quoting("yes"))
         assertEquals(listOf("u1", "a1"), r.shown.map { it.id })
     }
@@ -99,16 +100,9 @@ class ReadingTest {
     }
 
     @Test
-    fun theActivityKeepsUntilItChanges() {
-        val r = Reading()
-            .apply(Entries("%1", reset = true, entries = listOf(text("a")), state = Entries.WORKING, since = 5))
-            .apply(Entries("%1", entries = listOf(text("b"))))
-        assertEquals(Activity.Working, r.activity)
-        assertEquals(5L, r.since)
-        val done = r.apply(Entries("%1", state = Entries.IDLE, since = 9))
-        assertEquals(Activity.Idle, done.activity)
-        assertEquals(9L, done.since)
-        assertEquals(listOf("a", "b"), done.entries.map { it.id })
+    fun whatTheProgramIsDoingIsItsPanes() {
+        assertEquals(Activity.Working, activityOf(Pane("%1", 0, true, 56, 20, command = "claude", activity = Pane.WORKING)))
+        assertEquals(null, activityOf(Pane("%1", 0, true, 56, 20, command = "zsh")))
     }
 
     @Test

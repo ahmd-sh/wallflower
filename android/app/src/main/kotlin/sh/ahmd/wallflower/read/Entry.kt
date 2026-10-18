@@ -22,7 +22,11 @@ sealed interface Entry {
     /** What either side said, in markdown. */
     data class Said(override val id: String, val by: Party, val text: String) : Entry
 
-    /** A step the program took: a tool it ran, what it was asked, what came of it, and any change it made to a file. */
+    /**
+     * A step the program took: a tool it ran, what it was asked, what came of
+     * it, and any change it made to a file, each trimmed ([outputCut]
+     * characters, [diffCut] lines short).
+     */
     data class Step(
         override val id: String,
         val name: String,
@@ -31,6 +35,8 @@ sealed interface Entry {
         /** Unified diff hunks. */
         val diff: String = "",
         val status: Status = Status.Running,
+        val outputCut: Int = 0,
+        val diffCut: Int = 0,
     ) : Entry {
         enum class Status { Running, Done, Failed }
     }
@@ -38,8 +44,8 @@ sealed interface Entry {
     /** The program thinking it through. */
     data class Thought(override val id: String, val text: String) : Entry
 
-    /** A picture either side shared, base64. */
-    data class Picture(override val id: String, val by: Party, val mime: String, val data: String) : Entry
+    /** A picture either side shared, [size] bytes, which are asked for when it shows. */
+    data class Picture(override val id: String, val by: Party, val mime: String, val size: Int) : Entry
 
     /** Something that happened rather than was said: an interruption, a compaction. */
     data class Note(override val id: String, val text: String) : Entry

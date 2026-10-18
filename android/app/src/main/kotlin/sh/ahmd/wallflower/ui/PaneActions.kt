@@ -42,6 +42,9 @@ internal class PaneActions(
         { line -> send(command, enter = true, line, unseen = true) }
     }
 
+    /** A picture entry of the pane's read view, its bytes. */
+    suspend fun picture(id: String): ByteArray? = session.picture(pane.id, id)
+
     /** An option picked from a prompt the pane offered. */
     fun picked(prompt: Prompt, option: Prompt.Option) {
         when (val effect = program.picked(prompt, option)) {

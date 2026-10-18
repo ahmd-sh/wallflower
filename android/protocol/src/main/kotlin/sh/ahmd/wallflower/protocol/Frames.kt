@@ -14,6 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
 const val FRAME_JSON: Int = 1
 const val FRAME_DATA: Int = 2
 const val FRAME_UPLOAD: Int = 3
+const val FRAME_PICTURE: Int = 4
 
 /** Bounds a frame's length field, so a corrupt stream can't make a reader allocate without limit. */
 const val MAX_FRAME = 16 shl 20
@@ -23,47 +24,52 @@ class ProtocolException(message: String) : IOException(message)
 sealed interface Frame {
     data class Message(val message: ServerMessage) : Frame
 
-    /** A message type newer than this client; safe to ignore. */
-    data class Unknown(val json: String) : Frame
+    /** A message newer than this client, safe to ignore, or one it couldn't read ([problem]). */
+    data class Unknown(val json: String, val problem: String? = null) : Frame
 
     /** Pane output from the gateway: [length] bytes of [bytes] from [offset]. */
     class Data(val pane: String, val bytes: ByteArray, val offset: Int, val length: Int) : Frame
+
+    /** A picture entry's bytes, as for [Data]; none if they're gone. */
+    class Picture(val id: String, val bytes: ByteArray, val offset: Int, val length: Int) : Frame
 }
 
 class FrameReader(input: InputStream) {
     private val input = DataInputStream(BufferedInputStream(input, 64 * 1024))
 
-    /** Blocks for the next frame; null at a clean end of stream. */
+    /** Blocks for the next frame, passing over any of a type newer than this client; null at a clean end of stream. */
     fun next(): Frame? {
-        val length = try {
-            input.readInt()
-        } catch (_: EOFException) {
-            return null
-        }
-        if (length !in 1..MAX_FRAME) throw ProtocolException("bad frame length $length")
-        val type = input.readUnsignedByte()
-        val payload = ByteArray(length - 1)
-        input.readFully(payload)
-
-        return when (type) {
-            FRAME_JSON -> decodeMessage(payload.decodeToString())
-            FRAME_DATA -> {
-                val n = if (payload.isEmpty()) -1 else payload[0].toInt() and 0xff
-                if (n < 0 || n > payload.size - 1) throw ProtocolException("truncated pane id")
-                Frame.Data(payload.decodeToString(1, 1 + n), payload, 1 + n, payload.size - 1 - n)
+        while (true) {
+            val length = try {
+                input.readInt()
+            } catch (_: EOFException) {
+                return null
             }
-            else -> throw ProtocolException("unknown frame type $type")
+            if (length !in 1..MAX_FRAME) throw ProtocolException("bad frame length $length")
+            val type = input.readUnsignedByte()
+            val payload = ByteArray(length - 1)
+            input.readFully(payload)
+
+            when (type) {
+                FRAME_JSON -> return decodeMessage(payload.decodeToString())
+                FRAME_DATA -> return id(payload) { id, at -> Frame.Data(id, payload, at, payload.size - at) }
+                FRAME_PICTURE -> return id(payload) { id, at -> Frame.Picture(id, payload, at, payload.size - at) }
+            }
         }
     }
 
-    private fun decodeMessage(json: String): Frame {
-        try {
-            val type = typeOf(json)
-            if (type == null || type !in serverTypes) return Frame.Unknown(json)
-            return Frame.Message(WireJson.decodeFromString(ServerMessage.serializer(), json))
-        } catch (e: IllegalArgumentException) {
-            throw ProtocolException("bad message: ${e.message}")
-        }
+    /** A frame of an id, then bytes. */
+    private inline fun id(payload: ByteArray, frame: (id: String, at: Int) -> Frame): Frame {
+        val n = if (payload.isEmpty()) -1 else payload[0].toInt() and 0xff
+        if (n < 0 || n > payload.size - 1) throw ProtocolException("truncated id")
+        return frame(payload.decodeToString(1, 1 + n), 1 + n)
+    }
+
+    private fun decodeMessage(json: String): Frame = try {
+        val type = typeOf(json)
+        if (type == null || type !in serverTypes) Frame.Unknown(json) else Frame.Message(WireJson.decodeFromString(ServerMessage.serializer(), json))
+    } catch (e: IllegalArgumentException) {
+        Frame.Unknown(json, e.message ?: "unreadable")
     }
 
     /** The message's "t", which the gateway writes first; anyone else's is looked for. */

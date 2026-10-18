@@ -45,6 +45,8 @@ import androidx.compose.ui.util.lerp
 import kotlin.math.ceil
 import kotlin.math.floor
 import sh.ahmd.wallflower.protocol.Window
+import sh.ahmd.wallflower.read.Activity
+import sh.ahmd.wallflower.read.activityOf
 import sh.ahmd.wallflower.session.Status
 
 /**
@@ -124,7 +126,7 @@ internal fun TabBar(
                 val on = w.id == selected
                 val number by animateColorAsState(if (on) Palette.orange else Palette.dim, Motion.effect(), label = "tab")
                 val name by animateColorAsState(if (on) Palette.fg else Palette.grey, Motion.effect(), label = "tab")
-                val agent = w.panes.map { it.agent }.firstOrNull { it.isNotEmpty() }
+                val agent = activityOf(w)
                 Box {
                     Row(
                         Modifier
@@ -159,11 +161,11 @@ internal fun TabBar(
     }
 }
 
-/** An agent's state as a colored dot, which breathes while it works. */
+/** What a program is doing, as a coloured dot, which breathes while it works. */
 @Composable
-internal fun AgentDot(state: String, modifier: Modifier = Modifier) {
-    val color by animateColorAsState(agentColor(state), Motion.effect(), label = "agent")
-    val breath = if (state == "working") {
+internal fun AgentDot(activity: Activity, modifier: Modifier = Modifier) {
+    val color by animateColorAsState(if (activity == Activity.Waiting) Palette.orange else Palette.purple, Motion.effect(), label = "agent")
+    val breath = if (activity == Activity.Working) {
         rememberInfiniteTransition(label = "agent").animateFloat(1f, 0.35f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "breath")
     } else {
         null
@@ -204,10 +206,8 @@ private fun PowerButton(status: Status, onSettings: () -> Unit, onExit: () -> Un
     }
 }
 
-private fun agentColor(state: String): Color = when (state) {
-    "waiting" -> Palette.orange
-    "working" -> Palette.purple
-    "done" -> Palette.green
-    "error" -> Palette.red
-    else -> Palette.grey
+/** What a window's programs are doing that needs an eye: one waiting for the user before any working. */
+private fun activityOf(w: Window): Activity? {
+    val doing = w.panes.mapNotNull { activityOf(it) }
+    return doing.firstOrNull { it == Activity.Waiting } ?: doing.firstOrNull { it == Activity.Working }
 }

@@ -28,7 +28,7 @@ class ItemsTest {
 
     @Test
     fun aNoteOrPictureAfterTheReplyLeavesItTheLastWord() {
-        val picture = Entry.Picture("p", Party.Program, "image/png", "AA==")
+        val picture = Entry.Picture("p", Party.Program, "image/png", 2)
         assertEquals("u1 r1* n p", shape(listOf(user("u1"), reply("r1"), Entry.Note("n", "interrupted"), picture)))
     }
 

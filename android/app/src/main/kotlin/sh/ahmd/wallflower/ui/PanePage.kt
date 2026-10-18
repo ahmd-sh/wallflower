@@ -12,6 +12,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import sh.ahmd.wallflower.read.Reading
+import sh.ahmd.wallflower.read.activityOf
 import sh.ahmd.wallflower.screen.InputLine
 import sh.ahmd.wallflower.screen.Prompt
 import sh.ahmd.wallflower.terminal.Terminal
@@ -58,6 +59,9 @@ internal fun PanePage(
         val compact = actions.compact
         ReadView(
             shown,
+            activity = activityOf(actions.pane),
+            since = actions.pane.since,
+            picture = actions::picture,
             swipe = swipe,
             prompt = if (current) prompt else null,
             onKeys = { keys -> actions.keys(keys) },

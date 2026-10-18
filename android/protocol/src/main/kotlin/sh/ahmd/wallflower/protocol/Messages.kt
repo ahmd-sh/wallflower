@@ -9,7 +9,7 @@ import kotlinx.serialization.json.Json
 // The wire format is defined in docs/protocol.md. Field order matches the Go
 // structs so both sides encode identical bytes (checked by the golden tests).
 
-const val VERSION = 1
+const val VERSION = 2
 const val DEFAULT_HISTORY = 1000
 
 val WireJson = Json {
@@ -39,9 +39,10 @@ data class Open(val pane: String, val history: Int? = null) : ClientMessage
 data class Close(val pane: String) : ClientMessage
 
 /**
- * tmux key names (Enter, Escape, Up, C-c, M-Enter, BTab, ...); text goes in
- * data frames. With [bindings], as if typed on a keyboard attached to tmux,
- * so its key bindings apply; "prefix" stands for the prefix key.
+ * tmux key names (Enter, Escape, Up, C-c, M-Enter, BTab, ...); bytes go in
+ * data frames, composed text in [Submit]. With [bindings], as if typed on a
+ * keyboard attached to tmux, so its key bindings apply; "prefix" stands for
+ * the prefix key.
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -52,18 +53,24 @@ data class Keys(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val bindings: Boolean = false,
 ) : ClientMessage
 
-/** Pasted as a terminal would: bracketed if the app asked for it, so newlines don't run anything. */
+/**
+ * Composed text in place of whatever the program's input line holds: [clear]
+ * keys empty the line first, then the gateway sends the text as the program
+ * takes it best, and Enter if [enter].
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
-@SerialName("paste")
-data class Paste(val pane: String, val text: String) : ClientMessage
+@SerialName("submit")
+data class Submit(
+    val pane: String,
+    val text: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val enter: Boolean = false,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val clear: List<String> = emptyList(),
+) : ClientMessage
 
 @Serializable
 @SerialName("select")
 data class Select(val window: String? = null, val pane: String? = null) : ClientMessage
-
-@Serializable
-@SerialName("zoom")
-data class Zoom(val pane: String) : ClientMessage
 
 /** Makes a pane its window's active pane, zoomed if the window has others; undone on disconnect. */
 @Serializable
@@ -89,24 +96,20 @@ data class Rename(val window: String, val name: String) : ClientMessage
 @SerialName("kill")
 data class Kill(val window: String? = null, val pane: String? = null) : ClientMessage
 
-/** Starts or stops [pane]'s conversation arriving as [Entries]; panes with one name its source ([Pane.transcript]). */
+/** Starts or stops [pane]'s read view arriving as [Entries]; panes with one name their reader ([Pane.reader]). */
 @Serializable
-@SerialName("transcript")
-data class Transcript(val pane: String, val on: Boolean) : ClientMessage
+@SerialName("read")
+data class Read(val pane: String, val on: Boolean) : ClientMessage
 
-/** Lines in tmux numbering: 0 is the top visible line, negative is history. */
+/** Asks for a picture entry's bytes, which come in a picture frame. */
 @Serializable
-@SerialName("scrollback")
-data class ScrollbackRequest(val id: Int, val pane: String, val start: Int, val end: Int) : ClientMessage
+@SerialName("picture")
+data class Picture(val pane: String, val id: String) : ClientMessage
 
 /** Starts sending a file: [size] bytes follow in upload frames with [id]; [Uploaded] says where it was saved. */
 @Serializable
 @SerialName("upload")
 data class Upload(val id: String, val name: String, val size: Long) : ClientMessage
-
-@Serializable
-@SerialName("tmux")
-data class TmuxCommand(val id: Int, val command: String) : ClientMessage
 
 @Serializable
 @SerialName("ping")
@@ -134,9 +137,6 @@ data class Window(
     val index: Int,
     val name: String,
     val active: Boolean,
-    val zoomed: Boolean,
-    val cols: Int,
-    val rows: Int,
     val panes: List<Pane>,
 )
 
@@ -145,42 +145,35 @@ data class Pane(
     val id: String,
     val index: Int,
     val active: Boolean,
-    val x: Int,
-    val y: Int,
     val cols: Int,
     val rows: Int,
-    val floating: Boolean = false,
-    /** Floating stacking order; 0 is the front. */
-    val z: Int = 0,
     /** A full-screen app owns the pane; tmux keeps no scrollback for it. */
     val alt: Boolean = false,
-    /** The pane's @agent_state option, set by hooks. */
-    val agent: String = "",
     val title: String = "",
     val path: String = "",
     val command: String,
-    /** The source of the conversation the pane's program records (claude), if any; see [Transcript]. */
-    val transcript: String = "",
-)
+    /** What reads the pane's program for its read view (claude), if anything does; see [Read]. */
+    val reader: String = "",
+    /** What the program is doing, if it says: [WORKING], [WAITING] or [IDLE]; [since] when, in Unix milliseconds. */
+    val activity: String = "",
+    val since: Long = 0,
+) {
+    companion object {
+        const val WORKING = "working"
+        const val WAITING = "waiting"
+        const val IDLE = "idle"
+    }
+}
 
 /** Recreate the pane's terminal at this size; the next data frame repaints it. */
 @Serializable
 @SerialName("reset")
 data class Reset(val pane: String, val cols: Int, val rows: Int) : ServerMessage
 
-@Serializable
-@SerialName("scrollback")
-data class ScrollbackReply(
-    val id: Int,
-    val pane: String,
-    @SerialName("history_size") val historySize: Int,
-    val lines: List<String>,
-) : ServerMessage
-
 /**
- * A pane's conversation. With [reset], its latest entries replace any before
+ * A pane's read view. With [reset], its latest entries replace any before
  * ([more]: earlier ones weren't sent); otherwise these entries are new, or
- * replace the ones with their ids. [error] says why there is no conversation.
+ * replace the ones with their ids. [error] says why there's nothing to read.
  */
 @Serializable
 @SerialName("entries")
@@ -190,43 +183,32 @@ data class Entries(
     val more: Boolean = false,
     val entries: List<Entry> = emptyList(),
     val error: String? = null,
-    /** What the program is doing, when it says: [WORKING], [WAITING] or [IDLE]; since when, in Unix milliseconds. */
-    val state: String? = null,
-    val since: Long = 0,
     /** Tokens the conversation takes of the program's context, when it says; 0 once it no longer knows (just compacted). */
     val context: Int? = null,
-) : ServerMessage {
-    companion object {
-        const val WORKING = "working"
-        const val WAITING = "waiting"
-        const val IDLE = "idle"
-    }
-}
+) : ServerMessage
 
-/** One part of a conversation. */
+/** One part of a read view: something said, or a step taken. */
 @Serializable
 data class Entry(
     val id: String,
-    /** user or assistant */
-    val role: String,
-    /** text (markdown), thinking, tool, image or note */
+    /** user or program */
+    val from: String,
+    /** said (markdown), step, thought, picture or note */
     val kind: String,
-    /** What was said; for a tool, what it was asked. */
+    /** What was said; for a step, what it was asked. */
     val text: String = "",
     val name: String = "",
+    /** A step's: running, done or failed. */
+    val status: String = "",
     val output: String = "",
-    /** A tool's change to a file, as unified diff hunks. */
+    @SerialName("output_cut") val outputCut: Int = 0,
+    /** A step's change to a file, as unified diff hunks. */
     val diff: String = "",
-    val done: Boolean = false,
-    val error: Boolean = false,
+    @SerialName("diff_cut") val diffCut: Int = 0,
     val mime: String = "",
-    /** An image, base64. */
-    val data: String = "",
+    /** A picture's bytes, which [Picture] asks for. */
+    val size: Int = 0,
 )
-
-@Serializable
-@SerialName("result")
-data class Result(val id: Int, val lines: List<String> = emptyList(), val error: String? = null) : ServerMessage
 
 @Serializable
 @SerialName("error")

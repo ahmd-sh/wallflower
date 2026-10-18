@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import sh.ahmd.wallflower.protocol.Keys
-import sh.ahmd.wallflower.protocol.Paste
+import sh.ahmd.wallflower.protocol.Submit
 
 /** Composed text the gateway never confirmed, so it may not have reached tmux. */
 data class Undelivered(val pane: String, val text: String)
@@ -12,24 +12,11 @@ data class Undelivered(val pane: String, val text: String)
 /** Upload paths: under [dir], names of the characters the gateway keeps, which never end in . or -. */
 fun uploadPaths(dir: String) = Regex(Regex.escape(dir) + "/[A-Za-z0-9._-]*[A-Za-z0-9_]")
 
-/** [text] as runs, each an upload's path or not. */
-fun split(text: String, uploads: Regex): List<Pair<String, Boolean>> {
-    val parts = ArrayList<Pair<String, Boolean>>()
-    var at = 0
-    for (m in uploads.findAll(text)) {
-        if (m.range.first > at) parts += text.substring(at, m.range.first) to false
-        parts += m.value to true
-        at = m.range.last + 1
-    }
-    if (at < text.length) parts += text.substring(at) to false
-    return parts
-}
-
 /**
  * What the phone types into panes: keys, bytes, and composed text, which it
  * makes sure arrives, or comes back through [undelivered].
  */
-internal class Input(private val link: Link, private val uploadDir: () -> String?) {
+internal class Input(private val link: Link) {
     private val _undelivered = MutableSharedFlow<Undelivered>(extraBufferCapacity = 16)
     val undelivered: SharedFlow<Undelivered> = _undelivered.asSharedFlow()
 
@@ -44,29 +31,16 @@ internal class Input(private val link: Link, private val uploadDir: () -> String
     fun bytes(pane: String, bytes: ByteArray) = link.sendData(pane, bytes)
 
     /**
-     * Sends composed text and presses Enter, unless not [enter]: typed if
-     * it's one line, pasted if it has several, so the app doesn't run each
-     * line, after [clear] keys (whatever empties the app's line first).
-     * Returns false, sending nothing, while not connected. Text the gateway
-     * doesn't confirm before the connection drops comes back through
-     * [undelivered].
+     * Sends composed text in place of the app's input line, emptied first by
+     * [clear] keys, then Enter, unless not [enter]; the gateway types it as
+     * the app takes it best. Returns false, sending nothing, while not
+     * connected. Text the gateway doesn't confirm before the connection drops
+     * comes back through [undelivered].
      */
     fun submit(pane: String, text: String, enter: Boolean = true, clear: List<String> = emptyList()): Boolean = synchronized(link.lock) {
-        if (!link.up) return false
-        if (clear.isNotEmpty()) link.send(Keys(pane, clear))
-        val uploads = uploadDir()?.let(::uploadPaths)
-        val sent = if (uploads != null && uploads.containsMatchIn(text)) {
-            // Each upload is pasted on its own, as a file dropped on a terminal, so the app can take it in as one.
-            split(text, uploads).all { (part, upload) ->
-                if (upload || '\n' in part) link.send(Paste(pane, part)) else link.sendData(pane, part.encodeToByteArray())
-            } && (!enter || link.send(Keys(pane, listOf("Enter"))))
-        } else if ('\n' in text) {
-            link.send(Paste(pane, text)) && (!enter || link.send(Keys(pane, listOf("Enter"))))
-        } else {
-            link.sendData(pane, (if (enter) text + "\r" else text).encodeToByteArray())
-        }
-        if (sent) pending += Submitted(link.ping(Link.PONG_TIMEOUT_MS), pane, text)
-        sent
+        if (!link.up || !link.send(Submit(pane, text, enter, clear))) return false
+        pending += Submitted(link.ping(Link.PONG_TIMEOUT_MS), pane, text)
+        true
     }
 
     /** Messages are handled in order: everything sent before ping [id] arrived. */

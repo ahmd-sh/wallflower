@@ -58,6 +58,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.math.pow
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Window
+import sh.ahmd.wallflower.read.Activity
+import sh.ahmd.wallflower.read.activityOf
 import sh.ahmd.wallflower.terminal.Terminal
 import sh.ahmd.wallflower.terminal.TerminalView
 
@@ -180,7 +182,7 @@ private fun PaneCard(
         Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${pane.index}", color = if (shown) Palette.orange else Palette.dim, style = Type.label, fontWeight = FontWeight.Bold)
             Text(" ${pane.command}", color = Palette.fg, style = Type.label, maxLines = 1, modifier = Modifier.weight(1f))
-            if (pane.agent.isNotEmpty()) AgentDot(pane.agent)
+            activityOf(pane)?.takeIf { it != Activity.Idle }?.let { AgentDot(it) }
             Box(Modifier.clip(CircleShape).clickable(onClick = onClose).padding(10.dp)) { GlyphIcon(Glyph.Close, Palette.grey, size = 14.dp) }
         }
         // The pane as its own terminal draws it, shrunk to the card's width.

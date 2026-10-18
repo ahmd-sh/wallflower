@@ -6,15 +6,39 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.selects.select
+import sh.ahmd.wallflower.protocol.Picture
 import sh.ahmd.wallflower.protocol.Upload
 import sh.ahmd.wallflower.protocol.Uploaded
 
-/** Files sent to the Mac. */
+/** Files sent to the Mac, and pictures asked of it. */
 internal class Transfer(private val link: Link) {
     private val uploaded = ConcurrentHashMap<String, CompletableDeferred<Uploaded>>()
+    private val pictures = ConcurrentHashMap<String, CompletableDeferred<ByteArray?>>()
 
     fun uploaded(m: Uploaded) {
         uploaded[m.id]?.complete(m)
+    }
+
+    fun picture(id: String, bytes: ByteArray, offset: Int, length: Int) {
+        pictures.remove(id)?.complete(if (length > 0) bytes.copyOfRange(offset, offset + length) else null)
+    }
+
+    /** A picture entry's bytes, asked of the gateway; null if it doesn't have them, or the connection drops. */
+    suspend fun picture(pane: String, id: String): ByteArray? {
+        val ended = link.ended() ?: return null
+        val fresh = CompletableDeferred<ByteArray?>()
+        val reply = pictures.putIfAbsent(id, fresh) ?: fresh.also {
+            if (!link.send(Picture(pane, id), on = ended)) {
+                pictures.remove(id, it)
+                it.complete(null)
+            }
+        }
+        return try {
+            reply.unlessLost(ended)
+        } catch (_: IOException) {
+            pictures.remove(id, reply)
+            null
+        }
     }
 
     /**

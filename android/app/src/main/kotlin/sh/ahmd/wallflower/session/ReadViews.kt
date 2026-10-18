@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import sh.ahmd.wallflower.protocol.Entries
-import sh.ahmd.wallflower.protocol.Transcript
+import sh.ahmd.wallflower.protocol.Read
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.apply
 
@@ -27,8 +27,8 @@ internal class ReadViews(private val link: Link) {
         wanted = panes
         synchronized(link.lock) {
             if (link.linked) {
-                for (p in asked - panes) link.send(Transcript(p, on = false))
-                for (p in panes - asked) link.send(Transcript(p, on = true))
+                for (p in asked - panes) link.send(Read(p, on = false))
+                for (p in panes - asked) link.send(Read(p, on = true))
                 asked.clear()
                 asked += panes
             }

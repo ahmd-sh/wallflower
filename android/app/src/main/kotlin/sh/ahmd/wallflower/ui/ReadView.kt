@@ -105,6 +105,11 @@ import sh.ahmd.wallflower.screen.Prompt
 @Composable
 fun ReadView(
     reading: Reading,
+    /** What the program is doing, if it says, and since when (Unix milliseconds). */
+    activity: Activity?,
+    since: Long,
+    /** A picture entry's bytes, asked for when it shows. */
+    picture: suspend (String) -> ByteArray?,
     modifier: Modifier = Modifier,
     swipe: Swipe? = null,
     prompt: Prompt? = null,
@@ -133,20 +138,20 @@ fun ReadView(
     ) {
         val items = remember(reading.entries, reading.rewound) { items(reading.shown) }
         // A prompt while the program says it's busy is one left on the screen, or a list that looks like one.
-        val asking = prompt?.takeIf { reading.activity != Activity.Working }
+        val asking = prompt?.takeIf { activity != Activity.Working }
         // The program says it's waiting a moment after its screen moved on (answered), so for that long it's working.
         var unread by remember { mutableStateOf(false) }
-        LaunchedEffect(reading.activity, asking == null) {
+        LaunchedEffect(activity, asking == null) {
             unread = false
-            if (reading.activity == Activity.Waiting && asking == null) {
+            if (activity == Activity.Waiting && asking == null) {
                 delay(UNREAD_MS)
                 unread = true
             }
         }
         val status = when {
             asking != null -> Status.Asking
-            reading.activity == Activity.Working -> Status.Working
-            reading.activity == Activity.Waiting -> if (unread) Status.Waiting else Status.Working
+            activity == Activity.Working -> Status.Working
+            activity == Activity.Waiting -> if (unread) Status.Waiting else Status.Working
             else -> null
         }
         // The card opening and shutting, felt even where the status line leaves with it.
@@ -205,7 +210,7 @@ fun ReadView(
                                         Status.Asking -> shown?.let { p ->
                                             PromptCard(p, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }) { picked -> onPicked(p, picked) }
                                         }
-                                        Status.Working -> Working(reading.since)
+                                        Status.Working -> Working(since)
                                         Status.Waiting -> Waiting()
                                     }
                                 }
@@ -213,7 +218,7 @@ fun ReadView(
                         }
                         items(items.asReversed(), key = { it.key }, contentType = { it::class }) {
                             Box(Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())) {
-                                ItemView(it, ongoing = status != null && it === newest, beside = context.takeIf { _ -> it === newest })
+                                ItemView(it, picture, ongoing = status != null && it === newest, beside = context.takeIf { _ -> it === newest })
                             }
                         }
                         if (reading.more) item(key = "more") { Note("earlier messages are in the terminal") }
@@ -248,6 +253,9 @@ private enum class Status { Asking, Working, Waiting }
 
 private val PICTURE_HEIGHT = 260.dp
 
+/** What was left out, as "… 12 more lines"; null if nothing was. */
+private fun more(n: Int, thing: String) = if (n > 0) "… %,d more %s%s".format(n, thing, if (n == 1) "" else "s") else null
+
 /** How long the program can say it's waiting without a menu on screen before that's what it is. */
 private const val UNREAD_MS = 1_200L
 
@@ -256,11 +264,11 @@ private fun Item.copies(ongoing: Boolean) = this is Item.Said && last && !ongoin
 
 /** [ongoing]: the newest item of a turn still going, whose reply isn't the last word yet. [beside]: on its copy row's right. */
 @Composable
-private fun ItemView(item: Item, ongoing: Boolean, beside: (@Composable () -> Unit)? = null) {
+private fun ItemView(item: Item, picture: suspend (String) -> ByteArray?, ongoing: Boolean, beside: (@Composable () -> Unit)? = null) {
     when (item) {
         is Item.Steps -> Steps(item.entries)
         is Item.Said -> when (val e = item.entry) {
-            is Entry.Picture -> Picture(e)
+            is Entry.Picture -> Picture(e, picture)
             is Entry.Note -> Note(e.text)
             is Entry.Said -> if (e.by == Party.User) Prompt(e.text) else Reply(e.text, copyable = item.copies(ongoing), beside)
             is Entry.Step, is Entry.Thought -> Unit // folded into steps
@@ -388,11 +396,11 @@ private fun count(n: Int) = when {
 }
 
 @Composable
-private fun Picture(e: Entry.Picture) {
+private fun Picture(e: Entry.Picture, fetch: suspend (String) -> ByteArray?) {
     val width = LocalWindowInfo.current.containerSize.width
     val height = with(LocalDensity.current) { PICTURE_HEIGHT.roundToPx() }
     val bitmap by produceState(Pictures.kept(e.id), e.id) {
-        if (value == null) value = Pictures.decode(e.id, e.data, width, height)
+        if (value == null) value = fetch(e.id)?.let { Pictures.decode(e.id, it, width, height) }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (e.by == Party.User) Arrangement.End else Arrangement.Start) {
         val shown by animateFloatAsState(if (bitmap != null) 1f else 0f, Motion.effect(), label = "picture")
@@ -496,7 +504,11 @@ private fun Step(s: Entry) {
     val input = step?.input ?: (s as? Entry.Thought)?.text.orEmpty()
     val output = step?.output.orEmpty()
     val diff = step?.diff.orEmpty()
-    val diffLines = remember(diff) { if (diff.isEmpty()) emptyList() else diffLines(diff) }
+    val diffCut = step?.diffCut ?: 0
+    val diffLines = remember(diff, diffCut) {
+        if (diff.isEmpty()) emptyList() else diffLines(diff) + listOfNotNull(more(diffCut, "line")?.let { DiffLine(DiffLine.Kind.Note, it) })
+    }
+    val outputCut = step?.outputCut ?: 0
     val failed = step?.status == Entry.Step.Status.Failed
     var open by remember { mutableStateOf(false) }
     val feel = rememberFold()
@@ -556,7 +568,7 @@ private fun Step(s: Entry) {
                 DiffView(diffLines, Modifier.padding(top = 6.dp))
             } else if (output.isNotEmpty()) {
                 Text(
-                    output,
+                    output + more(outputCut, "character")?.let { "\n$it" }.orEmpty(),
                     style = mono.copy(color = if (failed) Palette.red else Palette.grey, fontSize = 11.sp, lineHeight = 15.sp),
                     softWrap = false,
                     modifier = Modifier

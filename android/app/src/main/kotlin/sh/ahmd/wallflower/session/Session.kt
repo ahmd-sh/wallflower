@@ -36,7 +36,7 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
     private val panes = Terminals(link)
     private val workspace = Workspace(link, panes)
     private val reads = ReadViews(link)
-    private val input = Input(link) { _uploadDir.value }
+    private val input = Input(link)
     private val transfer = Transfer(link)
 
     val status: StateFlow<Status> get() = link.status
@@ -83,6 +83,8 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
         }
 
         override fun data(pane: String, bytes: ByteArray, offset: Int, length: Int) = panes.write(pane, bytes, offset, length)
+
+        override fun picture(id: String, bytes: ByteArray, offset: Int, length: Int) = transfer.picture(id, bytes, offset, length)
 
         override fun down() = input.down()
     }
@@ -156,6 +158,9 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
 
     /** See [Input.submit]. */
     fun submit(pane: String, text: String, enter: Boolean = true, clear: List<String> = emptyList()) = input.submit(pane, text, enter, clear)
+
+    /** A picture entry of [pane]'s read view, its bytes asked of the gateway; null if they're gone. */
+    suspend fun picture(pane: String, id: String): ByteArray? = transfer.picture(pane, id)
 
     /** See [Transfer.upload]. */
     suspend fun upload(id: String, name: String, size: Long, input: InputStream, progress: (Long) -> Unit) =

@@ -3,19 +3,17 @@ package sh.ahmd.wallflower.read
 /**
  * A pane's read view, as its program has it. [loaded] once the gateway has
  * sent it; [more] if there were earlier entries than these; [problem] when
- * there's nothing to read. [activity] is what the program is doing, if it
- * says, and [since] when it started; [context] how many tokens it takes of
- * the program's context, 0 while that's unknown. [rewound]: the user's
- * message a rewind went back to before, which the program doesn't record
- * until the next message; it and what followed aren't [shown] till then.
+ * there's nothing to read. [context] is how many tokens it takes of the
+ * program's context, 0 while that's unknown. [rewound]: the user's message
+ * a rewind went back to before, which the program doesn't record until the
+ * next message; it and what followed aren't [shown] till then. What the
+ * program is doing is its pane's ([activityOf]).
  */
 data class Reading(
     val entries: List<Entry> = emptyList(),
     val more: Boolean = false,
     val problem: String? = null,
     val loaded: Boolean = false,
-    val activity: Activity? = null,
-    val since: Long = 0,
     val context: Int = 0,
     val rewound: String? = null,
 ) {

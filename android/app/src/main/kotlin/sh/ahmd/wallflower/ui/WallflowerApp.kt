@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -42,14 +41,13 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Constraints
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.read.Activity
 import sh.ahmd.wallflower.read.Reading
+import sh.ahmd.wallflower.read.activityOf
 import sh.ahmd.wallflower.session.Blocked
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Status
@@ -199,7 +197,7 @@ private fun TerminalScreen(
         val i = panes.indexOfFirst { it.id == pane?.id }
         if (i < 0) emptyList() else listOf(-1, 0, 1).map { panes[(i + it).mod(panes.size)] }.distinct()
     }.orEmpty()
-    val readViews = if (readViewOn) nearby.filter { it.transcript.isNotEmpty() }.map { it.id }.toSet() else emptySet()
+    val readViews = if (readViewOn) nearby.filter { it.reader.isNotEmpty() }.map { it.id }.toSet() else emptySet()
     LaunchedEffect(readViews) { session.read(readViews) }
     val readView = pane != null && pane.id in readViews
 
@@ -209,7 +207,7 @@ private fun TerminalScreen(
         return PaneActions(session, p, program, profile.clear ?: program.clearKeys, profile.stop)
     }
     val actions = remember(session, pane, bar) { pane?.let(::actionsOf) }
-    val activity by remember(session, pane?.id) { session.readings.map { it[pane?.id]?.activity }.distinctUntilChanged() }.collectAsState(null)
+    val activity = activityOf(pane)
     val screen = rememberPaneScreen(
         pane?.id,
         pane?.let { terminals[it.id] },
@@ -349,7 +347,7 @@ private fun TerminalScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AnimatedVisibility(
-                                    pane.transcript.isNotEmpty(),
+                                    pane.reader.isNotEmpty(),
                                     enter = fadeIn(Motion.effect()) + expandHorizontally(Motion.spatial()),
                                     exit = fadeOut(Motion.effect()) + shrinkHorizontally(Motion.spatial()),
                                 ) {
