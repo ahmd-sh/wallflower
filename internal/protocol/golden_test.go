@@ -71,6 +71,7 @@ func goldenServer(t *testing.T) []byte {
 		{ID: "u1", Role: "user", Kind: "text", Text: "fix the tests ✓"},
 		{ID: "a1", Role: "assistant", Kind: "tool", Text: "go test ./...", Name: "Bash", Output: "ok", Done: true},
 		{ID: "a2", Role: "assistant", Kind: "tool", Text: "rm -rf /", Name: "Bash", Output: "denied", Done: true, Error: true},
+		{ID: "a4", Role: "assistant", Kind: "tool", Text: "main.go", Name: "Edit", Output: "updated", Done: true, Diff: "@@ -3,2 +3,2 @@\n x\n-old\n+new ✓"},
 		{ID: "u2", Role: "user", Kind: "image", Mime: "image/png", Data: "iVBORw0KGgo="},
 		{ID: "a3", Role: "assistant", Kind: "text", Text: "**Done.** All `3` pass."},
 	}})

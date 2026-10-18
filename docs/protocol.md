@@ -139,7 +139,7 @@ An entry is `id`, `role` (`user` or `assistant`), `kind` and, by kind:
 |------|--------|---|
 | `text` | `text` | markdown |
 | `thinking` | `text` | |
-| `tool` | `name`, `text`, `output`?, `done`?, `error`? | `text` is what the call was asked, in brief; `output` is trimmed |
+| `tool` | `name`, `text`, `output`?, `done`?, `error`?, `diff`? | `text` is what the call was asked, in brief; `output` is trimmed; `diff` is the change it made to a file, as unified diff hunks (`@@ -a,b +c,d @@`, then lines starting ` `, `-` or `+`), trimmed with a last line saying how many more |
 | `image` | `mime`, `data` | base64 |
 | `note` | `text` | an event rather than something said: an interruption, a compacted conversation |
 

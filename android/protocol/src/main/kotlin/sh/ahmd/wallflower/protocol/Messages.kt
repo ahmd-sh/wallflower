@@ -215,6 +215,8 @@ data class Entry(
     val text: String = "",
     val name: String = "",
     val output: String = "",
+    /** A tool's change to a file, as unified diff hunks. */
+    val diff: String = "",
     val done: Boolean = false,
     val error: Boolean = false,
     val mime: String = "",

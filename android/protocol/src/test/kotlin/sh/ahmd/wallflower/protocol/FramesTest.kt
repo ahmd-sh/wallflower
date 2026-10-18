@@ -81,6 +81,7 @@ class FramesTest {
                     Entry("u1", "user", "text", "fix the tests ✓"),
                     Entry("a1", "assistant", "tool", "go test ./...", name = "Bash", output = "ok", done = true),
                     Entry("a2", "assistant", "tool", "rm -rf /", name = "Bash", output = "denied", done = true, error = true),
+                    Entry("a4", "assistant", "tool", "main.go", name = "Edit", output = "updated", diff = "@@ -3,2 +3,2 @@\n x\n-old\n+new ✓", done = true),
                     Entry("u2", "user", "image", mime = "image/png", data = "iVBORw0KGgo="),
                     Entry("a3", "assistant", "text", "**Done.** All `3` pass."),
                 ),

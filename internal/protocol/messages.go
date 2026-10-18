@@ -226,6 +226,7 @@ type Entry struct {
 	Text   string `json:"text,omitempty"`   // what was said; for a tool, what it was asked
 	Name   string `json:"name,omitempty"`   // tool
 	Output string `json:"output,omitempty"` // tool, trimmed
+	Diff   string `json:"diff,omitempty"`   // tool: the change it made to a file, as unified diff hunks
 	Done   bool   `json:"done,omitempty"`   // tool finished
 	Error  bool   `json:"error,omitempty"`  // tool failed
 	Mime   string `json:"mime,omitempty"`   // image
