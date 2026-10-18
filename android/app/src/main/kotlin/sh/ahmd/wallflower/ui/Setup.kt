@@ -1,11 +1,8 @@
 package sh.ahmd.wallflower.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,27 +15,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import sh.ahmd.wallflower.BuildConfig
@@ -73,7 +62,7 @@ fun SetupScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text("wallflower", color = Palette.fg, fontFamily = words, fontSize = wordSize(22.sp, 28.sp), fontWeight = FontWeight.Bold)
-        Text("Your Mac's tmux, over Tailscale and ssh.", color = Palette.grey, fontFamily = words, fontSize = wordSize(13.sp, 15.sp))
+        Text("Your Mac's tmux, over Tailscale and ssh.", color = Palette.grey, style = Type.body)
 
         Section("mac")
         Field("host", address) { address = it }
@@ -87,7 +76,7 @@ fun SetupScreen(
         if (hasKey && fingerprint != null) {
             Body("ecdsa p-256 · in secure hardware · unlocks with fingerprint")
             Text(fingerprint, color = Palette.aqua, fontFamily = Mono, fontSize = 12.sp)
-            Text("Authorize it on the Mac (restricted to running wallflower, from Tailscale):", color = Palette.fg, fontFamily = words, fontSize = wordSize(12.sp, 14.sp))
+            Text("Authorize it on the Mac (restricted to running wallflower, from Tailscale):", color = Palette.fg, style = Type.label)
             val command = authorizeCommand()
             Code(command)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -96,7 +85,7 @@ fun SetupScreen(
             }
         } else {
             Button("create key") { keyError = createKey() }
-            keyError?.let { Text(it, color = Palette.red, fontFamily = words, fontSize = wordSize(12.sp, 14.sp)) }
+            keyError?.let { Text(it, color = Palette.red, style = Type.label) }
         }
 
         Spacer(Modifier.height(4.dp))
@@ -176,27 +165,8 @@ fun BlockedCard(
 }
 
 @Composable
-internal fun Section(label: String) = Text(
-    label,
-    color = Palette.orange,
-    fontFamily = words,
-    fontSize = wordSize(12.sp, 15.sp),
-    fontWeight = if (grotesque) FontWeight.SemiBold else FontWeight.Bold,
-    modifier = Modifier.padding(top = 8.dp),
-)
-
-@Composable
 private fun Title(text: String, color: Color = Palette.fg) =
     Text(text, color = color, fontFamily = words, fontSize = wordSize(14.sp, 17.sp), fontWeight = if (grotesque) FontWeight.SemiBold else FontWeight.Bold)
-
-@Composable
-internal fun Body(text: String) = Text(
-    text,
-    color = Palette.grey,
-    fontFamily = words,
-    fontSize = wordSize(12.sp, 14.sp),
-    lineHeight = if (grotesque) 20.sp else TextUnit.Unspecified,
-)
 
 @Composable
 private fun Code(text: String) = Text(
@@ -206,64 +176,6 @@ private fun Code(text: String) = Text(
     fontSize = 11.sp,
     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Palette.bg1).padding(10.dp),
 )
-
-@Composable
-internal fun Field(label: String, value: String, keyboard: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = Palette.dim, fontFamily = words, fontSize = wordSize(11.sp, 13.sp))
-        BasicTextField(
-            value = value,
-            onValueChange = onChange,
-            singleLine = true,
-            textStyle = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp),
-            cursorBrush = SolidColor(Palette.orange),
-            keyboardOptions = KeyboardOptions(keyboardType = keyboard, autoCorrectEnabled = false),
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Palette.bg1).padding(12.dp),
-        )
-    }
-}
-
-@Composable
-internal fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
-    val haptics = haptics()
-    val flip = {
-        haptics.toggle(!on)
-        onChange(!on)
-    }
-    if (grotesque) {
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = flip).padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Checkbox(on, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = Palette.orange, uncheckedColor = Palette.grey, checkmarkColor = Palette.bg0))
-            Text(label, color = Palette.fg, fontFamily = Grotesque, fontSize = 15.sp, lineHeight = 20.sp, modifier = Modifier.padding(start = 14.dp).weight(1f))
-        }
-        return
-    }
-    Row(Modifier.clickable(onClick = flip), verticalAlignment = Alignment.CenterVertically) {
-        Text(if (on) "[x] " else "[ ] ", color = Palette.orange, fontFamily = Mono, fontSize = 13.sp)
-        Text(label, color = Palette.fg, fontFamily = Mono, fontSize = 12.sp)
-    }
-}
-
-@Composable
-internal fun Button(label: String, primary: Boolean = false, onClick: () -> Unit) = Text(
-    label,
-    color = if (primary) Palette.bg0 else Palette.fg,
-    fontFamily = words,
-    fontSize = wordSize(13.sp, 14.sp),
-    fontWeight = if (!primary) FontWeight.Normal else if (grotesque) FontWeight.SemiBold else FontWeight.Bold,
-    modifier = Modifier
-        .clip(RoundedCornerShape(8.dp))
-        .background(if (primary) Palette.green else Palette.bg3)
-        .clickable(onClick = onClick)
-        .padding(horizontal = 16.dp, vertical = 10.dp),
-)
-
-internal fun copy(context: Context, text: String) {
-    val clipboard = context.getSystemService(ClipboardManager::class.java)
-    clipboard.setPrimaryClip(ClipData.newPlainText("wallflower", text))
-}
 
 private fun share(context: Context, text: String) {
     val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)

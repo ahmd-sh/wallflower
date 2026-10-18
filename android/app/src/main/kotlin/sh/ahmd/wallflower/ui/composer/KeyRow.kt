@@ -1,7 +1,5 @@
 package sh.ahmd.wallflower.ui.composer
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -12,7 +10,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,8 +37,8 @@ import kotlinx.coroutines.launch
 import sh.ahmd.wallflower.BarKey
 import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.ui.Mono
-import sh.ahmd.wallflower.ui.Motion
 import sh.ahmd.wallflower.ui.Palette
+import sh.ahmd.wallflower.ui.Pill
 import sh.ahmd.wallflower.ui.haptics
 
 /** The key bar: its keys, scrolling sideways, then ✎ to edit them. */
@@ -98,27 +95,12 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
         }
         onKey(key)
     }
-    val background by animateColorAsState(
-        when {
-            armed -> Palette.orange
-            pressed -> Palette.bg3
-            else -> Palette.bg2
-        },
-        Motion.effect(),
-        label = "key",
-    )
-    val ink by animateColorAsState(if (armed) Palette.bg0 else Palette.fg, Motion.effect(), label = "key")
-    Text(
+    Pill(
         key.label,
-        color = ink,
-        fontFamily = Mono,
-        fontSize = 13.sp,
-        maxLines = 1,
-        modifier = Modifier
-            .height(36.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(background)
-            .pointerInput(key) {
+        on = armed,
+        pressed = pressed,
+        modifier = Modifier.height(36.dp),
+        input = Modifier.pointerInput(key) {
                 detectTapGestures(onPress = {
                     pressed = true
                     var repeated = false
@@ -140,8 +122,7 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
                     pressed = false
                     if (released && !repeated) fire(false)
                 })
-            }
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+            },
     )
 }
 

@@ -52,7 +52,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -179,8 +178,8 @@ private fun PaneCard(
             .clickable(onClick = onClick),
     ) {
         Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${pane.index}", color = if (shown) Palette.orange else Palette.dim, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), fontWeight = FontWeight.Bold)
-            Text(" ${pane.command}", color = Palette.fg, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), maxLines = 1, modifier = Modifier.weight(1f))
+            Text("${pane.index}", color = if (shown) Palette.orange else Palette.dim, style = Type.label, fontWeight = FontWeight.Bold)
+            Text(" ${pane.command}", color = Palette.fg, style = Type.label, maxLines = 1, modifier = Modifier.weight(1f))
             if (pane.agent.isNotEmpty()) AgentDot(pane.agent)
             Box(Modifier.clip(CircleShape).clickable(onClick = onClose).padding(10.dp)) { GlyphIcon(Glyph.Close, Palette.grey, size = 14.dp) }
         }
@@ -215,7 +214,7 @@ private fun NewPaneCard(modifier: Modifier, onClick: () -> Unit) {
             .background(Palette.bg1)
             .clickable(onClick = onClick),
     ) {
-        Text("new pane", color = Palette.grey, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
+        Text("new pane", color = Palette.grey, style = Type.label, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp))
         Box(Modifier.fillMaxWidth().aspectRatio(CARD_RATIO), contentAlignment = Alignment.Center) {
             GlyphIcon(Glyph.Plus, Palette.grey, size = 28.dp)
         }

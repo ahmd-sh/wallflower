@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,7 +17,6 @@ import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -163,15 +161,14 @@ fun PopupMenu(
         Column(Modifier.widthIn(min = 150.dp).padding(horizontal = 4.dp)) {
             header?.let {
                 Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) { it() }
-                MenuRule()
+                Rule(Modifier.padding(horizontal = 12.dp))
             }
             actions.forEachIndexed { i, action ->
-                if (i > 0) MenuRule()
+                if (i > 0) Rule(Modifier.padding(horizontal = 12.dp))
                 Text(
                     action.label,
                     color = action.color,
-                    fontFamily = words,
-                    fontSize = wordSize(13.sp, 15.sp),
+                    style = Type.body,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
@@ -185,9 +182,6 @@ fun PopupMenu(
         }
     }
 }
-
-@Composable
-private fun MenuRule() = Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(1.dp).background(Palette.bg2))
 
 /** How long a menu takes to open and to shut (Material's). */
 private const val MENU_IN_MS = 120L
@@ -203,7 +197,7 @@ fun ConfirmClose(title: String, body: String, action: String, onConfirm: (dontAs
         title = { DialogTitle(title) },
         text = {
             Column {
-                Text(body, color = Palette.grey, fontFamily = words, fontSize = wordSize(13.sp, 15.sp), lineHeight = wordSize(TextUnit.Unspecified, 21.sp))
+                Text(body, color = Palette.grey, style = Type.body, lineHeight = wordSize(TextUnit.Unspecified, 21.sp))
                 Row(
                     Modifier.padding(top = 8.dp).clip(RoundedCornerShape(8.dp)).clickable { never = !never }.padding(vertical = 6.dp).padding(end = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -211,9 +205,9 @@ fun ConfirmClose(title: String, body: String, action: String, onConfirm: (dontAs
                     Checkbox(
                         checked = never,
                         onCheckedChange = null,
-                        colors = CheckboxDefaults.colors(checkedColor = Palette.orange, uncheckedColor = Palette.grey, checkmarkColor = Palette.bg0),
+                        colors = checkboxColors(),
                     )
-                    Text("don't ask again", color = Palette.fg, fontFamily = words, fontSize = wordSize(13.sp, 15.sp), modifier = Modifier.padding(start = 12.dp))
+                    Text("don't ask again", color = Palette.fg, style = Type.body, modifier = Modifier.padding(start = 12.dp))
                 }
             }
         },
@@ -254,4 +248,4 @@ fun RenameDialog(name: String, onRename: (String) -> Unit, onDismiss: () -> Unit
 
 @Composable
 private fun DialogTitle(text: String) =
-    Text(text, color = Palette.fg, fontFamily = words, fontSize = wordSize(16.sp, 20.sp), fontWeight = if (grotesque) FontWeight.SemiBold else FontWeight.Bold)
+    Text(text, color = Palette.fg, style = Type.title, fontWeight = if (grotesque) FontWeight.SemiBold else FontWeight.Bold)

@@ -232,8 +232,7 @@ fun ReadView(
                         Text(
                             "↓ latest",
                             color = Palette.fg,
-                            fontFamily = words,
-                            fontSize = wordSize(12.sp, 14.sp),
+                            style = Type.label,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(Palette.bg2)
@@ -314,7 +313,7 @@ private fun Reply(text: String, copyable: Boolean, beside: (@Composable () -> Un
                     .padding(vertical = 4.dp, horizontal = 2.dp),
             ) {
                 Crossfade(copier.copied, animationSpec = Motion.effect(), label = "copy") {
-                    Text(if (it) "copied" else "copy", color = Palette.dim, fontFamily = words, fontSize = wordSize(11.sp, 13.sp))
+                    Text(if (it) "copied" else "copy", color = Palette.dim, style = Type.caption)
                 }
             }
             beside?.invoke()
@@ -366,8 +365,7 @@ private fun ContextButton(tokens: Int, onCompact: (() -> Unit)?) {
         Text(
             "context ${count(tokens)}",
             color = Palette.purple,
-            fontFamily = words,
-            fontSize = wordSize(11.sp, 13.sp),
+            style = Type.caption,
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
                 .clickable(enabled = onCompact != null) { open = true } // the menu's opening is felt
@@ -421,8 +419,7 @@ private fun Note(text: String) {
     Text(
         text,
         color = Palette.dim,
-        fontFamily = words,
-        fontSize = wordSize(11.sp, 13.sp),
+        style = Type.caption,
         textAlign = TextAlign.Center,
         maxLines = if (open) Int.MAX_VALUE else 2,
         overflow = TextOverflow.Ellipsis,
@@ -462,8 +459,7 @@ private fun Steps(steps: List<Entry>) {
             Text(
                 summary,
                 color = if (failed > 0) Palette.red else Palette.grey,
-                fontFamily = words,
-                fontSize = wordSize(12.sp, 14.sp),
+                style = Type.label,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 8.dp),
@@ -648,7 +644,7 @@ private fun Working(since: Long) {
         Running(Modifier)
         Text(
             "working" + (if (since > 0) " · " + duration(seconds) else ""),
-            style = TextStyle(fontFamily = words, fontSize = wordSize(12.sp, 14.sp)),
+            style = Type.label,
             modifier = Modifier
                 .padding(start = 8.dp)
                 .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
@@ -681,8 +677,7 @@ private fun Waiting() {
         Text(
             "waiting for you · answer in the terminal",
             color = Palette.grey,
-            fontFamily = words,
-            fontSize = wordSize(12.sp, 14.sp),
+            style = Type.label,
             modifier = Modifier.padding(start = 8.dp),
         )
     }
@@ -690,5 +685,5 @@ private fun Waiting() {
 
 @Composable
 private fun Hint(text: String) = Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-    Text(text, color = Palette.grey, fontFamily = words, fontSize = wordSize(13.sp, 15.sp), textAlign = TextAlign.Center)
+    Text(text, color = Palette.grey, style = Type.body, textAlign = TextAlign.Center)
 }

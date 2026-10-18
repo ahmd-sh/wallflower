@@ -140,8 +140,8 @@ internal fun TabBar(
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("${w.index}", color = number, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), fontWeight = FontWeight.Bold)
-                        Text(" ${w.name}", color = name, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), maxLines = 1)
+                        Text("${w.index}", color = number, style = Type.label, fontWeight = FontWeight.Bold)
+                        Text(" ${w.name}", color = name, style = Type.label, maxLines = 1)
                         if (agent != null) AgentDot(agent, Modifier.padding(start = 6.dp))
                     }
                     PopupMenu(

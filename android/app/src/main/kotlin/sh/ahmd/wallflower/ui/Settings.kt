@@ -1,6 +1,5 @@
 package sh.ahmd.wallflower.ui
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -90,7 +89,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("${host.user}@${host.address}:${host.port}", color = Palette.fg, fontFamily = Mono, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text("edit ›", color = Palette.grey, fontFamily = words, fontSize = wordSize(12.sp, 14.sp))
+                Text("edit ›", color = Palette.grey, style = Type.label)
             }
         }
 
@@ -311,20 +310,13 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable () -> U
 @Composable
 private fun Chip(label: String, selected: Boolean, font: FontFamily = Mono, onClick: () -> Unit) {
     val haptics = haptics()
-    val background by animateColorAsState(if (selected) Palette.orange else Palette.bg2, Motion.effect(), label = "chip")
-    val ink by animateColorAsState(if (selected) Palette.bg0 else Palette.fg, Motion.effect(), label = "chip")
-    Text(
+    Pill(
         label,
-        color = ink,
-        fontFamily = font,
-        fontSize = 13.sp,
-        modifier = Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(background)
-            .clickable {
-                if (!selected) haptics.tick()
-                onClick()
-            }
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+        on = selected,
+        font = font,
+        input = Modifier.clickable {
+            if (!selected) haptics.tick()
+            onClick()
+        },
     )
 }

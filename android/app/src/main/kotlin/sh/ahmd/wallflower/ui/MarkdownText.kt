@@ -112,7 +112,7 @@ private fun BlockView(b: Block) {
                 }
             }
         }
-        Block.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(Palette.bg3))
+        Block.Rule -> Rule(Modifier.padding(vertical = 4.dp), Palette.bg3)
     }
 }
 

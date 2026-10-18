@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -68,7 +67,7 @@ fun PromptCard(prompt: Prompt, onKeys: (List<String>) -> Unit, modifier: Modifie
             if (prompt.tabs.isEmpty() && prompt.lines.isEmpty()) Spacer(Modifier.height(18.dp))
             Column {
                 prompt.options.forEachIndexed { i, option ->
-                    if (i > 0) Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(1.dp).background(Palette.bg2))
+                    if (i > 0) Rule(Modifier.padding(horizontal = 10.dp))
                     Choice(option) {
                         if (option.checked != null) haptics.toggle(option.checked != true) else haptics.confirm()
                         onKeys(prompt.keys(option))
@@ -157,7 +156,7 @@ private fun Choice(option: Prompt.Option, onClick: () -> Unit) {
             checked != null -> Checkbox(
                 checked,
                 onCheckedChange = null,
-                colors = CheckboxDefaults.colors(checkedColor = Palette.orange, uncheckedColor = Palette.grey, checkmarkColor = Palette.bg0),
+                colors = checkboxColors(),
             )
             // As wide as a box, so labels line up whichever a menu mixes.
             else -> Text(

@@ -3,19 +3,15 @@ package sh.ahmd.wallflower.ui
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -30,9 +26,7 @@ internal fun ViewToggle(reading: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .padding(vertical = 8.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Palette.bg1)
-            .border(1.dp, Palette.border, RoundedCornerShape(8.dp))
+            .chrome()
             .clickable(onClick = onClick)
             .padding(horizontal = 9.dp, vertical = 4.dp),
     ) {
@@ -69,9 +63,7 @@ internal fun PaneDots(count: Int, position: () -> Float, onClick: () -> Unit) {
     Canvas(
         Modifier
             .padding(8.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Palette.bg1)
-            .border(1.dp, Palette.border, RoundedCornerShape(8.dp))
+            .chrome()
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp)
             .size(width = dot * count + gap * (count - 1).coerceAtLeast(0), height = dot),
