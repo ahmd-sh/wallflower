@@ -1,14 +1,17 @@
 package gateway
 
 import (
+	"time"
+
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 const (
-	highWater  = 1 << 20   // stop forwarding pane output above this backlog
-	lowWater   = 256 << 10 // repaint stale panes once the backlog is below this
-	maxHistory = 10000     // lines a repaint holds at most, so it stays well inside a frame
+	highWater    = 1 << 20   // stop forwarding pane output above this backlog
+	lowWater     = 256 << 10 // repaint stale panes while the backlog is below this
+	repaintEvery = 100 * time.Millisecond
+	maxHistory   = 10000 // lines a repaint holds at most, so it stays well inside a frame
 )
 
 // A pane the client has open: repainted, then its output streamed.
@@ -43,21 +46,27 @@ func (g *gateway) output(n tmux.Notification) {
 		return
 	}
 	if g.out.buffered() > highWater {
-		p.stale = true
+		p.stale, g.stale = true, true
 		return
 	}
 	g.out.push(protocol.AppendData(nil, n.Pane, n.Data))
 }
 
+// repaintStale repaints stale panes while the backlog stays low, so a
+// client that fell behind isn't sent every repaint at once; those left wait
+// for the next go.
 func (g *gateway) repaintStale() {
-	if g.out.buffered() > lowWater {
-		return
-	}
+	g.stale = false
 	for id, p := range g.panes {
-		if p.stale {
-			if err := g.open(id, p.history); err != nil {
-				delete(g.panes, id)
-			}
+		if !p.stale {
+			continue
+		}
+		if g.out.buffered() > lowWater {
+			g.stale = true
+			return
+		}
+		if err := g.open(id, p.history); err != nil {
+			delete(g.panes, id)
 		}
 	}
 }

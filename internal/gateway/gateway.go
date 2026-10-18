@@ -43,6 +43,7 @@ type gateway struct {
 	programs  map[string]string // tty and versioned command -> the name it was run as
 
 	panes  map[string]*pane // panes the client has open
+	stale  bool             // some are, so repaintStale is due
 	zoomed map[string]bool  // windows the client zoomed -> zoomed before
 
 	held   []protocol.Frame // the client's frames waiting for resume, in order
@@ -159,9 +160,7 @@ func readHello(r *protocol.Reader) (*protocol.ClientHello, error) {
 }
 
 func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readErr <-chan error) error {
-	tick := time.NewTicker(100 * time.Millisecond)
-	defer tick.Stop()
-	var stateDue <-chan time.Time
+	var stateDue, repaintDue <-chan time.Time
 	for {
 		select {
 		case n, ok := <-g.tmux.Events():
@@ -191,13 +190,17 @@ func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readEr
 		case <-stateDue:
 			stateDue = nil
 			g.sendState()
-		case <-tick.C:
+		case <-repaintDue:
+			repaintDue = nil
 			g.repaintStale()
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 		if g.dirty && stateDue == nil {
 			stateDue = time.After(stateDelay)
+		}
+		if g.stale && repaintDue == nil {
+			repaintDue = time.After(repaintEvery)
 		}
 	}
 }
