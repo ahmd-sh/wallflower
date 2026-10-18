@@ -35,6 +35,7 @@ const (
 	stateDelay   = 15 * time.Millisecond
 	uploadSettle = 150 * time.Millisecond
 	enterSettle  = 50 * time.Millisecond
+	maxHistory   = 10000 // lines a repaint holds at most, so it stays well inside a frame
 	maxSize      = 1000
 )
 
@@ -493,6 +494,7 @@ func (g *gateway) open(id string, history int) error {
 	if history <= 0 {
 		history = protocol.DefaultHistory
 	}
+	history = min(history, maxHistory)
 	r, err := g.tmux.Command(captureCommand(id, history))
 	if err != nil {
 		return err
@@ -789,6 +791,9 @@ func (g *gateway) sendUploaded(id, path string, err error) {
 
 func (g *gateway) send(m protocol.Message) {
 	b, err := protocol.AppendJSON(nil, m)
+	if errors.Is(err, protocol.ErrTooBig) {
+		b, err = protocol.AppendJSON(nil, protocol.Error{Message: "a " + m.Type() + " message too big to send"})
+	}
 	if err != nil {
 		panic(err) // our own message types always encode
 	}

@@ -112,8 +112,9 @@ terminal, which keeps streaming as usual. It's read-only: input still goes
 to the terminal.
 
 After `transcript` with `on`, `entries` with `reset` carries the latest
-entries (200; `more` says there are earlier ones), then `entries` without
-`reset` as the program writes more. An entry with an `id` already sent
+entries (up to 200, as many as fit in about 4 MiB; `more` says there are
+earlier ones), then `entries` without `reset` as the program writes more,
+split over several messages when there's a lot. An entry with an `id` already sent
 replaces it: a tool call gets its result. An `error` says there's no
 conversation (any more), e.g. the program exited. A new conversation in the
 same process (`/clear`) arrives as another `reset`, as does the

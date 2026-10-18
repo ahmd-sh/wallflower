@@ -93,6 +93,9 @@ const (
 	// firstRead is how much of a transcript's end is read for its recent
 	// entries, doubling until there are enough.
 	firstRead = 2 << 20
+	// batch bounds what one message of entries carries, well inside a
+	// frame's 16 MiB: entries are mostly small, but an image can be 2 MiB.
+	batch = 4 << 20
 )
 
 // Follow sends pid's conversation: its recent entries, then entries as
@@ -160,8 +163,8 @@ func Follow(ctx context.Context, src Source, pid int, send func(protocol.Entries
 				f = nil
 				continue
 			}
-			if len(changed) > 0 {
-				send(protocol.Entries{Entries: changed})
+			for _, b := range batches(changed) {
+				send(protocol.Entries{Entries: b})
 			}
 		}
 		now := measured
@@ -208,10 +211,44 @@ func recent(f *os.File, src Source, n int) (entries []protocol.Entry, more bool,
 		entries = kept(p, collect(p, lines))
 		end = start + int64(got-len(rest))
 		if len(entries) >= n || start == 0 {
-			more = start > 0 || len(entries) > n
-			return entries[max(len(entries)-n, 0):], more, p, end
+			from := newest(entries, max(len(entries)-n, 0))
+			return entries[from:], start > 0 || from > 0, p, end
 		}
 	}
+}
+
+// weight is about what an entry adds to a message.
+func weight(e protocol.Entry) int {
+	return len(e.Text) + len(e.Output) + len(e.Diff) + len(e.Data) + 256
+}
+
+// newest is where the newest entries from from on that fit in one message
+// start; the last always does.
+func newest(entries []protocol.Entry, from int) int {
+	size := 0
+	for i := len(entries) - 1; i >= from; i-- {
+		if size += weight(entries[i]); size > batch && i < len(entries)-1 {
+			return i + 1
+		}
+	}
+	return from
+}
+
+// batches splits entries, in order, into runs that each fit in one message.
+func batches(entries []protocol.Entry) [][]protocol.Entry {
+	var out [][]protocol.Entry
+	start, size := 0, 0
+	for i, e := range entries {
+		if size+weight(e) > batch && i > start {
+			out = append(out, entries[start:i])
+			start, size = i, 0
+		}
+		size += weight(e)
+	}
+	if start < len(entries) {
+		out = append(out, entries[start:])
+	}
+	return out
 }
 
 // collect parses lines into the entries they add or change, in order, each

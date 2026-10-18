@@ -231,6 +231,49 @@ func TestFollowWaitsForTheFile(t *testing.T) {
 	}
 }
 
+func TestEntriesFitAMessage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "big.jsonl")
+	mib := strings.Repeat("x", 1<<20) // an entry about the size of a pasted screenshot
+	var b strings.Builder
+	for i := range 10 {
+		b.WriteString(line(fmt.Sprint(i), mib))
+	}
+	appendTo(t, path, b.String())
+	got, _ := follow(t, &fake{running: map[int]Session{7: {Path: path}}}, 7)
+
+	// The first message holds as many of the newest as fit, and says there are more.
+	if e := next(t, got); !e.Reset || !e.More || ids(e) != "7 8 9" {
+		t.Fatalf("first: more=%v ids=%s", e.More, ids(e))
+	}
+
+	// Many written at once come in as many messages as they need, in order.
+	b.Reset()
+	for i := 10; i < 17; i++ {
+		b.WriteString(line(fmt.Sprint(i), mib))
+	}
+	appendTo(t, path, b.String())
+	var all []string
+	for n := 0; n < 7; {
+		e := next(t, got)
+		if e.Reset || len(e.Entries) > 3 {
+			t.Fatalf("batch: reset=%v n=%d", e.Reset, len(e.Entries))
+		}
+		n += len(e.Entries)
+		all = append(all, ids(e))
+	}
+	if strings.Join(all, " ") != "10 11 12 13 14 15 16" || len(all) < 3 {
+		t.Fatalf("got %q", all)
+	}
+}
+
+func ids(e protocol.Entries) string {
+	var s []string
+	for _, x := range e.Entries {
+		s = append(s, x.ID)
+	}
+	return strings.Join(s, " ")
+}
+
 func TestRecentOfALongTranscript(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "long.jsonl")
 	var b strings.Builder

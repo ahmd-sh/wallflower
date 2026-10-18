@@ -24,6 +24,9 @@ const (
 // reader allocate without limit.
 const MaxFrame = 16 << 20
 
+// ErrTooBig is a message too big for a frame, which no reader would take.
+var ErrTooBig = errors.New("protocol: message too big for a frame")
+
 type Frame struct {
 	Type byte
 	ID   string // FrameData: the pane; FrameUpload: the upload
@@ -111,6 +114,9 @@ func AppendJSON(dst []byte, m Message) ([]byte, error) {
 		head += ","
 	}
 	n := 1 + len(head) + len(body) - 1
+	if n > MaxFrame {
+		return dst, ErrTooBig
+	}
 	dst = binary.BigEndian.AppendUint32(dst, uint32(n))
 	dst = append(dst, FrameJSON)
 	dst = append(dst, head...)

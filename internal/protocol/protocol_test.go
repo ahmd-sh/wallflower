@@ -3,8 +3,10 @@ package protocol
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -85,6 +87,13 @@ func TestReaderRejectsBadFrames(t *testing.T) {
 		if _, err := NewReader(bytes.NewReader(b)).Next(); err == nil || err == io.EOF {
 			t.Errorf("%s: err = %v", name, err)
 		}
+	}
+}
+
+func TestWriterRefusesWhatNoReaderTakes(t *testing.T) {
+	big := Entries{Pane: "%1", Entries: []Entry{{ID: "a", Role: "user", Kind: "text", Text: strings.Repeat("x", MaxFrame)}}}
+	if b, err := AppendJSON([]byte("keep"), big); !errors.Is(err, ErrTooBig) || string(b) != "keep" {
+		t.Fatalf("err %v, kept %q", err, b[:min(len(b), 8)])
 	}
 }
 
