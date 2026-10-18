@@ -325,7 +325,8 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 old?.close()
             }
             is Pong -> {
-                if (m.id == pings.get()) deadline = 0
+                // Any pong says the link is alive; only the newest leaves nothing outstanding. (Uploads keep pings in flight.)
+                deadline = if (m.id == pings.get()) 0 else SystemClock.elapsedRealtime() + PONG_TIMEOUT_MS
                 arrivals.headMap(m.id, true).apply {
                     values.forEach { it.complete(Unit) }
                     clear()
