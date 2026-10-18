@@ -411,6 +411,26 @@ func TestPaste(t *testing.T) {
 	c.output(p, "^[[200~one $HOME^M'two'^[[201~")
 }
 
+func TestEnterOnItsOwn(t *testing.T) {
+	c := connect(t, 60, 20)
+	p := activePane(c.state("state", func(s protocol.State) bool { return true })).ID
+	c.send(protocol.Open{Pane: p})
+	c.output(p, "$")
+
+	// Text sent with an Enter arrives in two reads, the Enter alone, so it
+	// isn't taken as a paste.
+	c.sendText(p, `perl -e 'system "stty raw -echo"; $|=1; print "<", length($b), ">" while sysread STDIN, $b, 4096'`+"\r")
+	time.Sleep(200 * time.Millisecond)
+	c.sendText(p, "say just: ok\r")
+	var out []byte
+	c.expect("two reads", func(f protocol.Frame, _ protocol.Message) bool {
+		if f.Type == protocol.FrameData && f.ID == p {
+			out = append(out, f.Data...)
+		}
+		return bytes.Contains(out, []byte("<12><1>"))
+	})
+}
+
 func TestVersionedProgram(t *testing.T) {
 	c := connect(t, 60, 20)
 	c.state("state", func(s protocol.State) bool { return true })

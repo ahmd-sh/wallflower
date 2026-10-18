@@ -34,6 +34,7 @@ const (
 	lowWater     = 256 << 10 // repaint stale panes once the backlog is below this
 	stateDelay   = 15 * time.Millisecond
 	uploadSettle = 150 * time.Millisecond
+	enterSettle  = 50 * time.Millisecond
 	maxSize      = 1000
 )
 
@@ -718,8 +719,17 @@ func (g *gateway) claimSize(pane string) {
 }
 
 // sendText types data into the pane byte for byte; send-keys -H takes hex,
-// so no quoting is involved.
+// so no quoting is involved. An Enter that ends more than itself goes a
+// moment after the rest: a program that reads it all at once, like Claude
+// Code, takes it as a paste with the Enter in it, and nothing is submitted.
 func (g *gateway) sendText(pane string, data []byte) error {
+	if n := len(data) - 1; n > 0 && data[n] == '\r' {
+		if err := g.sendText(pane, data[:n]); err != nil {
+			return err
+		}
+		time.Sleep(enterSettle)
+		data = data[n:]
+	}
 	const perCommand, perLine = 512, 16
 	var cmds []string
 	for len(data) > 0 {
