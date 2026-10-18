@@ -1,12 +1,14 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/ahmd-sh/wallflower/internal/claude"
-	"github.com/ahmd-sh/wallflower/internal/transcript"
+	"github.com/ahmd-sh/wallflower/internal/gateway"
+	"github.com/ahmd-sh/wallflower/internal/readview"
 )
 
 const usage = `usage: wallflower <command> [flags]
@@ -36,18 +38,25 @@ func main() {
 	}
 }
 
+// gatewayFlags adds the flags that say how a gateway runs, and returns
+// what they say, once parsed.
+func gatewayFlags(fs *flag.FlagSet) func() gateway.Options {
+	socket := fs.String("L", "", "tmux socket name, or path if it contains a slash")
+	session := fs.String("t", "", "session to attach to when the client doesn't name one")
+	claudeDir := fs.String("claude", defaultClaudeDir(), "Claude Code's data, for its read views (empty: none)")
+	return func() gateway.Options {
+		var readers []readview.Source
+		if *claudeDir != "" {
+			readers = append(readers, claude.New(*claudeDir))
+		}
+		return gateway.Options{Socket: *socket, Session: *session, Readers: readers}
+	}
+}
+
 func defaultClaudeDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
 	return filepath.Join(home, ".claude")
-}
-
-// transcripts are the CLIs whose conversations panes can show.
-func transcripts(claudeDir string) []transcript.Source {
-	if claudeDir == "" {
-		return nil
-	}
-	return []transcript.Source{claude.New(claudeDir)}
 }

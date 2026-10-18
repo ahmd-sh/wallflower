@@ -2,12 +2,10 @@ package gateway
 
 import (
 	"bytes"
-	"os/exec"
-	"path/filepath"
 	"regexp"
-	"strings"
 	"time"
 
+	"github.com/ahmd-sh/wallflower/internal/proc"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
@@ -24,8 +22,13 @@ func (g *gateway) sendState() {
 		return
 	}
 	g.snapshot = s
-	convs := g.conversations()
-	st := stateOf(s, g.program, func(p tmux.Pane) string { return convs[p.TTY].name })
+	readers := g.readable(s)
+	st := stateOf(s, g.program, func(p tmux.Pane) string {
+		if src := readers[p.ID]; src != nil {
+			return src.Name()
+		}
+		return ""
+	})
 	st.Name = g.target // the client's own session is an implementation detail
 	if b, _ := protocol.AppendJSON(nil, st); !bytes.Equal(b, g.lastState) {
 		g.out.push(b)
@@ -38,15 +41,15 @@ func (g *gateway) sendState() {
 			sizes[p.ID] = [2]int{p.Width, p.Height}
 		}
 	}
-	for id := range g.following {
+	for id := range g.reading {
 		if _, ok := sizes[id]; !ok {
-			g.unfollow(id)
+			g.unread(id)
 		}
 	}
 	g.resized(sizes)
 }
 
-func stateOf(s *tmux.Session, program, transcript func(tmux.Pane) string) protocol.State {
+func stateOf(s *tmux.Session, program, reader func(tmux.Pane) string) protocol.State {
 	st := protocol.State{Session: s.ID, Name: s.Name, Windows: []protocol.Window{}}
 	for _, w := range s.Windows {
 		pw := protocol.Window{
@@ -57,7 +60,7 @@ func stateOf(s *tmux.Session, program, transcript func(tmux.Pane) string) protoc
 			pw.Panes = append(pw.Panes, protocol.Pane{
 				ID: p.ID, Index: p.Index, Active: p.Active, X: p.Left, Y: p.Top,
 				Cols: p.Width, Rows: p.Height, Floating: p.Floating, Z: p.Z, Alt: p.AltScreen,
-				Agent: p.Agent, Title: p.Title, Path: p.Path, Command: program(p), Transcript: transcript(p),
+				Agent: p.Agent, Title: p.Title, Path: p.Path, Command: program(p), Transcript: reader(p),
 			})
 		}
 		st.Windows = append(st.Windows, pw)
@@ -79,25 +82,10 @@ func (g *gateway) program(p tmux.Pane) string {
 	key := p.TTY + " " + p.Command
 	name, ok := g.programs[key]
 	if !ok {
-		if name = foreground(p.TTY); name == "" {
+		if name = proc.Foreground(p.TTY); name == "" {
 			name = p.Command
 		}
 		g.programs[key] = name
 	}
 	return name
-}
-
-// foreground is the name the tty's foreground process was run as (argv[0]).
-func foreground(tty string) string {
-	out, err := exec.Command("ps", "-o", "pid=,tpgid=,comm=", "-t", strings.TrimPrefix(tty, "/dev/")).Output()
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		f := strings.Fields(line)
-		if len(f) >= 3 && f[0] == f[1] {
-			return strings.TrimPrefix(filepath.Base(strings.Join(f[2:], " ")), "-")
-		}
-	}
-	return ""
 }

@@ -17,15 +17,15 @@ import (
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/protocol"
+	"github.com/ahmd-sh/wallflower/internal/readview"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
-	"github.com/ahmd-sh/wallflower/internal/transcript"
 )
 
 type Options struct {
-	Socket      string              // tmux socket, see tmux.Options
-	Session     string              // default session when the client doesn't ask for one
-	Transcripts []transcript.Source // CLIs whose conversations panes can show
-	Uploads     string              // where files the client sends are saved; UploadDir() if empty
+	Socket  string            // tmux socket, see tmux.Options
+	Session string            // default session when the client doesn't ask for one
+	Readers []readview.Source // programs whose panes have read views
+	Uploads string            // where files the client sends are saved; UploadDir() if empty
 }
 
 type gateway struct {
@@ -49,9 +49,10 @@ type gateway struct {
 	held   []protocol.Frame // the client's frames waiting for resume, in order
 	resume <-chan time.Time // while a pane settles; see hold
 
-	sources   []transcript.Source
-	ttys      map[int]string                // pid -> its tty, to find the pane a transcript's process runs in
-	following map[string]context.CancelFunc // pane -> the follower sending its conversation
+	sources []readview.Source
+	reading map[string]reading // panes whose read views the client has on
+	updates chan readUpdate
+	gen     int // readers started
 
 	uploads uploads
 }
@@ -64,7 +65,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	g := &gateway{
 		ctx: ctx, out: newOutbox(out), programs: map[string]string{},
 		panes: map[string]*pane{}, zoomed: map[string]bool{},
-		sources: opts.Transcripts, ttys: map[int]string{}, following: map[string]context.CancelFunc{},
+		sources: opts.Readers, reading: map[string]reading{}, updates: make(chan readUpdate, 16),
 		uploads: uploads{dir: opts.Uploads, open: map[string]*upload{}},
 	}
 	if g.uploads.dir == "" {
@@ -175,6 +176,8 @@ func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readEr
 			g.notify(n)
 		case f := <-frames:
 			g.take(f)
+		case r := <-g.updates:
+			g.readUpdate(r)
 		case <-g.resume:
 			g.resume = nil
 			held := g.held

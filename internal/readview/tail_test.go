@@ -1,8 +1,9 @@
-package transcript
+package readview
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,27 +11,24 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/ahmd-sh/wallflower/internal/protocol"
 )
 
-// fake is a source whose lines are {"id","text"} objects; a line with an
-// id seen before changes that entry.
+func init() { Poll = 50 * time.Millisecond }
+
+// fake is a program's processes, as the test sets them, recording lines that
+// are {"id","text"} objects; a line with an id seen before changes that entry.
 type fake struct {
 	mu      sync.Mutex
-	running map[int]Session
+	running map[int]Recording
 }
 
-func (f *fake) Name() string { return "fake" }
-
-func (f *fake) Running() map[int]Session {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	r := map[int]Session{}
-	for k, v := range f.running {
-		r[k] = v
+func (f *fake) recording(pid int) func() (Recording, bool) {
+	return func() (Recording, bool) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		r, ok := f.running[pid]
+		return r, ok
 	}
-	return r
 }
 
 func (f *fake) set(pid int, path string) {
@@ -39,19 +37,19 @@ func (f *fake) set(pid int, path string) {
 	if path == "" {
 		delete(f.running, pid)
 	} else {
-		f.running[pid] = Session{Path: path}
+		f.running[pid] = Recording{Path: path}
 	}
 }
 
-func (f *fake) state(pid int, state string, since int64) {
+func (f *fake) activity(pid int, a Activity, since int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	s := f.running[pid]
-	s.State, s.Since = state, since
-	f.running[pid] = s
+	r := f.running[pid]
+	r.Activity, r.Since = a, since
+	f.running[pid] = r
 }
 
-func (f *fake) Parser() Parser { return &fakeParser{} }
+func newParser() Parser { return &fakeParser{} }
 
 // fakeParser reads {"id","text"} lines as entries, {"ctx"} lines as how full
 // the context is, and {"back"} lines as the conversation going back to before
@@ -63,7 +61,7 @@ type fakeParser struct {
 	branches int
 }
 
-func (p *fakeParser) Line(b []byte) []protocol.Entry {
+func (p *fakeParser) Line(b []byte) []Entry {
 	var e struct {
 		ID, Text, Back string
 		Ctx            int
@@ -89,15 +87,15 @@ func (p *fakeParser) Line(b []byte) []protocol.Entry {
 		return nil
 	}
 	p.read = append(p.read, e.ID)
-	return []protocol.Entry{{ID: e.ID, Role: "assistant", Kind: "text", Text: e.Text}}
+	return []Entry{{ID: e.ID, Role: "assistant", Kind: "text", Text: e.Text}}
 }
 
 func (p *fakeParser) Context() int { return p.ctx }
 
 func (p *fakeParser) Branches() int { return p.branches }
 
-func (p *fakeParser) Kept(entries []protocol.Entry) []protocol.Entry {
-	var out []protocol.Entry
+func (p *fakeParser) Kept(entries []Entry) []Entry {
+	var out []Entry
 	for _, e := range entries {
 		if !p.left[e.ID] {
 			out = append(out, e)
@@ -120,24 +118,24 @@ func appendTo(t *testing.T, path, s string) {
 	}
 }
 
-// follow runs Follow, returning what it sends.
-func follow(t *testing.T, src Source, pid int) (<-chan protocol.Entries, <-chan error) {
-	got := make(chan protocol.Entries, 100)
+// follow runs Tail on pid's recordings, returning what it sends.
+func follow(t *testing.T, src *fake, pid int) (<-chan Update, <-chan error) {
+	got := make(chan Update, 100)
 	done := make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	go func() { done <- Follow(ctx, src, pid, func(e protocol.Entries) { got <- e }) }()
+	go func() { done <- Tail(ctx, src.recording(pid), newParser, func(u Update) { got <- u }) }()
 	return got, done
 }
 
-// next returns the next message with entries, or an error, skipping the
-// empty reset that comes before a file is read.
-func next(t *testing.T, got <-chan protocol.Entries) protocol.Entries {
+// next returns the next update with something in it, skipping the empty
+// reset that comes before a file is read.
+func next(t *testing.T, got <-chan Update) Update {
 	t.Helper()
 	for {
 		select {
 		case e := <-got:
-			if e.Reset && len(e.Entries) == 0 && e.Error == "" && !e.More {
+			if e.Reset && len(e.Entries) == 0 && !e.More {
 				continue
 			}
 			return e
@@ -147,7 +145,7 @@ func next(t *testing.T, got <-chan protocol.Entries) protocol.Entries {
 	}
 }
 
-func texts(e protocol.Entries) string {
+func texts(e Update) string {
 	var s []string
 	for _, x := range e.Entries {
 		s = append(s, x.ID+"="+x.Text)
@@ -159,7 +157,7 @@ func TestFollow(t *testing.T) {
 	dir := t.TempDir()
 	one, two := filepath.Join(dir, "one.jsonl"), filepath.Join(dir, "two.jsonl")
 	appendTo(t, one, line("a", "hi")+line("b", "there")+`{"id":"c","te`) // a line still being written
-	src := &fake{running: map[int]Session{7: {Path: one}}}
+	src := &fake{running: map[int]Recording{7: {Path: one}}}
 	got, done := follow(t, src, 7)
 
 	if e := next(t, got); !e.Reset || e.More || texts(e) != "a=hi b=there" {
@@ -171,18 +169,18 @@ func TestFollow(t *testing.T) {
 	}
 
 	// What the CLI is doing comes as it changes.
-	src.state(7, protocol.StateWorking, 1000)
-	if e := next(t, got); e.Reset || len(e.Entries) > 0 || e.State != protocol.StateWorking || e.Since != 1000 {
+	src.activity(7, Working, 1000)
+	if e := next(t, got); e.Reset || len(e.Entries) > 0 || e.Activity != Working || e.Since != 1000 {
 		t.Fatalf("working: %+v", e)
 	}
-	src.state(7, protocol.StateIdle, 2000)
-	if e := next(t, got); e.State != protocol.StateIdle || e.Since != 2000 {
+	src.activity(7, Idle, 2000)
+	if e := next(t, got); e.Activity != Idle || e.Since != 2000 {
 		t.Fatalf("idle: %+v", e)
 	}
 
 	// So does how full its context is.
 	appendTo(t, one, `{"ctx":5000}`+"\n")
-	if e := next(t, got); e.Reset || len(e.Entries) > 0 || e.Context == nil || *e.Context != 5000 || e.State != protocol.StateIdle {
+	if e := next(t, got); e.Reset || len(e.Entries) > 0 || !e.Measured || e.Context != 5000 || e.Activity != Idle {
 		t.Fatalf("context: %+v", e)
 	}
 
@@ -194,18 +192,15 @@ func TestFollow(t *testing.T) {
 	}
 
 	src.set(7, "")
-	if e := next(t, got); !e.Reset || e.Error == "" {
-		t.Fatalf("ended: %+v", e)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
+	if err := <-done; !errors.Is(err, ErrEnded) {
+		t.Fatalf("ended: %v", err)
 	}
 }
 
 func TestFollowGoesBack(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "one.jsonl")
 	appendTo(t, path, line("a", "one")+line("b", "two")+line("c", "three")+`{"back":"c"}`+"\n"+line("d", "three, again"))
-	got, _ := follow(t, &fake{running: map[int]Session{7: {Path: path}}}, 7)
+	got, _ := follow(t, &fake{running: map[int]Recording{7: {Path: path}}}, 7)
 	if e := next(t, got); !e.Reset || texts(e) != "a=one b=two d=three, again" {
 		t.Fatalf("first: %+v", e)
 	}
@@ -223,8 +218,8 @@ func TestFollowGoesBack(t *testing.T) {
 
 func TestFollowWaitsForTheFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "new.jsonl")
-	got, _ := follow(t, &fake{running: map[int]Session{7: {Path: path}}}, 7)
-	time.Sleep(2 * poll)
+	got, _ := follow(t, &fake{running: map[int]Recording{7: {Path: path}}}, 7)
+	time.Sleep(2 * Poll)
 	appendTo(t, path, line("a", "first"))
 	if e := next(t, got); !e.Reset || texts(e) != "a=first" {
 		t.Fatalf("got %+v", e)
@@ -239,7 +234,7 @@ func TestEntriesFitAMessage(t *testing.T) {
 		b.WriteString(line(fmt.Sprint(i), mib))
 	}
 	appendTo(t, path, b.String())
-	got, _ := follow(t, &fake{running: map[int]Session{7: {Path: path}}}, 7)
+	got, _ := follow(t, &fake{running: map[int]Recording{7: {Path: path}}}, 7)
 
 	// The first message holds as many of the newest as fit, and says there are more.
 	if e := next(t, got); !e.Reset || !e.More || ids(e) != "7 8 9" {
@@ -266,7 +261,7 @@ func TestEntriesFitAMessage(t *testing.T) {
 	}
 }
 
-func ids(e protocol.Entries) string {
+func ids(e Update) string {
 	var s []string
 	for _, x := range e.Entries {
 		s = append(s, x.ID)
@@ -282,7 +277,7 @@ func TestRecentOfALongTranscript(t *testing.T) {
 		fmt.Fprintf(&b, `{"id":"%d","text":"%d","pad":"%s"}`+"\n", i, i, pad)
 	}
 	appendTo(t, path, b.String())
-	got, _ := follow(t, &fake{running: map[int]Session{7: {Path: path}}}, 7)
+	got, _ := follow(t, &fake{running: map[int]Recording{7: {Path: path}}}, 7)
 	e := next(t, got)
 	if !e.Reset || !e.More || len(e.Entries) != Recent || e.Entries[0].ID != "50" || e.Entries[Recent-1].ID != fmt.Sprint(Recent+49) {
 		t.Fatalf("got more=%v n=%d first=%s", e.More, len(e.Entries), e.Entries[0].ID)

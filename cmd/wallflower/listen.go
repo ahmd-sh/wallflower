@@ -20,10 +20,9 @@ import (
 func listen(args []string) error {
 	fs := flag.NewFlagSet("listen", flag.ExitOnError)
 	addr := fs.String("addr", "127.0.0.1:41777", "loopback address to listen on")
-	socket := fs.String("L", "", "tmux socket name, or path if it contains a slash")
-	session := fs.String("t", "", "session to attach to when the client doesn't name one")
-	claudeDir := fs.String("claude", defaultClaudeDir(), "Claude Code's data, for conversation views (empty: none)")
+	options := gatewayFlags(fs)
 	fs.Parse(args)
+	opts := options()
 
 	host, _, err := net.SplitHostPort(*addr)
 	if err != nil {
@@ -54,7 +53,7 @@ func listen(args []string) error {
 		}
 		go func() {
 			defer conn.Close()
-			err := gateway.Serve(ctx, conn, conn, gateway.Options{Socket: *socket, Session: *session, Transcripts: transcripts(*claudeDir)})
+			err := gateway.Serve(ctx, conn, conn, opts)
 			fmt.Fprintf(os.Stderr, "wallflower: %s disconnected: %v\n", conn.RemoteAddr(), err)
 		}()
 	}

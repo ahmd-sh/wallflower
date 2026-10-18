@@ -76,9 +76,10 @@ func (g *gateway) handle(f protocol.Frame) error {
 		}
 		return errors.New("kill needs a window or pane")
 	case *protocol.Transcript:
-		g.unfollow(m.Pane)
 		if m.On {
-			g.follow(m.Pane)
+			g.read(m.Pane)
+		} else {
+			g.unread(m.Pane)
 		}
 		return nil
 	case *protocol.ScrollbackRequest:

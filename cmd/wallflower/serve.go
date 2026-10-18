@@ -14,12 +14,10 @@ import (
 // it over ssh. Nothing else may write to stdout.
 func serve(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	socket := fs.String("L", "", "tmux socket name, or path if it contains a slash")
-	session := fs.String("t", "", "session to attach to when the client doesn't name one")
-	claudeDir := fs.String("claude", defaultClaudeDir(), "Claude Code's data, for conversation views (empty: none)")
+	options := gatewayFlags(fs)
 	fs.Parse(args)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
-	return gateway.Serve(ctx, os.Stdin, os.Stdout, gateway.Options{Socket: *socket, Session: *session, Transcripts: transcripts(*claudeDir)})
+	return gateway.Serve(ctx, os.Stdin, os.Stdout, options())
 }

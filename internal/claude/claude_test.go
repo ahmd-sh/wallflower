@@ -8,8 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ahmd-sh/wallflower/internal/protocol"
-	"github.com/ahmd-sh/wallflower/internal/transcript"
+	"github.com/ahmd-sh/wallflower/internal/readview"
 )
 
 // Lines shaped like Claude Code's transcripts, trimmed to the fields read.
@@ -33,12 +32,12 @@ var conversation = []string{
 }
 
 func TestParse(t *testing.T) {
-	p := New(t.TempDir()).Parser()
-	var got []protocol.Entry
+	p := newParser()
+	var got []readview.Entry
 	for _, l := range conversation {
 		got = append(got, p.Line([]byte(l))...)
 	}
-	want := []protocol.Entry{
+	want := []readview.Entry{
 		{ID: "u1.0", Role: "user", Kind: "text", Text: "fix the tests"},
 		{ID: "a2.0", Role: "assistant", Kind: "tool", Name: "Bash", Text: "go test ./..."},
 		{ID: "a2.0", Role: "assistant", Kind: "tool", Name: "Bash", Text: "go test ./...", Output: "FAIL x_test.go", Done: true, Error: true},
@@ -55,7 +54,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestBigImagesAndOutputs(t *testing.T) {
-	p := New(t.TempDir()).Parser()
+	p := newParser()
 	big := strings.Repeat("A", maxImage+1)
 	got := p.Line([]byte(`{"type":"user","uuid":"u","message":{"content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + big + `"}}]}}`))
 	if len(got) != 1 || got[0].Kind != "note" || got[0].Data != "" {
@@ -70,8 +69,8 @@ func TestBigImagesAndOutputs(t *testing.T) {
 }
 
 func TestContext(t *testing.T) {
-	p := New("").Parser().(transcript.Measure)
-	line := func(s string) { p.(transcript.Parser).Line([]byte(s)) }
+	p := newParser().(readview.Measure)
+	line := func(s string) { p.(readview.Parser).Line([]byte(s)) }
 	if p.Context() != 0 {
 		t.Errorf("before any reply: %d", p.Context())
 	}
@@ -112,8 +111,8 @@ var rewound = []string{
 }
 
 func TestRewound(t *testing.T) {
-	p := New("").Parser()
-	var got []protocol.Entry
+	p := newParser()
+	var got []readview.Entry
 	at := map[string]int{}
 	for _, l := range rewound {
 		for _, e := range p.Line([]byte(l)) {
@@ -125,7 +124,7 @@ func TestRewound(t *testing.T) {
 			}
 		}
 	}
-	got = p.(transcript.Brancher).Kept(got)
+	got = p.(readview.Brancher).Kept(got)
 	var ids []string
 	for _, e := range got {
 		ids = append(ids, e.ID+"="+e.Text)
@@ -136,25 +135,25 @@ func TestRewound(t *testing.T) {
 	if !got[3].Done || !got[4].Done {
 		t.Errorf("parallel results: %+v %+v", got[3], got[4])
 	}
-	if b := p.(transcript.Brancher).Branches(); b != 1 {
+	if b := p.(readview.Brancher).Branches(); b != 1 {
 		t.Errorf("branches: %d", b)
 	}
-	if c := p.(transcript.Measure).Context(); c != 250 {
+	if c := p.(readview.Measure).Context(); c != 250 {
 		t.Errorf("context: %d", c)
 	}
 
 	// Until the reply on the new branch, how full the context is isn't known.
-	p = New("").Parser()
+	p = newParser()
 	for _, l := range rewound[:14] {
 		p.Line([]byte(l))
 	}
-	if c := p.(transcript.Measure).Context(); c != 0 {
+	if c := p.(readview.Measure).Context(); c != 0 {
 		t.Errorf("context after going back: %d", c)
 	}
 }
 
 func TestDiffs(t *testing.T) {
-	p := New(t.TempDir()).Parser()
+	p := newParser()
 	lines := []string{
 		`{"type":"assistant","uuid":"a1","message":{"content":[{"type":"tool_use","id":"t1","name":"Edit","input":{"file_path":"/x/main.go","old_string":"old","new_string":"new"}}]}}`,
 		`{"type":"user","uuid":"u1","toolUseResult":{"filePath":"/x/main.go","oldString":"old","newString":"new","originalFile":"…","structuredPatch":[{"oldStart":3,"oldLines":3,"newStart":3,"newLines":3,"lines":[" a","-old","+new"]},{"oldStart":40,"oldLines":1,"newStart":40,"newLines":2,"lines":[" b","+c"]}]},"message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"The file /x/main.go has been updated successfully."}]}}`,
@@ -192,7 +191,7 @@ func TestDiffs(t *testing.T) {
 }
 
 func TestPlans(t *testing.T) {
-	p := New("").Parser()
+	p := newParser()
 	got := p.Line([]byte(`{"type":"assistant","uuid":"a","message":{"content":[{"type":"tool_use","id":"t","name":"Write","input":{"file_path":"/Users/me/.claude/plans/fix-it.md","content":"# Plan\n\n1. fix it\n"}}]}}`))
 	if len(got) != 2 || got[0].Kind != "tool" || got[1].Kind != "text" || got[1].Text != "# Plan\n\n1. fix it" || got[1].ID != "a.0.plan" {
 		t.Errorf("plan: %+v", got)
@@ -223,10 +222,10 @@ func TestRunning(t *testing.T) {
 	write("sessions/bad.json", `{"pid":`+strconv.Itoa(me)+`,"sessionId":"../../etc"}`)
 	write("projects/-Users-me-dev-x-moved/aaaa-1.jsonl", "")
 
-	got := New(dir).Running()
-	want := map[int]transcript.Session{
-		me:     {Path: filepath.Join(dir, "projects/-Users-me-dev-x-moved/aaaa-1.jsonl"), State: protocol.StateWaiting, Since: 1792209270006}, // where it is
-		parent: {Path: filepath.Join(dir, "projects/-Users-me-my-dir/bbbb-2.jsonl"), State: protocol.StateIdle, Since: 1792209271000},         // where it will be; done, with a background task left running
+	got := New(dir).running()
+	want := map[int]readview.Recording{
+		me:     {Path: filepath.Join(dir, "projects/-Users-me-dev-x-moved/aaaa-1.jsonl"), Activity: readview.Waiting, Since: 1792209270006}, // where it is
+		parent: {Path: filepath.Join(dir, "projects/-Users-me-my-dir/bbbb-2.jsonl"), Activity: readview.Idle, Since: 1792209271000},         // where it will be; done, with a background task left running
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v\nwant %v", got, want)

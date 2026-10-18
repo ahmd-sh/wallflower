@@ -1,12 +1,14 @@
-// Package claude reads Claude Code's transcripts for internal/transcript:
-// which conversation each running claude process is in, from
+// Package claude reads Claude Code's panes for their read views: which
+// conversation each running claude process is in, and what it's doing, from
 // sessions/<pid>.json, and the conversation, from
 // projects/<dir>/<session>.jsonl, both under ~/.claude. Neither format is
 // documented, so whatever doesn't parse is skipped.
 package claude
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,8 +18,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ahmd-sh/wallflower/internal/protocol"
-	"github.com/ahmd-sh/wallflower/internal/transcript"
+	"github.com/ahmd-sh/wallflower/internal/proc"
+	"github.com/ahmd-sh/wallflower/internal/readview"
 )
 
 const (
@@ -31,6 +33,7 @@ type Source struct {
 	dir   string
 	mu    sync.Mutex
 	paths map[string]found // session id -> its transcript
+	ttys  map[int]string   // pid -> the terminal it runs on, while it runs
 }
 
 type found struct {
@@ -39,25 +42,78 @@ type found struct {
 }
 
 // New reads the Claude Code data in dir, usually ~/.claude.
-func New(dir string) *Source { return &Source{dir: dir, paths: map[string]found{}} }
+func New(dir string) *Source {
+	return &Source{dir: dir, paths: map[string]found{}, ttys: map[int]string{}}
+}
 
 func (s *Source) Name() string { return "claude" }
 
-var sessionID = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
-
-// states are what claude says it's doing: busy on a turn, waiting on a
-// prompt or question mid-turn, or idle. Shell is idle with background tasks
-// still running, which can go on long after the turn.
-var states = map[string]string{
-	"busy":    protocol.StateWorking,
-	"shell":   protocol.StateIdle,
-	"waiting": protocol.StateWaiting,
-	"idle":    protocol.StateIdle,
+// Find picks the panes a claude runs in, by the terminals they share.
+func (s *Source) Find(panes []readview.Pane) map[string]bool {
+	ids := map[string]string{}
+	for _, p := range panes {
+		if p.TTY != "" {
+			ids[p.TTY] = p.ID
+		}
+	}
+	found := map[string]bool{}
+	for pid := range s.running() {
+		if id, ok := ids[s.tty(pid)]; ok {
+			found[id] = true
+		}
+	}
+	return found
 }
 
-func (s *Source) Running() map[int]transcript.Session {
+var errNone = errors.New("no conversation in this pane")
+
+// Read follows the conversation of the claude running in a pane.
+func (s *Source) Read(ctx context.Context, pane readview.Pane, send func(readview.Update)) error {
+	pid := 0
+	for p := range s.running() {
+		if pane.TTY != "" && s.tty(p) == pane.TTY {
+			pid = p
+		}
+	}
+	if pid == 0 {
+		return errNone
+	}
+	recording := func() (readview.Recording, bool) {
+		r, ok := s.running()[pid]
+		return r, ok
+	}
+	return readview.Tail(ctx, recording, newParser, send)
+}
+
+func (s *Source) tty(pid int) string {
+	s.mu.Lock()
+	tty, ok := s.ttys[pid]
+	s.mu.Unlock()
+	if !ok {
+		tty = proc.TTY(pid)
+		s.mu.Lock()
+		s.ttys[pid] = tty
+		s.mu.Unlock()
+	}
+	return tty
+}
+
+var sessionID = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
+
+// activities are what claude says it's doing: busy on a turn, waiting on a
+// prompt or question mid-turn, or idle. Shell is idle with background tasks
+// still running, which can go on long after the turn.
+var activities = map[string]readview.Activity{
+	"busy":    readview.Working,
+	"shell":   readview.Idle,
+	"waiting": readview.Waiting,
+	"idle":    readview.Idle,
+}
+
+// running maps the claude processes running now to their recordings.
+func (s *Source) running() map[int]readview.Recording {
 	files, _ := filepath.Glob(filepath.Join(s.dir, "sessions", "*.json"))
-	running := map[int]transcript.Session{}
+	running := map[int]readview.Recording{}
 	for _, name := range files {
 		b, err := os.ReadFile(name)
 		if err != nil {
@@ -76,12 +132,19 @@ func (s *Source) Running() map[int]transcript.Session {
 		if syscall.Kill(sess.PID, 0) != nil {
 			continue // left behind by a claude that crashed
 		}
-		t := transcript.Session{Path: s.transcript(sess.SessionID, sess.CWD), State: states[sess.Status]}
-		if t.State != "" {
-			t.Since = sess.StatusUpdatedAt
+		r := readview.Recording{Path: s.transcript(sess.SessionID, sess.CWD), Activity: activities[sess.Status]}
+		if r.Activity != "" {
+			r.Since = sess.StatusUpdatedAt
 		}
-		running[sess.PID] = t
+		running[sess.PID] = r
 	}
+	s.mu.Lock()
+	for pid := range s.ttys {
+		if _, ok := running[pid]; !ok {
+			delete(s.ttys, pid) // gone; its pid may come back as another process
+		}
+	}
+	s.mu.Unlock()
 	return running
 }
 
@@ -107,12 +170,12 @@ var notAlnum = regexp.MustCompile(`[^A-Za-z0-9]`)
 
 func projectDir(cwd string) string { return notAlnum.ReplaceAllString(cwd, "-") }
 
-func (s *Source) Parser() transcript.Parser {
-	return &parser{tools: map[string]protocol.Entry{}, next: map[string][]string{}, left: map[string]bool{}}
+func newParser() readview.Parser {
+	return &parser{tools: map[string]readview.Entry{}, next: map[string][]string{}, left: map[string]bool{}}
 }
 
 type parser struct {
-	tools    map[string]protocol.Entry // calls waiting for their result, by tool_use id
+	tools    map[string]readview.Entry // calls waiting for their result, by tool_use id
 	context  int                       // tokens in context as of the latest reply or compaction
 	next     map[string][]string       // record -> the records going on from it
 	left     map[string]bool           // records a rewind left behind
@@ -163,7 +226,7 @@ type block struct {
 	} `json:"source"`
 }
 
-func (p *parser) Line(b []byte) []protocol.Entry {
+func (p *parser) Line(b []byte) []readview.Entry {
 	var r record
 	if json.Unmarshal(b, &r) != nil || r.IsSidechain || r.UUID == "" {
 		return nil
@@ -188,7 +251,7 @@ func (p *parser) Line(b []byte) []protocol.Entry {
 	var text string
 	if json.Unmarshal(r.Message.Content, &text) == nil {
 		if e, ok := p.said(r, 0, text); ok {
-			return []protocol.Entry{e}
+			return []readview.Entry{e}
 		}
 		return nil
 	}
@@ -196,7 +259,7 @@ func (p *parser) Line(b []byte) []protocol.Entry {
 	if json.Unmarshal(r.Message.Content, &blocks) != nil {
 		return nil
 	}
-	var out []protocol.Entry
+	var out []readview.Entry
 	for i, bl := range blocks {
 		id := fmt.Sprintf("%s.%d", r.UUID, i)
 		switch bl.Type {
@@ -206,14 +269,14 @@ func (p *parser) Line(b []byte) []protocol.Entry {
 			}
 		case "thinking":
 			if strings.TrimSpace(bl.Thinking) != "" {
-				out = append(out, protocol.Entry{ID: id, Role: "assistant", Kind: "thinking", Text: bl.Thinking})
+				out = append(out, readview.Entry{ID: id, Role: readview.Assistant, Kind: readview.Thinking, Text: bl.Thinking})
 			}
 		case "tool_use":
-			e := protocol.Entry{ID: id, Role: "assistant", Kind: "tool", Name: bl.Name, Text: brief(bl.Input)}
+			e := readview.Entry{ID: id, Role: readview.Assistant, Kind: readview.Tool, Name: bl.Name, Text: brief(bl.Input)}
 			p.tools[bl.ID] = e
 			out = append(out, e)
 			if plan := planOf(bl); plan != "" {
-				out = append(out, protocol.Entry{ID: id + ".plan", Role: "assistant", Kind: "text", Text: plan})
+				out = append(out, readview.Entry{ID: id + ".plan", Role: readview.Assistant, Kind: readview.Text, Text: plan})
 			}
 		case "tool_result":
 			if e, ok := p.tools[bl.ToolUseID]; ok {
@@ -281,11 +344,11 @@ func (r record) prompt() bool {
 
 func (p *parser) Branches() int { return p.branches }
 
-func (p *parser) Kept(entries []protocol.Entry) []protocol.Entry {
+func (p *parser) Kept(entries []readview.Entry) []readview.Entry {
 	if len(p.left) == 0 {
 		return entries
 	}
-	var out []protocol.Entry
+	var out []readview.Entry
 	for _, e := range entries {
 		if uuid, _, _ := strings.Cut(e.ID, "."); !p.left[uuid] {
 			out = append(out, e)
@@ -303,28 +366,28 @@ var (
 // said is text either side wrote. claude also records slash commands and
 // their output as user text, wrapped in tags; those aren't shown. Nor is what
 // claude tells itself, like a background task finishing, but its summary is.
-func (p *parser) said(r record, i int, text string) (protocol.Entry, bool) {
+func (p *parser) said(r record, i int, text string) (readview.Entry, bool) {
 	role := r.Type
 	text = strings.TrimSpace(text)
-	if role == "user" {
+	if role == readview.User {
 		if strings.HasPrefix(text, "<command-") || strings.HasPrefix(text, "<local-command-") {
-			return protocol.Entry{}, false
+			return readview.Entry{}, false
 		}
 		if r.PromptSource == "system" {
 			m := summary.FindStringSubmatch(text)
 			if m == nil || strings.TrimSpace(m[1]) == "" {
-				return protocol.Entry{}, false
+				return readview.Entry{}, false
 			}
-			return protocol.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), Role: role, Kind: "note", Text: strings.TrimSpace(m[1])}, true
+			return readview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), Role: role, Kind: readview.Note, Text: strings.TrimSpace(m[1])}, true
 		}
 		text = strings.TrimSpace(pasted.ReplaceAllString(text, ""))
 	}
 	if text == "" {
-		return protocol.Entry{}, false
+		return readview.Entry{}, false
 	}
-	e := protocol.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), Role: role, Kind: "text", Text: text}
-	if r.IsCompactSummary || (role == "user" && interrupted.MatchString(text)) {
-		e.Kind = "note"
+	e := readview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), Role: role, Kind: readview.Text, Text: text}
+	if r.IsCompactSummary || (role == readview.User && interrupted.MatchString(text)) {
+		e.Kind = readview.Note
 	}
 	return e, true
 }
@@ -386,13 +449,13 @@ func result(content json.RawMessage) string {
 	return clip(strings.TrimSpace(ansi.ReplaceAllString(s, "")))
 }
 
-func image(id, role string, b block) protocol.Entry {
-	e := protocol.Entry{ID: id, Role: role, Kind: "image"}
+func image(id, role string, b block) readview.Entry {
+	e := readview.Entry{ID: id, Role: role, Kind: readview.Image}
 	switch {
 	case b.Source == nil || b.Source.Type != "base64":
-		e.Kind, e.Text = "note", "[image]"
+		e.Kind, e.Text = readview.Note, "[image]"
 	case len(b.Source.Data) > maxImage:
-		e.Kind, e.Text = "note", "[image too big to show]"
+		e.Kind, e.Text = readview.Note, "[image too big to show]"
 	default:
 		e.Mime, e.Data = b.Source.MediaType, b.Source.Data
 	}
