@@ -52,6 +52,7 @@ import sh.ahmd.wallflower.protocol.State
 import sh.ahmd.wallflower.protocol.Transcript
 import sh.ahmd.wallflower.protocol.Upload
 import sh.ahmd.wallflower.protocol.Uploaded
+import sh.ahmd.wallflower.protocol.VERSION
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.terminal.Terminal
 
@@ -119,6 +120,8 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     @Volatile private var lost: CompletableDeferred<Unit>? = null
     /** The live connection, which [stop] closes: its reads don't heed cancellation. */
     @Volatile private var live: Connection? = null
+    /** The live connection got as far as the gateway's hello. */
+    @Volatile private var greeted = false
     private val uploaded = ConcurrentHashMap<String, CompletableDeferred<Uploaded>>()
     /** By ping: complete once its pong says everything sent before it arrived. */
     private val arrivals = ConcurrentSkipListMap<Int, CompletableDeferred<Unit>>()
@@ -153,9 +156,9 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
             while (isActive) {
                 _status.value = Status.Connecting
                 retries.tryReceive() // a retry asked for before this attempt is this attempt
+                greeted = false
                 val reason = try {
                     runOnce(this)
-                    backoff = 500L
                     "connection closed"
                 } catch (b: Blocked) {
                     _status.value = Status.NeedsUser(b)
@@ -164,6 +167,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 } catch (e: Exception) {
                     e.message ?: e.javaClass.simpleName
                 }
+                if (greeted) backoff = 500L // it worked a while; a gateway that won't start doesn't get hammered
                 if (_status.value !is Status.Disconnected) _status.value = Status.Disconnected(reason)
                 withTimeoutOrNull(backoff) { retries.receive() }
                 backoff = (backoff * 2).coerceAtMost(5_000)
@@ -292,6 +296,8 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
     private fun handle(m: ServerMessage) {
         when (m) {
             is ServerHello -> {
+                if (m.v != VERSION) throw Blocked.Refused("the Mac's wallflower speaks protocol ${m.v}, this app $VERSION")
+                greeted = true
                 _uploadDir.value = m.uploads
                 _status.value = Status.Connected(m.tmux)
             }
@@ -344,7 +350,7 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 // Messages are handled in order: everything sent before this ping arrived.
                 synchronized(pending) { pending.removeAll { it.ping <= m.id } }
             }
-            is Bye -> _status.value = Status.Disconnected(m.reason)
+            is Bye -> if (greeted) _status.value = Status.Disconnected(m.reason) else throw Blocked.Refused(m.reason)
             is ErrorMessage -> android.util.Log.w("wallflower", "gateway: ${m.message}")
             else -> Unit
         }

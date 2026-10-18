@@ -153,6 +153,14 @@ fun BlockedCard(
                     Button("settings", onClick = onSetup)
                 }
             }
+            is Blocked.Refused -> {
+                Title("the Mac turned the connection down")
+                Body(blocked.reason)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button("retry", primary = true, onClick = onRetry)
+                    Button("settings", onClick = onSetup)
+                }
+            }
             is Blocked.NotAuthorized -> {
                 Title("not authorized yet")
                 Body("Run this on the Mac, then retry:")
