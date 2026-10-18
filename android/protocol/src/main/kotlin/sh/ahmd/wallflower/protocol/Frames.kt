@@ -58,18 +58,22 @@ class FrameReader(input: InputStream) {
 
     private fun decodeMessage(json: String): Frame {
         try {
-            val obj = WireJson.parseToJsonElement(json).jsonObject
-            val type = obj["t"]?.jsonPrimitive?.content
+            val type = typeOf(json)
             if (type == null || type !in serverTypes) return Frame.Unknown(json)
-            return Frame.Message(WireJson.decodeFromJsonElement(ServerMessage.serializer(), obj))
+            return Frame.Message(WireJson.decodeFromString(ServerMessage.serializer(), json))
         } catch (e: IllegalArgumentException) {
             throw ProtocolException("bad message: ${e.message}")
         }
     }
 
+    /** The message's "t", which the gateway writes first; anyone else's is looked for. */
+    private fun typeOf(json: String): String? =
+        leadingType.matchAt(json, 0)?.groupValues?.get(1) ?: WireJson.parseToJsonElement(json).jsonObject["t"]?.jsonPrimitive?.content
+
     private companion object {
         // The "t" names of the sealed hierarchy's subclasses.
         val serverTypes = ServerMessage.serializer().descriptor.getElementDescriptor(1).elementNames.toSet()
+        val leadingType = Regex("""\{"t":"([a-z]+)"""")
     }
 }
 

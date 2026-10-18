@@ -52,8 +52,6 @@ class HardwareKey(private val alias: String = "wallflower-ssh") {
         KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore").apply { initialize(spec) }.generateKeyPair()
     }
 
-    fun delete() = keystore.deleteEntry(alias)
-
     private val privateKey get() = keystore.getKey(alias, null) as PrivateKey
     private val publicKey get() = keystore.getCertificate(alias).publicKey as ECPublicKey
 

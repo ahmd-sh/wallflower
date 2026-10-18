@@ -1,8 +1,6 @@
 package sh.ahmd.wallflower.ui
 
 import android.content.Context
-import android.graphics.BitmapFactory
-import android.util.Base64
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -65,16 +63,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -85,10 +82,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import sh.ahmd.wallflower.read.Activity
 import sh.ahmd.wallflower.read.Entry
 import sh.ahmd.wallflower.read.Item
@@ -251,6 +246,8 @@ private enum class Phase { Reading, Empty, Shown }
 /** What's below the conversation: a menu to answer, the program working, or waiting on something unread. */
 private enum class Status { Asking, Working, Waiting }
 
+private val PICTURE_HEIGHT = 260.dp
+
 /** How long the program can say it's waiting without a menu on screen before that's what it is. */
 private const val UNREAD_MS = 1_200L
 
@@ -392,13 +389,10 @@ private fun count(n: Int) = when {
 
 @Composable
 private fun Picture(e: Entry.Picture) {
-    val bitmap by produceState<ImageBitmap?>(null, e.data) {
-        value = withContext(Dispatchers.Default) {
-            runCatching {
-                val bytes = Base64.decode(e.data, Base64.DEFAULT)
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-            }.getOrNull()
-        }
+    val width = LocalWindowInfo.current.containerSize.width
+    val height = with(LocalDensity.current) { PICTURE_HEIGHT.roundToPx() }
+    val bitmap by produceState(Pictures.kept(e.id), e.id) {
+        if (value == null) value = Pictures.decode(e.id, e.data, width, height)
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (e.by == Party.User) Arrangement.End else Arrangement.Start) {
         val shown by animateFloatAsState(if (bitmap != null) 1f else 0f, Motion.effect(), label = "picture")
@@ -407,7 +401,7 @@ private fun Picture(e: Entry.Picture) {
                 it,
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.heightIn(max = 260.dp).graphicsLayer { alpha = shown }.clip(RoundedCornerShape(12.dp)),
+                modifier = Modifier.heightIn(max = PICTURE_HEIGHT).graphicsLayer { alpha = shown }.clip(RoundedCornerShape(12.dp)),
             )
         }
     }
@@ -454,7 +448,7 @@ private fun Steps(steps: List<Entry>) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val turn by animateFloatAsState(if (open) 90f else 0f, Motion.spatial(), label = "chevron")
-            Text("▸", color = Palette.grey, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.rotate(turn))
+            Text("▸", color = Palette.grey, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.graphicsLayer { rotationZ = turn })
             if (running != null) Running(Modifier.padding(start = 8.dp))
             Text(
                 summary,
@@ -502,6 +496,7 @@ private fun Step(s: Entry) {
     val input = step?.input ?: (s as? Entry.Thought)?.text.orEmpty()
     val output = step?.output.orEmpty()
     val diff = step?.diff.orEmpty()
+    val diffLines = remember(diff) { if (diff.isEmpty()) emptyList() else diffLines(diff) }
     val failed = step?.status == Entry.Step.Status.Failed
     var open by remember { mutableStateOf(false) }
     val feel = rememberFold()
@@ -542,8 +537,8 @@ private fun Step(s: Entry) {
             } else {
                 Spacer(Modifier.weight(1f))
             }
-            if (diff.isNotEmpty()) {
-                val (added, removed) = remember(diff) { diffCounts(diff) }
+            if (diffLines.isNotEmpty()) {
+                val (added, removed) = remember(diffLines) { diffCounts(diffLines) }
                 Text(
                     buildAnnotatedString {
                         if (added > 0) withStyle(SpanStyle(color = Palette.green)) { append("+$added") }
@@ -557,8 +552,8 @@ private fun Step(s: Entry) {
         }
         if (open) {
             if (input.isNotEmpty()) Text(input, style = mono.copy(color = Palette.fg), modifier = Modifier.padding(top = 4.dp))
-            if (diff.isNotEmpty() && !failed) {
-                DiffView(diff, Modifier.padding(top = 6.dp))
+            if (diffLines.isNotEmpty() && !failed) {
+                DiffView(diffLines, Modifier.padding(top = 6.dp))
             } else if (output.isNotEmpty()) {
                 Text(
                     output,

@@ -22,6 +22,6 @@ class DiffTest {
             ),
             diffLines(diff),
         )
-        assertEquals(3 to 1, diffCounts(diff))
+        assertEquals(3 to 1, diffCounts(diffLines(diff)))
     }
 }

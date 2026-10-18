@@ -2,10 +2,8 @@ package sh.ahmd.wallflower.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -47,15 +45,12 @@ internal fun diffLines(diff: String): List<DiffLine> = diff.lines().map { line -
 }
 
 /** How many lines a diff adds and removes. */
-internal fun diffCounts(diff: String): Pair<Int, Int> {
-    val lines = diffLines(diff)
-    return lines.count { it.kind == DiffLine.Kind.Added } to lines.count { it.kind == DiffLine.Kind.Removed }
-}
+internal fun diffCounts(lines: List<DiffLine>): Pair<Int, Int> =
+    lines.count { it.kind == DiffLine.Kind.Added } to lines.count { it.kind == DiffLine.Kind.Removed }
 
-/** A diff, lines unwrapped and scrolling sideways together, changed ones tinted edge to edge. */
+/** A diff's [lines], unwrapped and scrolling sideways together, changed ones tinted edge to edge. */
 @Composable
-internal fun DiffView(diff: String, modifier: Modifier = Modifier) {
-    val lines = remember(diff) { diffLines(diff) }
+internal fun DiffView(lines: List<DiffLine>, modifier: Modifier = Modifier) {
     val text = remember(lines) {
         buildAnnotatedString {
             lines.forEachIndexed { i, line ->
@@ -76,28 +71,29 @@ internal fun DiffView(diff: String, modifier: Modifier = Modifier) {
         }
     }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
-    BoxWithConstraints(modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Palette.bg1)) {
-        Text(
-            text,
-            style = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 11.sp, lineHeight = 15.sp),
-            softWrap = false,
-            onTextLayout = { layout = it },
-            modifier = Modifier
-                .horizontalScroll(rememberScrollState())
-                .widthIn(min = maxWidth)
-                .padding(vertical = 8.dp)
-                .drawBehind {
-                    val l = layout ?: return@drawBehind
-                    lines.forEachIndexed { i, line ->
-                        val tint = when (line.kind) {
-                            DiffLine.Kind.Added -> Palette.bgGreen
-                            DiffLine.Kind.Removed -> Palette.bgRed
-                            else -> return@forEachIndexed
-                        }
-                        if (i < l.lineCount) drawRect(tint, Offset(0f, l.getLineTop(i)), Size(size.width, l.getLineBottom(i) - l.getLineTop(i)))
+    // Scrolling sideways, it's laid out at least as wide as it shows, so tints reach the edge.
+    Text(
+        text,
+        style = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 11.sp, lineHeight = 15.sp),
+        softWrap = false,
+        onTextLayout = { layout = it },
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Palette.bg1)
+            .horizontalScroll(rememberScrollState())
+            .padding(vertical = 8.dp)
+            .drawBehind {
+                val l = layout ?: return@drawBehind
+                lines.forEachIndexed { i, line ->
+                    val tint = when (line.kind) {
+                        DiffLine.Kind.Added -> Palette.bgGreen
+                        DiffLine.Kind.Removed -> Palette.bgRed
+                        else -> return@forEachIndexed
                     }
+                    if (i < l.lineCount) drawRect(tint, Offset(0f, l.getLineTop(i)), Size(size.width, l.getLineBottom(i) - l.getLineTop(i)))
                 }
-                .padding(horizontal = 10.dp),
-        )
-    }
+            }
+            .padding(horizontal = 10.dp),
+    )
 }

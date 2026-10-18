@@ -55,10 +55,10 @@ class Uploads(
     fun add(session: Session, pane: String, uris: List<Uri>) {
         scope.launch(Dispatchers.IO) { prune() }
         for (uri in uris) {
-            val (name, size) = describe(uri)
-            val item = Item(UUID.randomUUID().toString().take(8), pane, uri, name, size)
-            _items.update { it + item }
             scope.launch(Dispatchers.IO) {
+                val (name, size) = describe(uri) // a query, or reading it all where its size isn't said
+                val item = Item(UUID.randomUUID().toString().take(8), pane, uri, name, size)
+                _items.update { it + item }
                 try {
                     val path = resolver.openInputStream(uri)!!.use { input ->
                         session.upload(item.id, name, size, input) { sent -> change(item.id) { it.copy(sent = sent) } }
