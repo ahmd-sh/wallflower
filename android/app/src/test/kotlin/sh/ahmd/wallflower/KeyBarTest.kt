@@ -3,6 +3,7 @@ package sh.ahmd.wallflower
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import sh.ahmd.wallflower.terminal.InputLine
 
 class KeyBarTest {
     private val bar = KeyBar.defaults
@@ -43,6 +44,13 @@ class KeyBarTest {
         assertEquals(listOf("C-x", "C-u"), bar.profileFor("zsh").clearKeys())
         assertEquals(emptyList<String>(), bar.profileFor("hntui").clearKeys())
         assertEquals(listOf("Escape", "S"), KeyProfile("vi", listOf("zsh"), emptyList(), clear = listOf("Escape", "S")).clearKeys())
+    }
+
+    @Test
+    fun claudeIsInInsertModeBeforeItsLineIsCleared() {
+        val line = InputLine("two\nrows", rows = 2)
+        assertEquals(listOf("A") + List(5) { "C-u" }, bar.profileFor("claude").clear(line))
+        assertEquals(List(5) { listOf("C-x", "C-u") }.flatten(), bar.profileFor("zsh").clear(line))
     }
 
     @Test

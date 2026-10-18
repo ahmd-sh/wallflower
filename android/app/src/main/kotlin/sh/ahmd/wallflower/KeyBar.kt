@@ -56,8 +56,16 @@ data class KeyProfile(
         else -> emptyList()
     }
 
-    /** Keys that empty [line], as last read, row by row. */
-    fun clear(line: InputLine): List<String> = List(line.rows * 2 + 1) { clearKeys() }.flatten()
+    /**
+     * Keys that empty [line], as last read, row by row. Claude's vim mode may
+     * be in NORMAL (after an Esc), where keys are commands: A first goes back
+     * to INSERT at the row's end, and in INSERT it's typed and the first ^U
+     * takes it.
+     */
+    fun clear(line: InputLine): List<String> {
+        val ready = if (clear == null && programs.any { it.equals("claude", ignoreCase = true) }) listOf("A") else emptyList()
+        return ready + List(line.rows * 2 + 1) { clearKeys() }.flatten()
+    }
 }
 
 /**
