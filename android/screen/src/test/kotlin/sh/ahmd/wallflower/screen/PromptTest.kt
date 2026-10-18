@@ -1,16 +1,16 @@
-package sh.ahmd.wallflower.terminal
+package sh.ahmd.wallflower.screen
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
-import sh.ahmd.wallflower.terminal.Menu.Line
-import sh.ahmd.wallflower.terminal.Menu.Option
-import sh.ahmd.wallflower.terminal.Menu.Tab
-import sh.ahmd.wallflower.terminal.Screen.Companion.HIGHLIGHT
-import sh.ahmd.wallflower.terminal.Screen.Companion.MUTED
+import sh.ahmd.wallflower.screen.Prompt.Line
+import sh.ahmd.wallflower.screen.Prompt.Option
+import sh.ahmd.wallflower.screen.Prompt.Tab
+import sh.ahmd.wallflower.screen.Screen.Companion.HIGHLIGHT
+import sh.ahmd.wallflower.screen.Screen.Companion.MUTED
 
 /** Screens as Claude Code draws its prompts, from captures at 56 columns. */
-class MenuTest {
+class PromptTest {
     /** Rows of text; in [marks], m is grey and h highlighted, one character per cell. */
     private fun screen(vararg rows: Pair<String, String>): Screen {
         val cols = 56
@@ -36,7 +36,7 @@ class MenuTest {
 
     @Test
     fun aPermissionPrompt() {
-        val menu = Menu.read(
+        val menu = Prompt.read(
             screen(
                 plain("⏺ Bash(touch /tmp/wf-probe-1)"),
                 plain("  ⎿  Waiting…"),
@@ -73,7 +73,7 @@ class MenuTest {
 
     @Test
     fun aQuestionWithDescriptionsAndAnOptionBelowARule() {
-        val menu = Menu.read(
+        val menu = Prompt.read(
             screen(
                 plain(rule),
                 plain(" ☐ Color"),
@@ -103,7 +103,7 @@ class MenuTest {
 
     @Test
     fun aMultipleChoiceAmongQuestions() {
-        val menu = Menu.read(
+        val menu = Prompt.read(
             screen(
                 plain(rule),
                 "←  ☐ Fruit  ☐ Size  ✔ Submit  →" to "  hhhhhhhhh",
@@ -137,7 +137,7 @@ class MenuTest {
 
     @Test
     fun aPlanApprovalBelowThePlansOwnSteps() {
-        val menu = Menu.read(
+        val menu = Prompt.read(
             screen(
                 plain(" Steps"),
                 plain(" 1. Use Edit on /tmp/wf-probe-2.txt to replace the"),
@@ -207,7 +207,7 @@ class MenuTest {
 
     @Test
     fun aRealPlanApproval() {
-        val menu = Menu.read(captured("claude-plan-approval.ansi", 54))!!
+        val menu = Prompt.read(captured("claude-plan-approval.ansi", 54))!!
         assertEquals(
             listOf(Line("Claude has written up a plan and is ready to execute. Would you like to proceed?", false)),
             menu.lines,
@@ -218,7 +218,7 @@ class MenuTest {
 
     @Test
     fun aRealPermissionWithADescriptionBesideALabel() {
-        val menu = Menu.read(captured("claude-bash-permission.ansi", 54))!!
+        val menu = Prompt.read(captured("claude-bash-permission.ansi", 54))!!
         assertEquals(Line("touch /tmp/wf-probe-1 && ls -l /tmp/wf-probe-1", true), menu.lines.single { it.code })
         assertEquals(
             listOf(
@@ -233,7 +233,7 @@ class MenuTest {
 
     @Test
     fun aRealRewindListPickedWithTheCursor() {
-        val menu = Menu.read(captured("claude-rewind-list.ansi", 54))!!
+        val menu = Prompt.read(captured("claude-rewind-list.ansi", 54))!!
         assertEquals(listOf(Line("Rewind", false), Line("Restore the code and/or conversation to the point before…", false)), menu.lines)
         assertEquals(
             listOf(
@@ -251,7 +251,7 @@ class MenuTest {
 
     @Test
     fun aRealRewindConfirmationQuotesItsMessage() {
-        val menu = Menu.read(captured("claude-rewind-confirm.ansi", 54))!!
+        val menu = Prompt.read(captured("claude-rewind-confirm.ansi", 54))!!
         assertEquals(
             listOf("Restore code and conversation", "Restore conversation", "Restore code", "Summarize from here", "Summarize up to here"),
             menu.options.map { it.label },
@@ -266,7 +266,7 @@ class MenuTest {
 
     @Test
     fun aRewindListInFullscreenModeWithItsFootPastTheBottom() {
-        val menu = Menu.read(captured("claude-rewind-list-fullscreen.ansi", 52))!!
+        val menu = Prompt.read(captured("claude-rewind-list-fullscreen.ansi", 52))!!
         assertEquals(listOf(Line("Rewind", false), Line("Restore the code and/or conversation to the point before…", false)), menu.lines)
         assertEquals(listOf("↑ 1 more", "say just: two", "(current)"), menu.options.map { it.label })
         assertEquals(listOf(-1, 0, 0), menu.options.map { it.scroll })
@@ -276,7 +276,7 @@ class MenuTest {
 
     @Test
     fun aRewindConfirmationInFullscreenModeIsAboutWhatsBelowItsRule() {
-        val menu = Menu.read(captured("claude-rewind-confirm-fullscreen.ansi", 52))!!
+        val menu = Prompt.read(captured("claude-rewind-confirm-fullscreen.ansi", 52))!!
         assertEquals("Rewind", menu.lines.first().text)
         assertEquals(listOf("Restore conversation", "Summarize from here", "Summarize up to here"), menu.options.map { it.label })
         assertEquals("say just: two", menu.quote)
@@ -292,7 +292,7 @@ class MenuTest {
             plain("              conversation to a previous po…"),
             plain("    /review   Review a pull request"),
         )
-        assertNull(Menu.read(s))
+        assertNull(Prompt.read(s))
     }
 
     @Test
@@ -305,6 +305,6 @@ class MenuTest {
             plain("❯ "),
             plain(rule),
         )
-        assertNull(Menu.read(s))
+        assertNull(Prompt.read(s))
     }
 }

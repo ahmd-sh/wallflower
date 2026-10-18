@@ -1,0 +1,105 @@
+package sh.ahmd.wallflower.program
+
+import sh.ahmd.wallflower.screen.InputLine
+import sh.ahmd.wallflower.screen.Prompt
+import sh.ahmd.wallflower.screen.Screen
+
+/**
+ * Claude Code: its prompt box, the menus it asks with, and its own ways:
+ * vim mode, /compact, and /rewind, which takes its conversation back.
+ */
+object Claude : Program {
+    override val clearKeys = listOf("C-u") // a row at a time
+
+    override val compact = "/compact"
+
+    /**
+     * The prompt box: between two rules, a first row starting `❯ ` (or `! `
+     * in shell mode) and rows indented to match. Claude wraps long lines
+     * itself, at words, so a row that couldn't fit the next one's first word
+     * was wrapped rather than ended. Faint text is the placeholder or a
+     * suggestion, not input: in an empty box, it's the suggestion (the
+     * placeholder's `Try "…"` suggests what's quoted).
+     */
+    override fun line(screen: Screen): InputLine? {
+        val s = screen
+        for (y in s.rows - 2 downTo 1) {
+            val mark = s.text(0, y)
+            if ((mark != "❯" && mark != "!") || s.text(1, y).isNotBlank() || !rule(s, y - 1)) continue
+            val end = (y + 1 until s.rows).firstOrNull { rule(s, it) } ?: continue
+            val width = s.cols - 2
+            val out = StringBuilder(if (mark == "!") "!" else "")
+            val ghost = StringBuilder()
+            var previous: String? = null
+            for (r in y until end) {
+                val row = StringBuilder()
+                for (x in 2 until s.cols) {
+                    if (s.spacer(x, r)) continue
+                    val c = s.text(x, r)
+                    // Blanks go with both: apps draw the spaces between faint words plain.
+                    if (c.isBlank()) {
+                        row.append(' ')
+                        ghost.append(' ')
+                    } else {
+                        (if (s.faint(x, r)) ghost else row).append(c)
+                    }
+                }
+                ghost.append(' ')
+                val line = row.trimEnd().toString()
+                if (previous != null) {
+                    val word = line.substringBefore(' ').length
+                    out.append(
+                        when {
+                            previous.length >= width -> ""
+                            line.isNotEmpty() && previous.length + 1 + word > width -> " "
+                            else -> "\n"
+                        },
+                    )
+                }
+                out.append(line)
+                previous = line
+            }
+            val text = out.toString().trimEnd()
+            val suggestion = if (text.isEmpty()) ghost.trim().replace(spaces, " ").let { tried.matchEntire(it)?.groupValues?.get(1) ?: it } else ""
+            return InputLine(text, end - y, suggestion)
+        }
+        return null
+    }
+
+    override fun prompt(screen: Screen): Prompt? = Prompt.read(screen)
+
+    /**
+     * Claude runs in vim mode, and where it can't be seen it may be in
+     * NORMAL (after an Esc), where keys are commands: A first goes back to
+     * INSERT at the row's end. In INSERT it's typed, and the first ^U takes it.
+     */
+    override fun clear(line: InputLine, keys: List<String>, unseen: Boolean): List<String> =
+        (if (unseen && keys == clearKeys) listOf("A") else emptyList()) + super.clear(line, keys, unseen)
+
+    /** Restoring the conversation from /rewind takes it back to before the message the prompt quotes. */
+    override fun picked(prompt: Prompt, option: Prompt.Option): Effect? {
+        if (option.label !in RESTORES) return null
+        val quote = prompt.quote.filterNot(Char::isWhitespace)
+        if (quote.isEmpty()) return null
+        return Effect.Rewound { said -> quotes(quote, said.filterNot(Char::isWhitespace)) }
+    }
+
+    private val RESTORES = setOf("Restore conversation", "Restore code and conversation")
+
+    /** Whether [message] is what Claude quotes as [quote]: its words, cut short with …. */
+    private fun quotes(quote: String, message: String): Boolean {
+        var at = 0
+        for (part in quote.split('…')) {
+            val i = message.indexOf(part, at)
+            if (i < 0) return false
+            at = i + part.length
+        }
+        return true
+    }
+
+    private val spaces = Regex(" {2,}")
+    private val tried = Regex("^Try \"(.+)\"$")
+
+    private fun rule(s: Screen, y: Int) =
+        s.text(0, y) == "─" && (0 until s.cols).count { s.text(it, y) == "─" } >= s.cols / 2
+}

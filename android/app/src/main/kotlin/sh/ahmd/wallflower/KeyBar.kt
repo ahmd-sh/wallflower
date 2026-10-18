@@ -6,7 +6,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import sh.ahmd.wallflower.terminal.InputLine
 
 /**
  * A key on the bar: what it shows, and the tmux keys it sends (`Escape`,
@@ -47,26 +46,9 @@ data class KeyProfile(
     val keys: List<BarKey>,
     /** What the send button sends when the box is empty. */
     val stop: List<String> = listOf("C-c"),
-    /** What empties the app's input line, sent once per row it takes and once more; null picks by program. */
+    /** What empties a row of the app's input line, as the user set it; null leaves it to the program (Program.clearKeys). */
     val clear: List<String>? = null,
-) {
-    fun clearKeys(): List<String> = clear ?: when {
-        programs.any { it.equals("claude", ignoreCase = true) } -> listOf("C-u") // a row at a time
-        programs.any { it.equals("zsh", ignoreCase = true) } -> listOf("C-x", "C-u") // kill-buffer, bound in the zshrc
-        else -> emptyList()
-    }
-
-    /**
-     * Keys that empty [line], as last read, row by row. With [insert], for the
-     * read view where claude's vim mode can't be seen: it may be in NORMAL
-     * (after an Esc), where keys are commands, so A first goes back to INSERT
-     * at the row's end; in INSERT it's typed and the first ^U takes it.
-     */
-    fun clear(line: InputLine, insert: Boolean = false): List<String> {
-        val ready = if (insert && clear == null && programs.any { it.equals("claude", ignoreCase = true) }) listOf("A") else emptyList()
-        return ready + List(line.rows * 2 + 1) { clearKeys() }.flatten()
-    }
-}
+)
 
 /**
  * Which keys sit next to the composer. The focused pane's program picks the

@@ -92,28 +92,27 @@ import kotlinx.coroutines.withContext
 import sh.ahmd.wallflower.protocol.Entries
 import sh.ahmd.wallflower.protocol.Entry
 import sh.ahmd.wallflower.session.Conversation
-import sh.ahmd.wallflower.terminal.Menu
+import sh.ahmd.wallflower.screen.Prompt
 
 /**
  * A pane's conversation in place of its terminal: what each side said, with
  * each run of tool calls and thinking folded into one line, to open when
  * wanted. The newest is at the bottom, which stays in view as entries come.
  * Below it, while the program works, a line says so; when its screen offers
- * a [menu] (a permission, a question), that's there to answer, and the keys
- * picking an option go to [onKeys]. Sideways drags go to [swipe], to move
- * between panes as on the terminal. Restoring the conversation to before a
- * message it quotes, [onRewound] hears the quote.
+ * a [prompt] (a permission, a question), that's there to answer, and the keys
+ * picking an option go to [onKeys], and the option to [onPicked]. Sideways
+ * drags go to [swipe], to move between panes as on the terminal.
  */
 @Composable
 fun ConversationView(
     conversation: Conversation,
     modifier: Modifier = Modifier,
     swipe: Swipe? = null,
-    menu: Menu? = null,
+    prompt: Prompt? = null,
     onKeys: (List<String>) -> Unit = {},
+    onPicked: (Prompt, Prompt.Option) -> Unit = { _, _ -> },
     /** Sends the program its compact command, from the context button; null while it can't. */
     onCompact: (() -> Unit)? = null,
-    onRewound: (quote: String) -> Unit = {},
     /** On screen, so what moves moves; a page beside it holds still. */
     live: Boolean = true,
 ) = CompositionLocalProvider(LocalLive provides live) {
@@ -135,7 +134,7 @@ fun ConversationView(
     ) {
         val items = remember(conversation.entries, conversation.rewound) { items(conversation.shown) }
         // A menu while the program says it's busy is one left on the screen, or a list that looks like one.
-        val asking = menu?.takeIf { conversation.state != Entries.WORKING }
+        val asking = prompt?.takeIf { conversation.state != Entries.WORKING }
         // The program says it's waiting a moment after its screen moved on (answered), so for that long it's working.
         var unread by remember { mutableStateOf(false) }
         LaunchedEffect(conversation.state, asking == null) {
@@ -204,10 +203,8 @@ fun ConversationView(
                                     label = "status",
                                 ) { now ->
                                     when (now) {
-                                        Status.Asking -> shown?.let { menu ->
-                                            MenuCard(menu, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }) { picked ->
-                                                if (picked.label in RESTORES) onRewound(menu.quote)
-                                            }
+                                        Status.Asking -> shown?.let { p ->
+                                            PromptCard(p, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }) { picked -> onPicked(p, picked) }
                                         }
                                         Status.Working -> Working(conversation.since)
                                         Status.Waiting -> Waiting()
@@ -250,9 +247,6 @@ private enum class Phase { Reading, Empty, Shown }
 
 /** What's below the conversation: a menu to answer, the program working, or waiting on something unread. */
 private enum class Status { Asking, Working, Waiting }
-
-/** Claude Code's rewind choices that take the conversation back. */
-private val RESTORES = setOf("Restore conversation", "Restore code and conversation")
 
 /** How long the program can say it's waiting without a menu on screen before that's what it is. */
 private const val UNREAD_MS = 1_200L

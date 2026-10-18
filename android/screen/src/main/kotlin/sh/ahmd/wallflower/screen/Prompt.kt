@@ -1,13 +1,14 @@
-package sh.ahmd.wallflower.terminal
+package sh.ahmd.wallflower.screen
 
 /**
- * Choices an app offers on its screen: a numbered menu with a cursor (❯ or
- * ›) on one option, as CLIs ask for permission, answers and approvals. The
- * rows above it, up to the rule that opens its box, say what it's about;
- * boxed rows (between ╌ rules) are code. A row of ☐ ☒ ✔ chips steps between
- * questions. Rows beneath an option continue it when its last word couldn't
- * fit the row before (the app wrapped it) and they're in its color; others
- * describe it. The bottom-most menu on the screen is the live one.
+ * Choices a program offers on its screen, to answer by touch: a numbered
+ * menu with a cursor (❯ or ›) on one option, as CLIs ask for permission,
+ * answers and approvals. The rows above it, up to the rule that opens its
+ * box, say what it's about; boxed rows (between ╌ rules) are code. A row of
+ * ☐ ☒ ✔ chips steps between questions. Rows beneath an option continue it
+ * when its last word couldn't fit the row before (the program wrapped it)
+ * and they're in its color; others describe it. The bottom-most menu on the
+ * screen is the live one.
  *
  * Or a list picked from with the cursor alone, as Claude Code's /rewind:
  * below its rule what it's about, then options indented past the cursor's
@@ -16,7 +17,7 @@ package sh.ahmd.wallflower.terminal
  * past the bottom of a short pane. [quote] is what either quotes (│ rows),
  * a message it's about.
  */
-data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List<Tab>, val quote: String = "") {
+data class Prompt(val lines: List<Line>, val options: List<Option>, val tabs: List<Tab>, val quote: String = "") {
     data class Line(val text: String, val code: Boolean)
 
     data class Option(
@@ -72,7 +73,7 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
         private const val CONTEXT = 24 // rows above the options at most
         private const val EDGE = 2
 
-        fun read(s: Screen): Menu? {
+        fun read(s: Screen): Prompt? {
             val rows = List(s.rows) { Row.of(s, it) }
             for (y in s.rows - 1 downTo 0) {
                 val m = option.matchEntire(rows[y].text) ?: continue
@@ -113,22 +114,23 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
 
             companion object {
                 fun of(s: Screen, y: Int): Row {
-                    val text = StringBuilder()
-                    val cells = ArrayList<Int>()
+                    val text = StringBuilder(s.cols)
+                    var cells = IntArray(s.cols)
                     for (x in 0 until s.cols) {
                         if (s.spacer(x, y)) continue
                         for (c in s.text(x, y).ifEmpty { " " }) {
+                            if (text.length == cells.size) cells = cells.copyOf(cells.size * 2)
+                            cells[text.length] = x
                             text.append(c)
-                            cells += x
                         }
                     }
-                    return Row(text.toString(), cells.toIntArray(), BooleanArray(s.cols) { s.muted(it, y) }, BooleanArray(s.cols) { s.highlighted(it, y) })
+                    return Row(text.toString(), cells, BooleanArray(s.cols) { s.muted(it, y) }, BooleanArray(s.cols) { s.highlighted(it, y) })
                 }
             }
         }
 
         /** The menu whose first option is on row [top], if it is one. */
-        private fun block(rows: List<Row>, top: Int): Menu? {
+        private fun block(rows: List<Row>, top: Int): Prompt? {
             val first = option.matchEntire(rows[top].text)!!
             val numberAt = first.groups[3]!!.range.first
             val options = mutableListOf<Option>()
@@ -186,11 +188,11 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
             }
             if (options.count { it.number != null } < 2 || options.none { it.current }) return null
             val (lines, tabs, quote) = about(rows, top)
-            return Menu(lines, options, tabs, quote)
+            return Prompt(lines, options, tabs, quote)
         }
 
         /** A list picked from with the cursor, below the last rule. */
-        private fun picker(rows: List<Row>): Menu? {
+        private fun picker(rows: List<Row>): Prompt? {
             val rule = rows.indexOfLast { rule(it.text) }
             if (rule < 0) return null
             val foot = (rule + 1 until rows.size).firstOrNull { rows[it].text.trim().startsWith("Enter to ") } ?: rows.size
@@ -222,7 +224,7 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
             }
             if (options.count { it.scroll == 0 } < 2 || options.none { it.current }) return null
             val (lines, tabs, quote) = about(rows, top)
-            return Menu(lines, options, tabs, quote)
+            return Prompt(lines, options, tabs, quote)
         }
 
         /** What a menu whose options start on row [top] is about: up to the rule that opens its box. */

@@ -31,6 +31,7 @@ android {
 }
 
 dependencies {
+    api(project(":screen"))
     testImplementation(libs.junit4)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.junit)

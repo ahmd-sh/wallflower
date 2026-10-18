@@ -40,6 +40,7 @@ android {
 
 dependencies {
     implementation(project(":protocol"))
+    implementation(project(":screen"))
     implementation(project(":terminal"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.foundation)

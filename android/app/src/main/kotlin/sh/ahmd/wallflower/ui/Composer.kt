@@ -84,7 +84,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.WindowInsets
-import sh.ahmd.wallflower.terminal.InputLine
+import sh.ahmd.wallflower.screen.InputLine
 import androidx.compose.foundation.text.input.placeCursorAtEnd
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController

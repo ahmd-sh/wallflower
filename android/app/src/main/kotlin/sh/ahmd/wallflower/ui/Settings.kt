@@ -47,6 +47,7 @@ import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.KeyBarStore
 import sh.ahmd.wallflower.KeyProfile
 import sh.ahmd.wallflower.Look
+import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.session.Host
 
 /** A profile of the key bar, by where it sits. */
@@ -243,7 +244,7 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
 
         Section("clear")
         Body("What empties the app's line, so what's in the box replaces it (sent once per row of the line). Empty: the box adds to the line.")
-        var clear by remember(ref) { mutableStateOf(profile.clearKeys().joinToString(" ")) }
+        var clear by remember(ref) { mutableStateOf((profile.clear ?: Programs.of(profile.programs.firstOrNull().orEmpty()).clearKeys).joinToString(" ")) }
         Field("tmux keys", clear) {
             clear = it
             save(profile.copy(clear = it.split(' ').filter(String::isNotEmpty)))

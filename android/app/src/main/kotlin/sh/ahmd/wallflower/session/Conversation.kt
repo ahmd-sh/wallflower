@@ -28,25 +28,12 @@ data class Conversation(
     val shown: List<Entry> get() = rewound?.let { r -> entries.takeWhile { it.id != r } } ?: entries
 
     /**
-     * Rewound to before the user's message that [quote] is from, as the program quotes it (cut short with …).
-     * Of messages it could be from, the latest: what was taken back may partly show till the next message, but
-     * nothing still said is hidden.
+     * Rewound to before the user's message that [said] matches. Of messages it could be, the latest: what was
+     * taken back may partly show till the next message, but nothing still said is hidden.
      */
-    fun rewoundTo(quote: String): Conversation {
-        val q = quote.filterNot(Char::isWhitespace)
-        if (q.isEmpty()) return this
-        val said = entries.lastOrNull { it.role == "user" && it.kind == "text" && quotes(q, it.text.filterNot(Char::isWhitespace)) }
-        return said?.let { copy(rewound = it.id) } ?: this
-    }
-
-    private fun quotes(quote: String, message: String): Boolean {
-        var at = 0
-        for (part in quote.split('…')) {
-            val i = message.indexOf(part, at)
-            if (i < 0) return false
-            at = i + part.length
-        }
-        return true
+    fun rewoundTo(said: (String) -> Boolean): Conversation {
+        val message = entries.lastOrNull { it.role == "user" && it.kind == "text" && said(it.text) }
+        return message?.let { copy(rewound = it.id) } ?: this
     }
 
     /** With [m] applied: a reset replaces everything, else entries replace theirs by id or come last; a state replaces the last. */

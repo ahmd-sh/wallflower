@@ -3,7 +3,6 @@ package sh.ahmd.wallflower
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import sh.ahmd.wallflower.terminal.InputLine
 
 class KeyBarTest {
     private val bar = KeyBar.defaults
@@ -36,22 +35,6 @@ class KeyBarTest {
         assertEquals(listOf("C-j"), ctrl.then(BarKey.typed('j')).keys)
         assertEquals(listOf("C-Up"), ctrl.then(KeyBar.common.first { it.label == "↑" }).keys)
         assertEquals(listOf("Space"), BarKey.typed(' ').keys)
-    }
-
-    @Test
-    fun clearKeysFollowTheProgram() {
-        assertEquals(listOf("C-u"), bar.profileFor("claude").clearKeys())
-        assertEquals(listOf("C-x", "C-u"), bar.profileFor("zsh").clearKeys())
-        assertEquals(emptyList<String>(), bar.profileFor("hntui").clearKeys())
-        assertEquals(listOf("Escape", "S"), KeyProfile("vi", listOf("zsh"), emptyList(), clear = listOf("Escape", "S")).clearKeys())
-    }
-
-    @Test
-    fun claudeIsInInsertModeBeforeItsLineIsClearedFromTheReadView() {
-        val line = InputLine("two\nrows", rows = 2)
-        assertEquals(List(5) { "C-u" }, bar.profileFor("claude").clear(line))
-        assertEquals(listOf("A") + List(5) { "C-u" }, bar.profileFor("claude").clear(line, insert = true))
-        assertEquals(List(5) { listOf("C-x", "C-u") }.flatten(), bar.profileFor("zsh").clear(line, insert = true))
     }
 
     @Test

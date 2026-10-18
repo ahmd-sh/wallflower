@@ -4,9 +4,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import sh.ahmd.wallflower.protocol.Entries
 import sh.ahmd.wallflower.protocol.Entry
+import sh.ahmd.wallflower.program.Claude
+import sh.ahmd.wallflower.program.Effect
+import sh.ahmd.wallflower.screen.Prompt
 
 class ConversationTest {
     private fun text(id: String) = Entry(id, "assistant", "text", id)
+
+    /** Whether a message is the one Claude's /rewind quotes as [quote], as restoring it says. */
+    private fun quoting(quote: String): (String) -> Boolean {
+        val restore = Prompt.Option(1, "Restore conversation", "", null, current = true, muted = false)
+        return (Claude.picked(Prompt(emptyList(), listOf(restore), emptyList(), quote), restore) as Effect.Rewound).said
+    }
 
     @Test
     fun entriesReplaceTheirsByIdOrComeLast() {
@@ -23,12 +32,12 @@ class ConversationTest {
     fun rewoundItHidesTheMessageQuotedAndWhatFollowedUntilAReset() {
         val said = Entry("u2", "user", "text", "Use the Write tool to create /private/tmp/claude-502/rw.txt containing hi")
         var c = Conversation().apply(Entries("%1", reset = true, entries = listOf(Entry("u1", "user", "text", "one"), text("a1"), said, text("a2"))))
-        c = c.rewoundTo("Use the Write tool to create /private/tmp/claude -502/rw.txt containing hi")
+        c = c.rewoundTo(quoting("Use the Write tool to create /private/tmp/claude -502/rw.txt containing hi"))
         assertEquals(listOf("u1", "a1"), c.shown.map { it.id })
         assertEquals(listOf("u1", "a1"), c.apply(Entries("%1", state = Entries.IDLE)).shown.map { it.id })
-        assertEquals(listOf("u1", "a1"), c.rewoundTo("…create /private/tmp/claude…").shown.map { it.id })
+        assertEquals(listOf("u1", "a1"), c.rewoundTo(quoting("…create /private/tmp/claude…")).shown.map { it.id })
         assertEquals(listOf("u1", "a1", "u2", "a2"), c.apply(Entries("%1", reset = true, entries = c.entries)).shown.map { it.id })
-        assertEquals(4, Conversation().apply(Entries("%1", reset = true, entries = c.entries)).rewoundTo("something else").shown.size)
+        assertEquals(4, Conversation().apply(Entries("%1", reset = true, entries = c.entries)).rewoundTo(quoting("something else")).shown.size)
     }
 
     @Test
@@ -36,7 +45,7 @@ class ConversationTest {
         // The quote can't tell two "yes"es apart: hiding from the later one may leave some of what was
         // taken back showing until the transcript says (the next message), but never hides what's still there.
         val entries = listOf(Entry("u1", "user", "text", "yes"), text("a1"), Entry("u2", "user", "text", "yes"), text("a2"))
-        val c = Conversation().apply(Entries("%1", reset = true, entries = entries)).rewoundTo("yes")
+        val c = Conversation().apply(Entries("%1", reset = true, entries = entries)).rewoundTo(quoting("yes"))
         assertEquals(listOf("u1", "a1"), c.shown.map { it.id })
     }
 

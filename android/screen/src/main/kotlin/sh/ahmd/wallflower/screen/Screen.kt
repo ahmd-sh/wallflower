@@ -1,11 +1,12 @@
-package sh.ahmd.wallflower.terminal
+package sh.ahmd.wallflower.screen
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * The active screen's text, with what each cell is: enough to read what an
- * app's input line holds, or the choices it offers. Cells are row-major; a
+ * A terminal's active screen: its text, with what each cell is, enough to
+ * read what a program's input line holds, or the choices it offers. It's
+ * all a terminal tells the programs that read it. Cells are row-major; a
  * wide character's second cell is an empty spacer.
  */
 class Screen(

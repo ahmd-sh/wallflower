@@ -115,6 +115,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import sh.ahmd.wallflower.AppModel
+import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.protocol.Entries
 import sh.ahmd.wallflower.protocol.Keys
 import sh.ahmd.wallflower.protocol.Kill
@@ -127,8 +128,11 @@ import sh.ahmd.wallflower.session.Conversation
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Session.Companion.shownPane
 import sh.ahmd.wallflower.session.Status
-import sh.ahmd.wallflower.terminal.InputLine
-import sh.ahmd.wallflower.terminal.Menu
+import sh.ahmd.wallflower.program.Effect
+import sh.ahmd.wallflower.program.Program
+import sh.ahmd.wallflower.program.Programs
+import sh.ahmd.wallflower.screen.InputLine
+import sh.ahmd.wallflower.screen.Prompt
 import sh.ahmd.wallflower.terminal.Terminal
 import sh.ahmd.wallflower.terminal.TerminalView
 
@@ -256,6 +260,7 @@ private fun TerminalScreen(
     val windows = state?.windows.orEmpty()
     val window = windows.firstOrNull { it.id == viewing } ?: windows.firstOrNull { it.active }
     val pane = window?.shownPane(chosen)
+    val program = remember(pane?.command) { Programs.of(pane?.command.orEmpty()) }
     LaunchedEffect(pane?.command) { onProgram(pane?.command) }
     val haptics = haptics()
     val focusManager = LocalFocusManager.current
@@ -375,26 +380,28 @@ private fun TerminalScreen(
             }
             onDispose { session.onOutput = null }
         }
-        // While its conversation shows, the same read finds any menu the pane's screen offers.
+        // While its read view shows, the same read finds any prompt the pane's screen offers.
         var line by remember { mutableStateOf<InputLine?>(null) }
         val uploads by model.uploads.items.collectAsStateWithLifecycle()
         val uploadDir by model.uploads.dir.collectAsStateWithLifecycle()
-        var menu by remember { mutableStateOf<Menu?>(null) }
+        var prompt by remember { mutableStateOf<Prompt?>(null) }
         val terminal = pane?.let { terminals[it.id] }
         val reading by rememberUpdatedState(pane != null && pane.id in following)
-        LaunchedEffect(pane?.id) { menu = null } // another pane's; the same pane's new terminal (more history) offers the same
+        val reader by rememberUpdatedState(program)
+        LaunchedEffect(pane?.id) { prompt = null } // another pane's; the same pane's new terminal (more history) offers the same
         LaunchedEffect(terminal) {
             line = null
             lineTicks.trySend(Unit)
             for (tick in lineTicks) {
                 val (l, m) = withContext(Dispatchers.Default) {
                     val screen = terminal?.screen()
-                    // A menu on screen while the program says it's working isn't one to answer (ConversationView drops it), so it isn't read.
+                    // A prompt on screen while the program says it's working isn't one to answer (ConversationView drops it), so it isn't read.
                     val asks = reading && session.conversations.value[shownId]?.state != Entries.WORKING
-                    screen?.let(InputLine::read) to screen?.takeIf { asks }?.let(Menu::read)
+                    val p = reader
+                    screen?.let(p::line) to screen?.takeIf { asks }?.let(p::prompt)
                 }
                 line = l
-                menu = m
+                prompt = m
                 delay(LINE_EVERY_MS)
             }
         }
@@ -484,17 +491,24 @@ private fun TerminalScreen(
             var last by remember { mutableStateOf(Conversation()) }
             if (conversation != null) last = conversation
             androidx.compose.animation.AnimatedVisibility(conversation != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
+                val its = remember(p.command) { Programs.of(p.command) }
+                val compact = its.compact
                 ConversationView(
                     last,
                     swipe = swipe,
-                    menu = if (current) menu else null,
+                    prompt = if (current) prompt else null,
                     onKeys = { keys -> session.send(Keys(p.id, keys)) },
-                    onCompact = if (current) {
-                        { session.submit(p.id, "/compact", clear = line?.let { bar.profileFor(p.command).clear(it, insert = true) }.orEmpty()) }
+                    onPicked = { asked, option ->
+                        when (val effect = its.picked(asked, option)) {
+                            is Effect.Rewound -> session.rewound(p.id, effect.said)
+                            null -> Unit
+                        }
+                    },
+                    onCompact = if (current && compact != null) {
+                        { session.submit(p.id, compact, clear = line?.let { its.clear(it, clearKeys(bar, p, its), unseen = true) }.orEmpty()) }
                     } else {
                         null
                     },
-                    onRewound = { quote -> session.rewound(p.id, quote) },
                     live = current,
                 )
             }
@@ -570,6 +584,7 @@ private fun TerminalScreen(
                 {
                     if (pane != null) {
                         val profile = bar.profileFor(pane.command)
+                        val clearing = clearKeys(bar, pane, program)
                         Composer(
                             state = model.drafts.of(pane.id),
                             program = pane.command,
@@ -581,9 +596,9 @@ private fun TerminalScreen(
                             thumbnail = model.uploads::thumbnail,
                             onAttach = { uris -> model.uploads.add(session, pane.id, uris) },
                             onDismissUpload = model.uploads::dismiss,
-                            onClear = if (profile.clearKeys().isEmpty()) null else {
+                            onClear = if (clearing.isEmpty()) null else {
                                 {
-                                    line?.let { session.send(Keys(pane.id, profile.clear(it, insert = reading))) }
+                                    line?.let { session.send(Keys(pane.id, program.clear(it, clearing, unseen = reading))) }
                                     line = null // gone at once; the next read says what's there now
                                 }
                             },
@@ -591,7 +606,7 @@ private fun TerminalScreen(
                             onSend = { text, enter ->
                                 // The box replaces whatever the app's line holds.
                                 val known = line
-                                val clear = known?.let { profile.clear(it, insert = reading) }.orEmpty()
+                                val clear = known?.let { program.clear(it, clearing, unseen = reading) }.orEmpty()
                                 session.submit(pane.id, text, enter, clear).also { sent ->
                                     if (sent && '\n' !in text && known?.text.isNullOrEmpty()) view?.predict(text)
                                 }
@@ -1070,6 +1085,9 @@ private fun PowerButton(status: Status, onSettings: () -> Unit, onExit: () -> Un
 }
 
 private const val LINE_EVERY_MS = 80L
+
+/** What empties a row of [pane]'s input line: the user's keys for its program, else the program's own. */
+private fun clearKeys(bar: KeyBar, pane: Pane, program: Program) = bar.profileFor(pane.command).clear ?: program.clearKeys
 
 /** Cards are a phone screen's shape, like a browser's tab grid. */
 private const val CARD_RATIO = 0.75f

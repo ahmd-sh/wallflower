@@ -4,6 +4,7 @@ import java.nio.ByteBuffer
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
+import sh.ahmd.wallflower.screen.Screen
 
 /**
  * One pane's terminal, backed by libghostty-vt. Pane output is written from

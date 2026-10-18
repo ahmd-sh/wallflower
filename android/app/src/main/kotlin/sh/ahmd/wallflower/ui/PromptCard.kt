@@ -26,27 +26,27 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import sh.ahmd.wallflower.terminal.Menu
+import sh.ahmd.wallflower.screen.Prompt
 
 /**
- * A menu the program's screen offers, to answer by touch: what it's about,
+ * Choices the program's screen offers, to answer by touch: what it's about,
  * its questions as tabs, its options. Picking one sends [onKeys] the keys
  * that pick it on the screen, so the program, and the Mac, see the same
  * answer as if typed, and [onPick] the option. The card goes when the screen
  * moves on.
  */
 @Composable
-fun MenuCard(menu: Menu, onKeys: (List<String>) -> Unit, modifier: Modifier = Modifier, onPick: (Menu.Option) -> Unit = {}) {
+fun PromptCard(prompt: Prompt, onKeys: (List<String>) -> Unit, modifier: Modifier = Modifier, onPick: (Prompt.Option) -> Unit = {}) {
     val haptics = haptics()
     Box(modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Palette.bg1).padding(10.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             // The first row leaves the corner to esc.
-            if (menu.tabs.isNotEmpty()) {
+            if (prompt.tabs.isNotEmpty()) {
                 Row(
                     Modifier.padding(end = ESC_ROOM).clip(RoundedCornerShape(14.dp)).horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    for (tab in menu.tabs) {
+                    for (tab in prompt.tabs) {
                         Text(
                             tab.label,
                             color = if (tab.current) Palette.fg else Palette.grey,
@@ -55,23 +55,23 @@ fun MenuCard(menu: Menu, onKeys: (List<String>) -> Unit, modifier: Modifier = Mo
                             modifier = Modifier
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(if (tab.current) Palette.bg3 else Palette.bg2)
-                                .clickable(enabled = menu.tabs.size > 1) {
+                                .clickable(enabled = prompt.tabs.size > 1) {
                                     haptics.tick()
-                                    onKeys(menu.keys(tab))
+                                    onKeys(prompt.keys(tab))
                                 }
                                 .padding(horizontal = 10.dp, vertical = 4.dp),
                         )
                     }
                 }
             }
-            if (menu.lines.isNotEmpty()) About(menu.lines, if (menu.tabs.isEmpty()) ESC_ROOM else 0.dp)
-            if (menu.tabs.isEmpty() && menu.lines.isEmpty()) Spacer(Modifier.height(18.dp))
+            if (prompt.lines.isNotEmpty()) About(prompt.lines, if (prompt.tabs.isEmpty()) ESC_ROOM else 0.dp)
+            if (prompt.tabs.isEmpty() && prompt.lines.isEmpty()) Spacer(Modifier.height(18.dp))
             Column {
-                menu.options.forEachIndexed { i, option ->
+                prompt.options.forEachIndexed { i, option ->
                     if (i > 0) Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(1.dp).background(Palette.bg2))
                     Choice(option) {
                         if (option.checked != null) haptics.toggle(option.checked != true) else haptics.confirm()
-                        onKeys(menu.keys(option))
+                        onKeys(prompt.keys(option))
                         onPick(option)
                     }
                 }
@@ -99,8 +99,8 @@ private val ESC_ROOM = 44.dp
 
 /** What the menu is about: the first and last lines (a title, the question) stand out, boxed rows are code. */
 @Composable
-private fun About(lines: List<Menu.Line>, firstEnd: Dp) {
-    val words = lines.withIndex().filter { !it.value.code }.map { it.index }
+private fun About(lines: List<Prompt.Line>, firstEnd: Dp) {
+    val prose = lines.withIndex().filter { !it.value.code }.map { it.index }
     Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         var i = 0
         while (i < lines.size) {
@@ -125,11 +125,11 @@ private fun About(lines: List<Menu.Line>, firstEnd: Dp) {
                 )
                 continue
             }
-            val stands = i == words.first() || i == words.last()
+            val stands = i == prose.first() || i == prose.last()
             Text(
                 lines[i].text,
                 color = if (stands) Palette.fg else Palette.grey,
-                fontFamily = sh.ahmd.wallflower.ui.words,
+                fontFamily = words,
                 fontSize = if (stands) wordSize(13.sp, 15.sp) else wordSize(12.sp, 13.sp),
                 fontWeight = if (stands) (if (grotesque) FontWeight.SemiBold else FontWeight.Bold) else FontWeight.Normal,
                 lineHeight = wordSize(17.sp, 19.sp),
@@ -142,7 +142,7 @@ private fun About(lines: List<Menu.Line>, firstEnd: Dp) {
 
 /** An option: its number (the key that picks it) or box, its label, and what it means beneath. The cursor's one is lit. */
 @Composable
-private fun Choice(option: Menu.Option, onClick: () -> Unit) {
+private fun Choice(option: Prompt.Option, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
