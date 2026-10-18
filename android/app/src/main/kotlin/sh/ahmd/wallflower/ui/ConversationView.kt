@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -72,10 +73,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -522,7 +526,7 @@ private fun Steps(steps: List<Entry>) {
 /** Steps as text: what each ran on, and what came of it. */
 private fun trace(steps: List<Entry>) = steps.joinToString("\n\n") { s ->
     val name = if (s.kind == "thinking") "thinking" else s.name
-    listOf(if (s.text.isEmpty()) name else "$name: ${s.text}", s.output).filter { it.isNotEmpty() }.joinToString("\n")
+    listOf(if (s.text.isEmpty()) name else "$name: ${s.text}", s.diff.ifEmpty { s.output }).filter { it.isNotEmpty() }.joinToString("\n")
 }
 
 /** A dot that breathes while a tool runs. */
@@ -550,7 +554,7 @@ private fun Step(s: Entry) {
             }
             .padding(horizontal = 8.dp, vertical = 5.dp),
     ) {
-        Row {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 if (s.kind == "thinking") "thinking" else s.name,
                 style = mono.copy(
@@ -563,12 +567,35 @@ private fun Step(s: Entry) {
                 ),
             )
             if (!open) {
-                Text(s.text.lineSequence().firstOrNull().orEmpty(), style = mono.copy(color = Palette.grey), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp))
+                Text(
+                    s.text.lineSequence().firstOrNull().orEmpty(),
+                    style = mono.copy(color = Palette.grey),
+                    maxLines = 1,
+                    // A changed file's name is at its end.
+                    overflow = if (s.diff.isNotEmpty()) TextOverflow.MiddleEllipsis else TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(start = 8.dp),
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            if (s.diff.isNotEmpty()) {
+                val (added, removed) = remember(s.diff) { diffCounts(s.diff) }
+                Text(
+                    buildAnnotatedString {
+                        if (added > 0) withStyle(SpanStyle(color = Palette.green)) { append("+$added") }
+                        if (added > 0 && removed > 0) append(" ")
+                        if (removed > 0) withStyle(SpanStyle(color = Palette.red)) { append("−$removed") }
+                    },
+                    style = mono.copy(fontSize = 11.sp),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
             }
         }
         if (open) {
             if (s.text.isNotEmpty()) Text(s.text, style = mono.copy(color = Palette.fg), modifier = Modifier.padding(top = 4.dp))
-            if (s.output.isNotEmpty()) {
+            if (s.diff.isNotEmpty() && !s.error) {
+                DiffView(s.diff, Modifier.padding(top = 6.dp))
+            } else if (s.output.isNotEmpty()) {
                 Text(
                     s.output,
                     style = mono.copy(color = if (s.error) Palette.red else Palette.grey, fontSize = 11.sp, lineHeight = 15.sp),
