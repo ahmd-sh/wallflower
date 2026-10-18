@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class SplitTest {
-    private val uploads = Session.uploadPaths("/Users/me/Library/Caches/wallflower/uploads")
+    private val uploads = uploadPaths("/Users/me/Library/Caches/wallflower/uploads")
 
     @Test
     fun uploadsAreTheirOwnRuns() {
@@ -16,7 +16,7 @@ class SplitTest {
                 "/Users/me/Library/Caches/wallflower/uploads/a-2.png" to true,
                 "?\nthanks" to false,
             ),
-            Session.split(
+            split(
                 "what's in /Users/me/Library/Caches/wallflower/uploads/PXL_1.jpg and /Users/me/Library/Caches/wallflower/uploads/a-2.png?\nthanks",
                 uploads,
             ),
@@ -25,11 +25,11 @@ class SplitTest {
 
     @Test
     fun otherPathsAreJustText() {
-        assertEquals(listOf("cat /Users/me/notes.txt" to false), Session.split("cat /Users/me/notes.txt", uploads))
+        assertEquals(listOf("cat /Users/me/notes.txt" to false), split("cat /Users/me/notes.txt", uploads))
         assertEquals(false, uploads.containsMatchIn("/Users/me/Library/Caches/wallflower/uploadsX/a.png"))
         assertEquals(
             listOf("look at " to false, "/Users/me/Library/Caches/wallflower/uploads/a.png" to true, "." to false),
-            Session.split("look at /Users/me/Library/Caches/wallflower/uploads/a.png.", uploads),
+            split("look at /Users/me/Library/Caches/wallflower/uploads/a.png.", uploads),
         )
     }
 }

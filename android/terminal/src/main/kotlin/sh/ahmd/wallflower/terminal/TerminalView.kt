@@ -39,13 +39,29 @@ import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_STRIKETHROUGH
  * Content is pulled once per vsync after [requestFrame].
  */
 class TerminalView(context: Context) : View(context) {
+    /** What it shows; while attached, its output brings a frame. */
     var terminal: Terminal? = null
         set(value) {
             if (field === value) return
+            if (isAttachedToWindow) field?.removeListener(changed)
             field = value
+            if (isAttachedToWindow) value?.addListener(changed)
             forceFull = true
             requestFrame()
         }
+
+    private val changed = Runnable { requestFrame() }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        terminal?.addListener(changed)
+        requestFrame()
+    }
+
+    override fun onDetachedFromWindow() {
+        terminal?.removeListener(changed)
+        super.onDetachedFromWindow()
+    }
 
     var theme: Theme = Theme.EverforestDarkHard
         set(value) {

@@ -34,7 +34,7 @@ import androidx.compose.ui.text.TextRange
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import sh.ahmd.wallflower.Uploads
-import sh.ahmd.wallflower.session.Session
+import sh.ahmd.wallflower.session.uploadPaths
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -202,7 +202,7 @@ fun Composer(
             }
         }
     }
-    val paths = remember(uploadDir) { uploadDir?.let(Session::uploadPaths) }
+    val paths = remember(uploadDir) { uploadDir?.let(::uploadPaths) }
     val named = remember(paths) { paths?.let(::UploadNames) }
     val whole = remember(paths) { paths?.let(::WholeUploads) }
     Column(

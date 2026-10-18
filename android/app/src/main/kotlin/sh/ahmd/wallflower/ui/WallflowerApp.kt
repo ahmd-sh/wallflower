@@ -102,7 +102,6 @@ import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -118,15 +117,11 @@ import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.read.Activity
 import sh.ahmd.wallflower.read.Reading
-import sh.ahmd.wallflower.protocol.Keys
-import sh.ahmd.wallflower.protocol.Kill
 import sh.ahmd.wallflower.protocol.Pane
-import sh.ahmd.wallflower.protocol.Rename
-import sh.ahmd.wallflower.protocol.Split
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.session.Blocked
 import sh.ahmd.wallflower.session.Session
-import sh.ahmd.wallflower.session.Session.Companion.shownPane
+import sh.ahmd.wallflower.session.shownPane
 import sh.ahmd.wallflower.session.Status
 import sh.ahmd.wallflower.program.Effect
 import sh.ahmd.wallflower.program.Program
@@ -290,7 +285,7 @@ private fun TerminalScreen(
         var closing by remember { mutableStateOf<Pair<Window, Pane?>?>(null) }
         fun kill(w: Window, p: Pane?) {
             haptics.confirm()
-            session.send(if (p != null) Kill(pane = p.id) else Kill(window = w.id))
+            if (p != null) session.kill(p) else session.kill(w)
         }
         fun close(w: Window, p: Pane?) {
             val wholeWindow = p == null || w.panes.size == 1
@@ -298,7 +293,7 @@ private fun TerminalScreen(
             if (ask) closing = w to p else kill(w, p)
         }
         renaming?.let { w ->
-            RenameDialog(w.name, onRename = { session.send(Rename(w.id, it)); renaming = null }, onDismiss = { renaming = null })
+            RenameDialog(w.name, onRename = { session.rename(w, it); renaming = null }, onDismiss = { renaming = null })
         }
         closing?.let { (w, p) ->
             val wholeWindow = p == null || w.panes.size == 1
@@ -366,17 +361,9 @@ private fun TerminalScreen(
             }
         }
 
-        // Output reaches whichever views show the pane, and rereads the app's input line.
-        val views = remember { Views() }
+        // The shown pane's output rereads the app's input line.
         val lineTicks = remember { Channel<Unit>(Channel.CONFLATED) }
         val shownId by rememberUpdatedState(pane?.id)
-        DisposableEffect(session) {
-            session.onOutput = { id ->
-                views.frame(id)
-                if (id == shownId) lineTicks.trySend(Unit)
-            }
-            onDispose { session.onOutput = null }
-        }
         // While its read view shows, the same read finds any prompt the pane's screen offers.
         var line by remember { mutableStateOf<InputLine?>(null) }
         val uploads by model.uploads.items.collectAsStateWithLifecycle()
@@ -388,6 +375,9 @@ private fun TerminalScreen(
         LaunchedEffect(pane?.id) { prompt = null } // another pane's; the same pane's new terminal (more history) offers the same
         LaunchedEffect(terminal) {
             line = null
+            val output = Runnable { lineTicks.trySend(Unit) }
+            terminal?.addListener(output)
+            try {
             lineTicks.trySend(Unit)
             for (tick in lineTicks) {
                 val (l, m) = withContext(Dispatchers.Default) {
@@ -400,6 +390,9 @@ private fun TerminalScreen(
                 line = l
                 prompt = m
                 delay(LINE_EVERY_MS)
+            }
+            } finally {
+                terminal?.removeListener(output)
             }
         }
         LaunchedEffect(readView) { lineTicks.trySend(Unit) }
@@ -458,13 +451,11 @@ private fun TerminalScreen(
         /** A pane's terminal, and its read view over it while that's on. */
         @Composable
         fun Page(p: Pane, current: Boolean, swipe: Swipe?) = Box(Modifier.fillMaxSize()) {
-            var mine by remember { mutableStateOf<TerminalView?>(null) }
             AndroidView(
                 modifier = Modifier.fillMaxSize().padding(horizontal = PAGE_PADDING).clipToBounds(),
                 factory = { ctx ->
                     TerminalView(ctx).apply {
                         onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) }
-                        mine = this
                     }
                 },
                 update = {
@@ -474,16 +465,11 @@ private fun TerminalScreen(
                     it.onSwipe = swipe?.let { s -> s::drag }
                     it.onSwipeEnd = swipe?.let { s -> s::end }
                     it.onAppScroll = { up, wheel ->
-                        if (wheel != null) session.input(p.id, wheel) else session.send(Keys(p.id, listOf(if (up) "Up" else "Down")))
+                        if (wheel != null) session.bytes(p.id, wheel) else session.keys(p.id, listOf(if (up) "Up" else "Down"))
                     }
                     if (current) view = it
                 },
             )
-            DisposableEffect(mine, p.id) {
-                val v = mine
-                if (v != null) views.add(p.id, v)
-                onDispose { if (v != null) views.remove(p.id, v) }
-            }
             val reading = if (p.id in readViews) readings[p.id] ?: Reading() else null
             var last by remember { mutableStateOf(Reading()) }
             if (reading != null) last = reading
@@ -494,7 +480,7 @@ private fun TerminalScreen(
                     last,
                     swipe = swipe,
                     prompt = if (current) prompt else null,
-                    onKeys = { keys -> session.send(Keys(p.id, keys)) },
+                    onKeys = { keys -> session.keys(p.id, keys) },
                     onPicked = { asked, option ->
                         when (val effect = its.picked(asked, option)) {
                             is Effect.Rewound -> session.rewound(p.id, effect.said)
@@ -595,11 +581,11 @@ private fun TerminalScreen(
                             onDismissUpload = model.uploads::dismiss,
                             onClear = if (clearing.isEmpty()) null else {
                                 {
-                                    line?.let { session.send(Keys(pane.id, program.clear(it, clearing, unseen = readView))) }
+                                    line?.let { session.keys(pane.id, program.clear(it, clearing, unseen = readView)) }
                                     line = null // gone at once; the next read says what's there now
                                 }
                             },
-                            onKey = { session.send(Keys(pane.id, it.keys, it.bindings)) },
+                            onKey = { session.keys(pane.id, it.keys, it.bindings) },
                             onSend = { text, enter ->
                                 // The box replaces whatever the app's line holds.
                                 val known = line
@@ -608,8 +594,8 @@ private fun TerminalScreen(
                                     if (sent && '\n' !in text && known?.text.isNullOrEmpty()) view?.predict(text)
                                 }
                             },
-                            onEnter = { session.send(Keys(pane.id, listOf("Enter"))) },
-                            onStop = { session.send(Keys(pane.id, profile.stop)) },
+                            onEnter = { session.keys(pane.id, listOf("Enter")) },
+                            onStop = { session.keys(pane.id, profile.stop) },
                             onEditKeys = onEditKeys,
                         )
                     }
@@ -622,7 +608,6 @@ private fun TerminalScreen(
                             zoomed = zoomed,
                             progress = { zoom.value },
                             terminals = terminals,
-                            views = views,
                             cards = cards,
                             onPick = { p ->
                                 haptics.tick()
@@ -631,7 +616,7 @@ private fun TerminalScreen(
                                 overview = false
                             },
                             onNew = {
-                                pane?.let { session.send(Split(it.id)) }
+                                pane?.let { session.split(it) }
                                 zoomed = pane?.id
                                 overview = false
                             },
@@ -655,23 +640,6 @@ private fun TerminalScreen(
             }
         }
     }
-}
-
-/** The views showing each pane, which its output redraws: a pane's own, and its card's while the cards are up. */
-private class Views {
-    private val byPane = ConcurrentHashMap<String, MutableSet<TerminalView>>()
-
-    fun add(pane: String, view: TerminalView) {
-        byPane.computeIfAbsent(pane) { ConcurrentHashMap.newKeySet() }.add(view)
-    }
-
-    fun remove(pane: String, view: TerminalView) {
-        byPane[pane]?.remove(view)
-    }
-
-    fun remove(view: TerminalView) = byPane.values.forEach { it.remove(view) }
-
-    fun frame(pane: String) = byPane[pane]?.forEach { it.requestFrame() }
 }
 
 private fun LayoutCoordinates.rootRect() = Rect(positionInRoot(), size.toSize())
@@ -735,7 +703,6 @@ private fun PaneOverview(
     zoomed: String?,
     progress: () -> Float,
     terminals: Map<String, Terminal>,
-    views: Views,
     cards: MutableMap<String, Rect>,
     onPick: (Pane) -> Unit,
     onNew: () -> Unit,
@@ -758,7 +725,6 @@ private fun PaneOverview(
                 zoomed = p.id == zoomed,
                 progress = progress,
                 terminal = terminals[p.id],
-                views = views,
                 cards = cards,
                 onClick = { onPick(p) },
                 onClose = { onClose(p) },
@@ -787,7 +753,6 @@ private fun PaneCard(
     zoomed: Boolean,
     progress: () -> Float,
     terminal: Terminal?,
-    views: Views,
     cards: MutableMap<String, Rect>,
     onClick: () -> Unit,
     onClose: () -> Unit,
@@ -811,8 +776,7 @@ private fun PaneCard(
         }
         // The pane as its own terminal draws it, shrunk to the card's width.
         Box(Modifier.fillMaxWidth().aspectRatio(CARD_RATIO).background(Palette.bg0)) {
-            // The grid reuses cards' views for other panes as it scrolls, so a view
-            // registers for its pane's output whenever it's given one.
+            // The grid reuses cards' views for other panes as it scrolls; each draws whichever terminal it's given.
             AndroidView(
                 modifier = Modifier
                     .fillMaxSize()
@@ -825,13 +789,8 @@ private fun PaneCard(
                     .clipToBounds()
                     .graphicsLayer { alpha = if (zoomed) 1f - handoff(progress()) else 1f },
                 factory = { ctx -> TerminalView(ctx) },
-                onReset = { v -> views.remove(v) },
-                onRelease = { v -> views.remove(v) },
-                update = { v ->
-                    v.terminal = terminal
-                    views.remove(v)
-                    views.add(pane.id, v)
-                },
+                onRelease = { v -> v.terminal = null },
+                update = { v -> v.terminal = terminal },
             )
             Box(Modifier.matchParentSize().clickable(onClick = onClick)) // the card takes the tap, not the terminal
         }

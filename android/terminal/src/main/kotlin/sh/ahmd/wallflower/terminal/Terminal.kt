@@ -1,6 +1,7 @@
 package sh.ahmd.wallflower.terminal
 
 import java.nio.ByteBuffer
+import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
@@ -8,7 +9,8 @@ import sh.ahmd.wallflower.screen.Screen
 
 /**
  * One pane's terminal, backed by libghostty-vt. Pane output is written from
- * the IO thread; the renderer pulls frames on the UI thread.
+ * the IO thread, and listeners hear of it there; the renderer pulls frames
+ * on the UI thread.
  */
 class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
     private val lock = ReentrantReadWriteLock() // close vs. everything else
@@ -16,8 +18,19 @@ class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
         check(it != 0L) { "libghostty-vt: could not create a terminal" }
     }
 
-    fun write(bytes: ByteArray, offset: Int = 0, length: Int = bytes.size - offset) = lock.read {
-        if (handle != 0L && length > 0) nativeWrite(handle, bytes, offset, length)
+    private val listeners = CopyOnWriteArraySet<Runnable>()
+
+    /** [listener] runs, on the writing thread, after output changes the terminal. */
+    fun addListener(listener: Runnable) = listeners.add(listener)
+
+    fun removeListener(listener: Runnable) = listeners.remove(listener)
+
+    fun write(bytes: ByteArray, offset: Int = 0, length: Int = bytes.size - offset) {
+        lock.read {
+            if (handle == 0L || length <= 0) return
+            nativeWrite(handle, bytes, offset, length)
+        }
+        for (l in listeners) l.run()
     }
 
     fun resize(cols: Int, rows: Int, cellWidthPx: Int = 0, cellHeightPx: Int = 0) = lock.read {

@@ -26,8 +26,8 @@ sealed interface Frame {
     /** A message type newer than this client; safe to ignore. */
     data class Unknown(val json: String) : Frame
 
-    /** Pane output from the gateway. */
-    class Data(val pane: String, val bytes: ByteArray) : Frame
+    /** Pane output from the gateway: [length] bytes of [bytes] from [offset]. */
+    class Data(val pane: String, val bytes: ByteArray, val offset: Int, val length: Int) : Frame
 }
 
 class FrameReader(input: InputStream) {
@@ -50,7 +50,7 @@ class FrameReader(input: InputStream) {
             FRAME_DATA -> {
                 val n = if (payload.isEmpty()) -1 else payload[0].toInt() and 0xff
                 if (n < 0 || n > payload.size - 1) throw ProtocolException("truncated pane id")
-                Frame.Data(payload.decodeToString(1, 1 + n), payload.copyOfRange(1 + n, payload.size))
+                Frame.Data(payload.decodeToString(1, 1 + n), payload, 1 + n, payload.size - 1 - n)
             }
             else -> throw ProtocolException("unknown frame type $type")
         }
@@ -73,7 +73,7 @@ class FrameReader(input: InputStream) {
     }
 }
 
-/** Writes frames; safe to call from multiple threads. */
+/** Writes frames, buffered until [flush]; safe to call from multiple threads. */
 class FrameWriter(output: OutputStream) {
     private val out = BufferedOutputStream(output, 64 * 1024)
 
@@ -82,8 +82,10 @@ class FrameWriter(output: OutputStream) {
         val body = encode(message)
         header(1 + body.size, FRAME_JSON)
         out.write(body)
-        out.flush()
     }
+
+    @Synchronized
+    fun flush() = out.flush()
 
     fun sendData(pane: String, bytes: ByteArray) = sendBytes(FRAME_DATA, pane, bytes, bytes.size)
 
@@ -98,7 +100,6 @@ class FrameWriter(output: OutputStream) {
         out.write(idBytes.size)
         out.write(idBytes)
         out.write(bytes, 0, length)
-        out.flush()
     }
 
     private fun header(length: Int, type: Int) {

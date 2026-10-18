@@ -45,6 +45,7 @@ class FramesTest {
         ).forEach(w::send)
         w.sendData("%1", "echo héllo ✓\r".encodeToByteArray())
         w.sendUpload("u1", byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0), length = 3)
+        w.flush()
 
         val want = golden("client.bin")
         assertEquals(want.decodeToString(), out.toByteArray().decodeToString())
@@ -67,7 +68,7 @@ class FramesTest {
 
         val data = assertIs<Frame.Data>(r.next())
         assertEquals("%2", data.pane)
-        assertEquals("\u001b[0m\u001b[H\u001b[2J\u001b[42mgreen\u001b[49m ✓\r\n", data.bytes.decodeToString())
+        assertEquals("\u001b[0m\u001b[H\u001b[2J\u001b[42mgreen\u001b[49m ✓\r\n", data.bytes.decodeToString(data.offset, data.offset + data.length))
 
         assertEquals(ScrollbackReply(1, "%2", 120, listOf("one", "\u001b[31mtwo\u001b[39m")), message())
         assertEquals(Result(2, listOf("o")), message())
