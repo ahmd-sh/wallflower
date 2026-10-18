@@ -1,5 +1,6 @@
 package sh.ahmd.wallflower.ui
 
+import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.animation.AnimatedContent
@@ -44,6 +45,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -303,7 +305,7 @@ private fun ItemView(item: Item, ongoing: Boolean, beside: (@Composable () -> Un
 @Composable
 private fun Prompt(text: String) {
     var open by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().padding(start = 40.dp), horizontalArrangement = Arrangement.End) {
+    Column(Modifier.fillMaxWidth().padding(start = 40.dp), horizontalAlignment = Alignment.End) {
         Text(
             text,
             style = TextStyle(color = Palette.fg, fontFamily = words, fontSize = wordSize(14.sp, 15.sp), lineHeight = wordSize(21.sp, 22.sp)),
@@ -316,38 +318,64 @@ private fun Prompt(text: String) {
                 .clickable { open = !open }
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         )
+        CopyIcon(text)
     }
 }
 
 @Composable
 private fun Reply(text: String, copyable: Boolean, beside: (@Composable () -> Unit)? = null) {
-    val context = LocalContext.current
-    val haptics = haptics()
-    var copied by remember { mutableStateOf(false) }
-    LaunchedEffect(copied) {
-        if (copied) {
-            delay(1_500)
-            copied = false
-        }
-    }
+    val copier = rememberCopier()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        MarkdownText(text)
+        // Held, words select, to copy some of it.
+        SelectionContainer { MarkdownText(text) }
         if (copyable) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .clickable {
-                        copy(context, text)
-                        haptics.confirm()
-                        copied = true
-                    }
+                    .clickable { copier.copy(text) }
                     .padding(vertical = 4.dp, horizontal = 2.dp),
             ) {
-                Crossfade(copied, animationSpec = Motion.effect(), label = "copy") {
+                Crossfade(copier.copied, animationSpec = Motion.effect(), label = "copy") {
                     Text(if (it) "copied" else "copy", color = Palette.dim, fontFamily = words, fontSize = wordSize(11.sp, 13.sp))
                 }
             }
             beside?.invoke()
+        }
+    }
+}
+
+/** Puts text on the clipboard, felt, and says it [copied] for a moment after. */
+private class Copier(private val context: Context, private val haptics: Haptics) {
+    var copied by mutableStateOf(false)
+
+    fun copy(text: String) {
+        copy(context, text)
+        haptics.confirm()
+        copied = true
+    }
+}
+
+@Composable
+private fun rememberCopier(): Copier {
+    val context = LocalContext.current
+    val haptics = haptics()
+    val copier = remember(haptics) { Copier(context, haptics) }
+    LaunchedEffect(copier.copied) {
+        if (copier.copied) {
+            delay(1_500)
+            copier.copied = false
+        }
+    }
+    return copier
+}
+
+/** A small copy button, ticked a moment after. */
+@Composable
+private fun CopyIcon(text: String, modifier: Modifier = Modifier) {
+    val copier = rememberCopier()
+    Box(modifier.clip(CircleShape).clickable { copier.copy(text) }.padding(6.dp)) {
+        Crossfade(copier.copied, animationSpec = Motion.effect(), label = "copy") {
+            GlyphIcon(if (it) Glyph.Check else Glyph.Copy, Palette.dim, size = 13.dp)
         }
     }
 }
@@ -476,9 +504,16 @@ private fun Steps(steps: List<Entry>) {
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 for (s in steps) Step(s)
+                CopyIcon(trace(steps))
             }
         }
     }
+}
+
+/** Steps as text: what each ran on, and what came of it. */
+private fun trace(steps: List<Entry>) = steps.joinToString("\n\n") { s ->
+    val name = if (s.kind == "thinking") "thinking" else s.name
+    listOf(if (s.text.isEmpty()) name else "$name: ${s.text}", s.output).filter { it.isNotEmpty() }.joinToString("\n")
 }
 
 /** A dot that breathes while a tool runs. */

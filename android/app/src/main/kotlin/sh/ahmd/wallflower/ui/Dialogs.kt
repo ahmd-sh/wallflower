@@ -50,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.PopupProperties
 
-enum class Glyph { Plus, Close, Power, Chat, Terminal, Spark }
+enum class Glyph { Plus, Close, Power, Chat, Terminal, Spark, Copy, Check }
 
 /** Line icons, drawn to match the send button rather than pulled from an icon set. */
 @Composable
@@ -92,6 +92,26 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
                 drawLine(color, Offset(c.x - r, c.y - r * 0.6f), Offset(c.x - r * 0.35f, c.y), w, StrokeCap.Round)
                 drawLine(color, Offset(c.x - r * 0.35f, c.y), Offset(c.x - r, c.y + r * 0.6f), w, StrokeCap.Round)
                 drawLine(color, Offset(c.x + r * 0.05f, c.y + r * 0.7f), Offset(c.x + r, c.y + r * 0.7f), w, StrokeCap.Round)
+            }
+            Glyph.Copy -> {
+                // A sheet, and the edges of one behind it.
+                val side = r * 1.4f
+                val k = r * 0.3f
+                drawRoundRect(color, topLeft = Offset(c.x + r - side, c.y + r - side), size = Size(side, side), cornerRadius = CornerRadius(k), style = Stroke(w))
+                drawPath(
+                    Path().apply {
+                        moveTo(c.x - r, c.y - r + side - k)
+                        lineTo(c.x - r, c.y - r + k)
+                        quadraticTo(c.x - r, c.y - r, c.x - r + k, c.y - r)
+                        lineTo(c.x - r + side - k, c.y - r)
+                    },
+                    color,
+                    style = Stroke(w, cap = StrokeCap.Round),
+                )
+            }
+            Glyph.Check -> {
+                drawLine(color, Offset(c.x - r, c.y + r * 0.05f), Offset(c.x - r * 0.3f, c.y + r * 0.7f), w, StrokeCap.Round)
+                drawLine(color, Offset(c.x - r * 0.3f, c.y + r * 0.7f), Offset(c.x + r, c.y - r * 0.6f), w, StrokeCap.Round)
             }
             Glyph.Spark -> drawPath(
                 Path().apply {
