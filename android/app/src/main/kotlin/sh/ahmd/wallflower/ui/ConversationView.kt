@@ -409,7 +409,6 @@ private fun CopyIcon(text: String, modifier: Modifier = Modifier) {
 /** How much of the program's context the conversation takes; tapped, it offers to compact it. */
 @Composable
 private fun ContextButton(tokens: Int, onCompact: (() -> Unit)?) {
-    val haptics = haptics()
     var open by remember { mutableStateOf(false) }
     Box {
         Text(
@@ -419,10 +418,7 @@ private fun ContextButton(tokens: Int, onCompact: (() -> Unit)?) {
             fontSize = wordSize(11.sp, 13.sp),
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
-                .clickable(enabled = onCompact != null) {
-                    haptics.tick()
-                    open = true
-                }
+                .clickable(enabled = onCompact != null) { open = true } // the menu's opening is felt
                 .padding(vertical = 4.dp, horizontal = 2.dp),
         )
         PopupMenu(

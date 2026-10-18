@@ -995,6 +995,7 @@ private fun TabBar(
                         Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .combinedClickable(
+                                hapticFeedbackEnabled = false, // the menu's opening is felt, as the setting allows
                                 onClick = {
                                     if (!on) haptics.tick()
                                     onSelect(w)

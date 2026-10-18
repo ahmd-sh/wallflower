@@ -366,7 +366,6 @@ fun Composer(
 /** + : photos, through the system's picker, or any file. The keyboard stays up for it, and comes back after. */
 @Composable
 private fun Attach(enabled: Boolean, typing: () -> Boolean, onAttach: (List<Uri>) -> Unit, onBack: () -> Unit) {
-    val haptics = haptics()
     var open by remember { mutableStateOf(false) }
     var wasTyping by remember { mutableStateOf(false) }
     val picked: (List<Uri>) -> Unit = {
@@ -382,8 +381,7 @@ private fun Attach(enabled: Boolean, typing: () -> Boolean, onAttach: (List<Uri>
                 .clip(CircleShape)
                 .background(Palette.bg2)
                 .border(1.dp, Palette.border, CircleShape)
-                .clickable(enabled = enabled) {
-                    haptics.tick()
+                .clickable(enabled = enabled) { // the menu's opening is felt
                     wasTyping = typing()
                     open = true
                 },
@@ -655,6 +653,7 @@ private fun SendButton(action: Action, connected: Boolean, onSend: (enter: Boole
             .background(background)
             .combinedClickable(
                 enabled = connected,
+                hapticFeedbackEnabled = false, // its own feel, below, which heeds the setting
                 onLongClick = {
                     // Held: type it in without Enter, to finish with the app's own completion.
                     if (action == Action.Send) {
