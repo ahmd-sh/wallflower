@@ -162,7 +162,6 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
                 } catch (e: Exception) {
                     e.message ?: e.javaClass.simpleName
                 }
-                synchronized(opened) { opened.clear() }
                 if (_status.value !is Status.Disconnected) _status.value = Status.Disconnected(reason)
                 withTimeoutOrNull(backoff) { retries.receive() }
                 backoff = (backoff * 2).coerceAtMost(5_000)
@@ -219,6 +218,8 @@ class Session(private val transport: Transport, private val scope: CoroutineScop
             synced = false
             val ended = CompletableDeferred<Unit>()
             synchronized(pending) {
+                // Panes opened before, or while there was no connection to ask, open again from its first state.
+                synchronized(opened) { opened.clear() }
                 queue = out
                 lost = ended
                 following.clear()
