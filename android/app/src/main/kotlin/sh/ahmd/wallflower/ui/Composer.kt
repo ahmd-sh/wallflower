@@ -134,6 +134,9 @@ import sh.ahmd.wallflower.KeyBar
  * on its way, then its path goes in at the cursor, shown as its name. What
  * the draft holds shows above it too, photos by their [thumbnail], each
  * with × to take it out.
+ *
+ * While a message sent before is being edited in the box ([edit]), the
+ * button asks how far to rewind before sending it.
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class) // edit changes for sticky keys; whether the keyboard is up
 @Composable
@@ -154,8 +157,9 @@ fun Composer(
     onEnter: () -> Unit,
     onStop: () -> Unit,
     onEditKeys: () -> Unit,
+    edit: Edit? = null,
+    focus: FocusRequester = remember { FocusRequester() },
 ) {
-    val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     // Closing the keyboard lets go of the box, so switching panes doesn't bring it back.
     val imeVisible = WindowInsets.isImeVisible
@@ -214,6 +218,7 @@ fun Composer(
             .animateContentSize(Motion.spatial())
             .padding(top = 14.dp, bottom = 8.dp),
     ) {
+        if (edit != null) Editing(edit)
         val text = state.text.toString()
         val attached = remember(text, paths) { paths?.findAll(text)?.map { it.value }?.distinct()?.toList().orEmpty() }
         if (attached.isNotEmpty() || uploads.isNotEmpty()) {
@@ -348,18 +353,79 @@ fun Composer(
         ) {
             Attach(enabled = connected, typing = { imeVisible }, onAttach = onAttach, onBack = { refocus = true })
             KeyRow(keys, armed, press, onEditKeys, Modifier.weight(1f))
-            SendButton(
-                action = when {
-                    state.text.isNotEmpty() -> Action.Send
-                    pending.isNotEmpty() -> Action.Enter
-                    else -> Action.Stop
-                },
-                connected = connected,
-                onSend = { enter -> if (onSend(state.text.toString(), enter)) state.clearText() },
-                onEnter = onEnter,
-                onStop = onStop,
-            )
+            var rewinding by remember { mutableStateOf(false) }
+            Box {
+                SendButton(
+                    action = when {
+                        edit != null || state.text.isNotEmpty() -> Action.Send
+                        pending.isNotEmpty() -> Action.Enter
+                        else -> Action.Stop
+                    },
+                    connected = connected && edit?.busy != true,
+                    onSend = { enter ->
+                        when {
+                            edit != null -> rewinding = true
+                            onSend(state.text.toString(), enter) -> state.clearText()
+                        }
+                    },
+                    onEnter = onEnter,
+                    onStop = onStop,
+                )
+                // Claude Code's own choices for going back, those that keep the conversation going from there.
+                PopupMenu(
+                    expanded = rewinding && edit != null,
+                    onDismiss = { rewinding = false },
+                    keepKeyboard = true,
+                    actions = listOfNotNull(
+                        edit?.takeIf { it.code }?.let { MenuAction("restore code and conversation") { rewinding = false; it.onRewind(true) } },
+                        edit?.let { MenuAction("restore conversation") { rewinding = false; it.onRewind(false) } },
+                    ),
+                )
+            }
         }
+    }
+}
+
+/**
+ * A message sent before, [entry], being edited in the box: sending it takes
+ * the conversation back to before it first ([onRewind]), restoring the files
+ * the program changed since if asked, which is offered when [code] says it
+ * changed some. [busy] while that goes; [error] why it didn't.
+ */
+class Edit(
+    val entry: String,
+    val code: Boolean,
+    val busy: Boolean,
+    val error: String?,
+    val onRewind: (code: Boolean) -> Unit,
+    val onCancel: () -> Unit,
+)
+
+/** Above the box while editing: that sending rewinds, how that went, and × to stop editing. */
+@Composable
+private fun Editing(edit: Edit) {
+    val haptics = haptics()
+    Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        GlyphIcon(Glyph.Pencil, Palette.orange, size = 12.dp)
+        Text(
+            when {
+                edit.busy -> "rewinding…"
+                edit.error != null -> edit.error
+                else -> "editing · sending rewinds to here"
+            },
+            color = if (edit.error != null && !edit.busy) Palette.red else Palette.grey,
+            fontFamily = words,
+            fontSize = wordSize(11.sp, 13.sp),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(start = 8.dp),
+        )
+        Box(
+            Modifier.clip(CircleShape).clickable(enabled = !edit.busy) {
+                haptics.tick()
+                edit.onCancel()
+            }.padding(4.dp),
+        ) { GlyphIcon(Glyph.Close, Palette.grey, size = 12.dp) }
     }
 }
 

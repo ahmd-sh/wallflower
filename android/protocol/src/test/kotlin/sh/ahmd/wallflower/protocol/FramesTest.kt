@@ -42,6 +42,8 @@ class FramesTest {
             Transcript("%2", on = true),
             Transcript("%2", on = false),
             Upload("u1", "PXL 1 ✓.jpg", 3),
+            Rewind("%2", "u1.0"),
+            Rewind("%2", "u1.0", code = true),
         ).forEach(w::send)
         w.sendData("%1", "echo héllo ✓\r".encodeToByteArray())
         w.sendUpload("u1", byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0), length = 3)
@@ -92,6 +94,8 @@ class FramesTest {
         assertEquals(Entries("%2", reset = true, error = "the conversation ended"), message())
         assertEquals(Uploaded("u1", path = "/Users/me/Library/Caches/wallflower/uploads/PXL-1.jpg"), message())
         assertEquals(Uploaded("u2", error = "too big"), message())
+        assertEquals(Rewound("%2", "u1.0"), message())
+        assertEquals(Rewound("%2", "u1.0", error = "Claude is busy"), message())
         assertEquals(Bye("tmux exited"), message())
         assertNull(r.next())
     }

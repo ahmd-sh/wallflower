@@ -104,6 +104,15 @@ data class ScrollbackRequest(val id: Int, val pane: String, val start: Int, val 
 @SerialName("upload")
 data class Upload(val id: String, val name: String, val size: Long) : ClientMessage
 
+/**
+ * Takes [pane]'s conversation back to before one of the user's messages
+ * ([entry], its entry's id), restoring files changed since too if [code]; the
+ * program's prompt is left empty, to send it anew. [Rewound] answers.
+ */
+@Serializable
+@SerialName("rewind")
+data class Rewind(val pane: String, val entry: String, @EncodeDefault(EncodeDefault.Mode.NEVER) val code: Boolean = false) : ClientMessage
+
 @Serializable
 @SerialName("tmux")
 data class TmuxCommand(val id: Int, val command: String) : ClientMessage
@@ -242,3 +251,8 @@ data class Bye(val reason: String = "") : ServerMessage
 @Serializable
 @SerialName("uploaded")
 data class Uploaded(val id: String, val path: String? = null, val error: String? = null) : ServerMessage
+
+/** A [Rewind] done, or why it couldn't be. */
+@Serializable
+@SerialName("rewound")
+data class Rewound(val pane: String, val entry: String, val error: String? = null) : ServerMessage

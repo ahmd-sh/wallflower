@@ -91,7 +91,9 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
@@ -256,6 +258,8 @@ private fun TerminalScreen(
     LaunchedEffect(pane?.command) { onProgram(pane?.command) }
     val haptics = haptics()
     val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val composerFocus = remember { FocusRequester() }
 
     // Text the gateway never confirmed comes back into the box; it's felt, as it may not be seen.
     LaunchedEffect(session) { session.undelivered.collect { haptics.reject() } }
@@ -484,6 +488,17 @@ private fun TerminalScreen(
                     } else {
                         null
                     },
+                    onEdit = if (current) {
+                        { e ->
+                            model.drafts.edit(p.id, e.id, e.text)
+                            model.resending.remove(p.id)
+                            composerFocus.requestFocus()
+                            keyboard?.show()
+                        }
+                    } else {
+                        null
+                    },
+                    editing = model.drafts.editing[p.id]?.entry,
                 )
             }
         }
@@ -587,6 +602,17 @@ private fun TerminalScreen(
                             onEnter = { session.send(Keys(pane.id, listOf("Enter"))) },
                             onStop = { session.send(Keys(pane.id, profile.stop)) },
                             onEditKeys = onEditKeys,
+                            edit = model.drafts.editing[pane.id]?.let { e ->
+                                Edit(
+                                    e.entry,
+                                    code = conversations[pane.id]?.changedCodeAfter(e.entry) == true,
+                                    busy = pane.id in model.resending && model.resending[pane.id] == null,
+                                    error = model.resending[pane.id],
+                                    onRewind = { code -> model.resend(pane.id, code) },
+                                    onCancel = { model.cancelEdit(pane.id) },
+                                )
+                            },
+                            focus = composerFocus,
                         )
                     }
                 },

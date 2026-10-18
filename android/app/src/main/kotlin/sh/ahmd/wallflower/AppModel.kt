@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import android.os.Build
 import java.io.File
+import java.io.IOException
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +32,9 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     val conversationViews = ConversationViews(prefs)
     val uploads = Uploads(app.contentResolver, prefs, drafts, File(app.cacheDir, "thumbs"), viewModelScope)
     private var listening: Job? = null
+
+    /** Edited messages on their way, by pane: rewinding (null), or why that failed. */
+    val resending = mutableStateMapOf<String, String?>()
 
     private val _host = MutableStateFlow(Host.load(prefs))
     val host: StateFlow<Host?> = _host.asStateFlow()
@@ -60,6 +65,35 @@ class AppModel(app: Application) : AndroidViewModel(app) {
             session.uploadDir.filterNotNull().collect(uploads::savedIn)
         }
         _session.value = session
+    }
+
+    /**
+     * Sends the message being edited in [pane]: the conversation goes back to
+     * before it (the code too if [code]), the box's text goes as a message in
+     * its place, and what the box held before comes back.
+     */
+    fun resend(pane: String, code: Boolean) {
+        val session = _session.value ?: return
+        val editing = drafts.editing[pane] ?: return
+        if (pane in resending && resending[pane] == null) return
+        val text = drafts.of(pane).text.toString()
+        resending[pane] = null
+        viewModelScope.launch {
+            try {
+                session.rewind(pane, editing.entry, code)
+            } catch (e: IOException) {
+                resending[pane] = e.message ?: "couldn't rewind"
+                return@launch
+            }
+            resending.remove(pane)
+            drafts.endEdit(pane)
+            if (text.isNotBlank() && !session.submit(pane, text)) drafts.restore(pane, text)
+        }
+    }
+
+    fun cancelEdit(pane: String) {
+        drafts.endEdit(pane)
+        resending.remove(pane)
     }
 
     fun onForeground() {
