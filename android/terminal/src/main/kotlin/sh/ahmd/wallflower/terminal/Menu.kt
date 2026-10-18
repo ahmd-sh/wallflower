@@ -9,10 +9,12 @@ package sh.ahmd.wallflower.terminal
  * fit the row before (the app wrapped it) and they're in its color; others
  * describe it. The bottom-most menu on the screen is the live one.
  *
- * Or a list picked from with the cursor alone, its foot saying how ("Enter
- * to continue · Esc to cancel"), as Claude Code's /rewind: each option is a
- * row, what the rows under it say, and a blank row; ↑ / ↓ N more say it
- * scrolls. [quote] is what either quotes (│ rows), a message it's about.
+ * Or a list picked from with the cursor alone, as Claude Code's /rewind:
+ * below its rule what it's about, then options indented past the cursor's
+ * ❯, each a row, what the rows under it say, and a blank row; ↑ / ↓ N more
+ * say it scrolls. Its foot ("Enter to continue · Esc to cancel") may be
+ * past the bottom of a short pane. [quote] is what either quotes (│ rows),
+ * a message it's about.
  */
 data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List<Tab>, val quote: String = "") {
     data class Line(val text: String, val code: Boolean)
@@ -187,36 +189,35 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
             return Menu(lines, options, tabs, quote)
         }
 
-        /** A list picked from with the cursor, above its foot. */
+        /** A list picked from with the cursor, below the last rule. */
         private fun picker(rows: List<Row>): Menu? {
-            val foot = rows.indexOfLast { it.text.trim().let { t -> t.startsWith("Enter to ") && "Esc to cancel" in t } }
-            if (foot < 0) return null
-            // Up to the first row that isn't the list's: blank, indented, or the cursor's.
-            var top = foot
-            while (top > 0) {
-                val row = rows[top - 1].text
-                if (row.isNotBlank() && indent(row) < 4 && !marker.containsMatchIn(row)) break
-                top--
-            }
+            val rule = rows.indexOfLast { rule(it.text) }
+            if (rule < 0) return null
+            val foot = (rule + 1 until rows.size).firstOrNull { rows[it].text.trim().startsWith("Enter to ") } ?: rows.size
+            val cursor = (rule + 1 until foot).firstOrNull { marker.containsMatchIn(rows[it].text) } ?: return null
+            val at = indent(rows[cursor].text) + 2 // where options' words start
+            val top = (rule + 1..cursor).first { it == cursor || rows[it].text.isNotBlank() && indent(rows[it].text) >= at }
+            if (top == rule + 1) return null // nothing said above it: a prompt's suggestions, say
             val options = mutableListOf<Option>()
             var fresh = true // the next row starts an option
             for (y in top until foot) {
                 val row = rows[y].text
                 val text = row.trim()
                 val scroll = more.matchEntire(text)
+                val current = marker.containsMatchIn(row)
                 when {
                     text.isEmpty() -> fresh = true
+                    !current && indent(row) < at -> break
                     scroll != null -> {
                         options += Option(null, text, "", null, current = false, muted = true, scroll = if (scroll.groupValues[1] == "↑") -1 else 1)
                         fresh = true
                     }
-                    fresh -> {
-                        val current = marker.containsMatchIn(row)
+                    fresh || current -> {
                         val label = text.removePrefix("❯").removePrefix("›").removePrefix("▶").trim()
                         options += Option(null, label, "", null, current, rows[y].mutedFrom(indent(row)))
                         fresh = false
                     }
-                    options.isNotEmpty() -> options[options.lastIndex] = options.last().let { it.copy(detail = (it.detail + "\n" + text).trim()) }
+                    else -> options[options.lastIndex] = options.last().let { it.copy(detail = (it.detail + "\n" + text).trim()) }
                 }
             }
             if (options.count { it.scroll == 0 } < 2 || options.none { it.current }) return null
@@ -272,7 +273,8 @@ data class Menu(val lines: List<Line>, val options: List<Option>, val tabs: List
          */
         private fun wraps(row: String, next: String) = row.trimEnd().length + 1 + next.substringBefore(' ').length > row.length - EDGE
 
-        private fun rule(row: String) = row.count { it == '─' } >= maxOf(8, row.trimEnd().length * 3 / 4)
+        /** A rule across: ─, or ▔ in Claude Code's fullscreen mode. */
+        private fun rule(row: String) = row.count { it == '─' || it == '▔' } >= maxOf(8, row.trimEnd().length * 3 / 4)
 
         private fun dashed(row: String) = row.count { it == '╌' } >= maxOf(8, row.trimEnd().length * 3 / 4)
     }

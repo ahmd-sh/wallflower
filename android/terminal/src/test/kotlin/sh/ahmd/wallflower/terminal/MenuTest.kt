@@ -265,6 +265,37 @@ class MenuTest {
     }
 
     @Test
+    fun aRewindListInFullscreenModeWithItsFootPastTheBottom() {
+        val menu = Menu.read(captured("claude-rewind-list-fullscreen.ansi", 52))!!
+        assertEquals(listOf(Line("Rewind", false), Line("Restore the code and/or conversation to the point before…", false)), menu.lines)
+        assertEquals(listOf("↑ 1 more", "say just: two", "(current)"), menu.options.map { it.label })
+        assertEquals(listOf(-1, 0, 0), menu.options.map { it.scroll })
+        assertEquals("No code changes", menu.options[1].detail)
+        assertEquals(listOf("Up", "Enter"), menu.keys(menu.options[1]))
+    }
+
+    @Test
+    fun aRewindConfirmationInFullscreenModeIsAboutWhatsBelowItsRule() {
+        val menu = Menu.read(captured("claude-rewind-confirm-fullscreen.ansi", 52))!!
+        assertEquals("Rewind", menu.lines.first().text)
+        assertEquals(listOf("Restore conversation", "Summarize from here", "Summarize up to here"), menu.options.map { it.label })
+        assertEquals("say just: two", menu.quote)
+    }
+
+    @Test
+    fun aPromptsSuggestionsAreNotAList() {
+        val s = screen(
+            plain(rule),
+            plain("❯ /rew"),
+            plain(rule),
+            plain("  ❯ /rewind   Restore the code and/or"),
+            plain("              conversation to a previous po…"),
+            plain("    /review   Review a pull request"),
+        )
+        assertNull(Menu.read(s))
+    }
+
+    @Test
     fun aNumberedListIsNotAMenu() {
         val s = screen(
             plain("⏺ Two steps:"),
