@@ -27,7 +27,11 @@ data class Conversation(
 
     val shown: List<Entry> get() = rewound?.let { r -> entries.takeWhile { it.id != r } } ?: entries
 
-    /** Rewound to before the user's message that [quote] is from, as the program quotes it (cut short with …). */
+    /**
+     * Rewound to before the user's message that [quote] is from, as the program quotes it (cut short with …).
+     * Of messages it could be from, the latest: what was taken back may partly show till the next message, but
+     * nothing still said is hidden.
+     */
     fun rewoundTo(quote: String): Conversation {
         val q = quote.filterNot(Char::isWhitespace)
         if (q.isEmpty()) return this

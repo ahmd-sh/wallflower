@@ -32,6 +32,15 @@ class ConversationTest {
     }
 
     @Test
+    fun aRepeatedMessageRewoundHidesFromItsLatestSoNothingStillSaidIsHidden() {
+        // The quote can't tell two "yes"es apart: hiding from the later one may leave some of what was
+        // taken back showing until the transcript says (the next message), but never hides what's still there.
+        val entries = listOf(Entry("u1", "user", "text", "yes"), text("a1"), Entry("u2", "user", "text", "yes"), text("a2"))
+        val c = Conversation().apply(Entries("%1", reset = true, entries = entries)).rewoundTo("yes")
+        assertEquals(listOf("u1", "a1"), c.shown.map { it.id })
+    }
+
+    @Test
     fun aResetStartsOver() {
         val c = Conversation()
             .apply(Entries("%1", reset = true, entries = listOf(text("a"))))
