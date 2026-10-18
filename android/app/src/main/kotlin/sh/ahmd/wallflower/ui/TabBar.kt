@@ -1,0 +1,213 @@
+package sh.ahmd.wallflower.ui
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
+import kotlin.math.ceil
+import kotlin.math.floor
+import sh.ahmd.wallflower.protocol.Window
+import sh.ahmd.wallflower.session.Status
+
+/**
+ * The tabs (tmux windows), with new tab first and the connection last. It's
+ * local: it scrolls natively and a tap switches immediately, tmux learns
+ * afterwards. The highlight glides to the tab chosen. Holding a tab offers
+ * rename and close.
+ */
+@Composable
+internal fun TabBar(
+    windows: List<Window>,
+    selected: String?,
+    status: Status,
+    onSelect: (Window) -> Unit,
+    onNew: () -> Unit,
+    onRename: (Window) -> Unit,
+    onClose: (Window) -> Unit,
+    onSettings: () -> Unit,
+    onExit: () -> Unit,
+) {
+    val haptics = haptics()
+    val list = rememberLazyListState()
+    val index = windows.indexOfFirst { it.id == selected }
+    LaunchedEffect(index) {
+        if (index >= 0) {
+            val visible = list.layoutInfo.visibleItemsInfo
+            if (visible.none { it.index == index && it.offset >= 0 && it.offset + it.size <= list.layoutInfo.viewportEndOffset }) {
+                list.animateScrollToItem(index, scrollOffset = -48)
+            }
+        }
+    }
+    val at = remember { Animatable(index.coerceAtLeast(0).toFloat()) }
+    LaunchedEffect(index) { if (index >= 0) at.animateTo(index.toFloat(), Motion.spatial()) }
+    var menu by remember { mutableStateOf<String?>(null) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                val line = 1.dp.toPx()
+                drawRect(Palette.border, Offset(0f, size.height - line), Size(size.width, line))
+            }
+            .padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BarButton(Glyph.Plus, Palette.fg, Modifier.padding(start = 6.dp), onClick = onNew)
+        LazyRow(
+            state = list,
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(8.dp))
+                .drawBehind {
+                    // The tabs' backgrounds, where the list put them, and the highlight between them.
+                    val info = list.layoutInfo
+                    val start = -info.viewportStartOffset.toFloat()
+                    val radius = CornerRadius(8.dp.toPx())
+                    fun span(i: Int) = info.visibleItemsInfo.firstOrNull { it.index == i }?.let { (start + it.offset) to it.size.toFloat() }
+                    for (item in info.visibleItemsInfo) {
+                        drawRoundRect(Palette.bg1, Offset(start + item.offset, 0f), Size(item.size.toFloat(), size.height), radius)
+                    }
+                    if (index < 0) return@drawBehind
+                    val v = at.value
+                    val a = span(floor(v).toInt())
+                    val b = span(ceil(v).toInt())
+                    val (x, w) = if (a != null && b != null) {
+                        val f = v - floor(v)
+                        lerp(a.first, b.first, f) to lerp(a.second, b.second, f)
+                    } else {
+                        a ?: b ?: return@drawBehind
+                    }
+                    drawRoundRect(Palette.bg3, Offset(x, 0f), Size(w, size.height), radius)
+                },
+            contentPadding = PaddingValues(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items(windows, key = { it.id }) { w ->
+                val on = w.id == selected
+                val number by animateColorAsState(if (on) Palette.orange else Palette.dim, Motion.effect(), label = "tab")
+                val name by animateColorAsState(if (on) Palette.fg else Palette.grey, Motion.effect(), label = "tab")
+                val agent = w.panes.map { it.agent }.firstOrNull { it.isNotEmpty() }
+                Box {
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .combinedClickable(
+                                hapticFeedbackEnabled = false, // the menu's opening is felt, as the setting allows
+                                onClick = {
+                                    if (!on) haptics.tick()
+                                    onSelect(w)
+                                },
+                                onLongClick = { menu = w.id },
+                            )
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("${w.index}", color = number, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), fontWeight = FontWeight.Bold)
+                        Text(" ${w.name}", color = name, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), maxLines = 1)
+                        if (agent != null) AgentDot(agent, Modifier.padding(start = 6.dp))
+                    }
+                    PopupMenu(
+                        expanded = menu == w.id,
+                        onDismiss = { menu = null },
+                        actions = listOf(
+                            MenuAction("rename") { menu = null; onRename(w) },
+                            MenuAction("close", Palette.red) { menu = null; onClose(w) },
+                        ),
+                    )
+                }
+            }
+        }
+        PowerButton(status, onSettings, onExit)
+    }
+}
+
+/** An agent's state as a colored dot, which breathes while it works. */
+@Composable
+internal fun AgentDot(state: String, modifier: Modifier = Modifier) {
+    val color by animateColorAsState(agentColor(state), Motion.effect(), label = "agent")
+    val breath = if (state == "working") {
+        rememberInfiniteTransition(label = "agent").animateFloat(1f, 0.35f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "breath")
+    } else {
+        null
+    }
+    Box(modifier.size(6.dp).graphicsLayer { alpha = breath?.value ?: 1f }.clip(CircleShape).background(color))
+}
+
+@Composable
+private fun BarButton(glyph: Glyph, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(horizontal = 9.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center,
+    ) { GlyphIcon(glyph, color, size = 14.dp) }
+}
+
+/** The connection: its color says how it is; the menu says why, and leaves. */
+@Composable
+private fun PowerButton(status: Status, onSettings: () -> Unit, onExit: () -> Unit) {
+    val (target, what) = when (status) {
+        is Status.Connected -> Palette.green to "connected · tmux ${status.tmux}"
+        Status.Connecting -> Palette.yellow to "connecting…"
+        is Status.Disconnected -> Palette.red to "reconnecting: ${status.reason}"
+        is Status.NeedsUser -> Palette.orange to "waiting for you"
+    }
+    val color by animateColorAsState(target, Motion.effect(), label = "connection")
+    var open by remember { mutableStateOf(false) }
+    Box(Modifier.padding(end = 6.dp)) {
+        BarButton(Glyph.Power, color) { open = true }
+        PopupMenu(
+            expanded = open,
+            onDismiss = { open = false },
+            actions = listOf(
+                MenuAction("settings") { open = false; onSettings() },
+                MenuAction("disconnect", Palette.red) { open = false; onExit() },
+            ),
+            header = { Text(what, color = target, fontFamily = words, fontSize = wordSize(12.sp, 13.sp)) },
+        )
+    }
+}
+
+private fun agentColor(state: String): Color = when (state) {
+    "waiting" -> Palette.orange
+    "working" -> Palette.purple
+    "done" -> Palette.green
+    "error" -> Palette.red
+    else -> Palette.grey
+}

@@ -1,4 +1,4 @@
-package sh.ahmd.wallflower
+package sh.ahmd.wallflower.ui.composer
 
 import android.content.SharedPreferences
 import androidx.compose.foundation.text.input.TextFieldState

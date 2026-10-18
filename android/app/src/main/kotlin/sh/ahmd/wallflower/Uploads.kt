@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import sh.ahmd.wallflower.session.Session
+import sh.ahmd.wallflower.ui.composer.Drafts
 
 /**
  * Files on their way to the Mac, each for a pane. Once the gateway says
