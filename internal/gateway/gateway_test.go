@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -140,6 +141,16 @@ func (c *client) output(pane, contains string) {
 	})
 }
 
+// until polls until ok, for what happens in a pane outside the protocol.
+func (c *client) until(what string, ok func() bool) {
+	c.t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); !ok(); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			c.t.Fatalf("timed out waiting for %s", what)
+		}
+	}
+}
+
 func activePane(s protocol.State) protocol.Pane {
 	for _, w := range s.Windows {
 		if w.Active {
@@ -196,7 +207,7 @@ func TestRepaint(t *testing.T) {
 	p := activePane(s).ID
 
 	c.tmux("send-keys", "-t", "t", "for i in $(seq 1 30); do echo line-$i; done", "Enter")
-	time.Sleep(300 * time.Millisecond)
+	c.until("the lines", func() bool { return strings.Contains(c.tmux("capture-pane", "-p", "-t", p), "line-30") })
 	c.send(protocol.Open{Pane: p, History: 100})
 	f, _ := c.expect("repaint", func(f protocol.Frame, _ protocol.Message) bool { return f.Type == protocol.FrameData })
 	for _, want := range []string{"line-1\r\n", "line-30\r\n"} {
@@ -405,8 +416,8 @@ func TestPaste(t *testing.T) {
 
 	// An app that asked for bracketed paste gets the text bracketed, with
 	// newlines as Enter the way a terminal sends them.
-	c.sendText(p, `printf '\033[?2004h'; stty raw -echo; cat -v`+"\r")
-	time.Sleep(200 * time.Millisecond)
+	c.sendText(p, `printf '\033[?2004h'; stty raw -echo; echo RE""ADY; cat -v`+"\r")
+	c.output(p, "READY")
 	c.send(protocol.Paste{Pane: p, Text: "one $HOME\n'two'"})
 	c.output(p, "^[[200~one $HOME^M'two'^[[201~")
 }
@@ -419,8 +430,8 @@ func TestEnterOnItsOwn(t *testing.T) {
 
 	// Text sent with an Enter arrives in two reads, the Enter alone, so it
 	// isn't taken as a paste.
-	c.sendText(p, `perl -e 'system "stty raw -echo"; $|=1; print "<", length($b), ">" while sysread STDIN, $b, 4096'`+"\r")
-	time.Sleep(200 * time.Millisecond)
+	c.sendText(p, `perl -e 'system "stty raw -echo"; $|=1; print "RE", "ADY"; print "<", length($b), ">" while sysread STDIN, $b, 4096'`+"\r")
+	c.output(p, "READY")
 	sent := time.Now()
 	c.sendText(p, "say just: ok\r")
 	// What follows waits for the Enter, a ping too: its pong still means all before it reached tmux.
@@ -507,7 +518,10 @@ func TestRequests(t *testing.T) {
 	}
 
 	c.tmux("send-keys", "-t", "t", "seq 1 100", "Enter")
-	time.Sleep(300 * time.Millisecond)
+	c.until("history", func() bool {
+		n, _ := strconv.Atoi(c.tmux("display", "-p", "-t", p, "#{history_size}"))
+		return n >= 60
+	})
 	c.send(protocol.ScrollbackRequest{ID: 4, Pane: p, Start: -50, End: -1})
 	_, m = c.expect("scrollback", func(_ protocol.Frame, m protocol.Message) bool {
 		r, ok := m.(*protocol.ScrollbackReply)
