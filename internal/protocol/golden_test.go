@@ -35,6 +35,7 @@ func goldenClient(t *testing.T) []byte {
 		Rename{Window: "@2", Name: "logs ✓"},
 		Kill{Pane: "%2"},
 		Kill{Window: "@2"},
+		Quit{Pane: "%2"},
 		Read{Pane: "%2", On: true},
 		Read{Pane: "%2"},
 		Picture{Pane: "%2", ID: "u2.0"},

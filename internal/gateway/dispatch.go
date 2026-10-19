@@ -73,6 +73,8 @@ func (g *gateway) handle(f protocol.Frame) error {
 			return g.tmux.KillWindow(m.Window)
 		}
 		return errors.New("kill needs a window or pane")
+	case *protocol.Quit:
+		return g.quit(m.Pane)
 	case *protocol.Read:
 		if m.On {
 			g.read(m.Pane)

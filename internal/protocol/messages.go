@@ -85,6 +85,13 @@ type Kill struct {
 	Pane   string `json:"pane,omitempty"`
 }
 
+// Quit ends the program a pane's shell runs in its foreground (SIGTERM to
+// its process group), as a kill button does; one that won't take Ctrl-C
+// still ends. The shell itself isn't one.
+type Quit struct {
+	Pane string `json:"pane"`
+}
+
 // Read starts or stops a pane's read view arriving as Entries; a pane has
 // one when Pane.Reader names its reader.
 type Read struct {
@@ -123,6 +130,7 @@ func (Split) Type() string       { return "split" }
 func (New) Type() string         { return "new" }
 func (Rename) Type() string      { return "rename" }
 func (Kill) Type() string        { return "kill" }
+func (Quit) Type() string        { return "quit" }
 func (Read) Type() string        { return "read" }
 func (Picture) Type() string     { return "picture" }
 func (Upload) Type() string      { return "upload" }
@@ -264,7 +272,7 @@ func (Uploaded) Type() string    { return "uploaded" }
 
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Submit{}, Select{}, Focus{}, Split{}, New{}, Rename{}, Kill{},
-	Read{}, Picture{}, Upload{}, Ping{},
+	Quit{}, Read{}, Picture{}, Upload{}, Ping{},
 )
 
 var serverMessages = registry(

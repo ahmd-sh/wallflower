@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/ahmd-sh/wallflower/internal/proc"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 )
 
@@ -95,6 +97,29 @@ func (g *gateway) typeOut(pane string, runs []run, enter bool) error {
 		return nil
 	}
 	return g.tmux.SendKeys(pane, "Enter")
+}
+
+// quit ends what a pane's shell runs in its foreground: SIGTERM to its
+// process group, which ends even what won't take Ctrl-C.
+func (g *gateway) quit(pane string) error {
+	tty := ""
+	if g.snapshot != nil {
+		for _, w := range g.snapshot.Windows {
+			for _, p := range w.Panes {
+				if p.ID == pane {
+					tty = p.TTY
+				}
+			}
+		}
+	}
+	if tty == "" {
+		return fmt.Errorf("no pane %s", pane)
+	}
+	job := proc.ForegroundJob(tty)
+	if job == 0 {
+		return fmt.Errorf("nothing running in %s", pane)
+	}
+	return syscall.Kill(-job, syscall.SIGTERM)
 }
 
 // buffer names the paste buffer this gateway pastes through.
