@@ -2,15 +2,8 @@ package sh.ahmd.wallflower.terminal
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.DashPathEffect
-import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RenderNode
-import android.graphics.Typeface
-import android.graphics.fonts.Font
-import android.graphics.fonts.FontFamily
 import android.os.SystemClock
-import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
@@ -23,15 +16,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.DEFAULT
-import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_BOLD
-import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_FAINT
-import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_GRAPHEME
-import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_INVERSE
-import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_INVISIBLE
-import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_ITALIC
-import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_OVERLINE
-import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_SELECTED
-import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_STRIKETHROUGH
+import sh.ahmd.wallflower.terminal.RowPainter.Companion.opaque
 
 /**
  * Draws a [Terminal]. Each row is a RenderNode re-recorded only when the
@@ -96,30 +81,27 @@ class TerminalView(context: Context) : View(context) {
     private var settling = 0 // the height last settled towards, held after the keyboard stops until the grid fits it
     private var settleFrom = 0f
 
-    var fontSizeSp = 13f
+    private val painter = RowPainter(context)
+    private val text get() = painter.text
+    private val fill get() = painter.fill
+    private val stroke get() = painter.stroke
+    private val run = StringBuilder()
+    private val cellWidth get() = painter.cellWidth
+    private val cellHeight get() = painter.cellHeight
+    private val baseline get() = painter.baseline
+
+    var fontSizeSp: Float
+        get() = painter.fontSizeSp
         set(value) {
-            field = value.coerceIn(6f, 32f)
+            painter.fontSizeSp = value
             updateMetrics()
         }
-
-    private val regular = typeface(context, R.font.jetbrains_mono_regular)
-    private val bold = typeface(context, R.font.jetbrains_mono_bold)
-    private val text = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply { typeface = regular }
-    private val fill = Paint()
-    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-    private val curl = Path()
-    private val run = StringBuilder()
-
-    private var cellWidth = 0f
-    private var cellHeight = 0f
-    private var baseline = 0f
 
     private val frame = FrameBuffer()
     private var cols = 0
     private var rows = 0
     private var nodes = emptyArray<RenderNode>()
     private var codepoints = IntArray(0) // per cell, for drawing the glyph under a block cursor
-    private var cellFg = IntArray(0)
     private var background = theme.background
     private var foreground = theme.foreground
     private var cursorVisible = false
@@ -202,7 +184,6 @@ class TerminalView(context: Context) : View(context) {
             rows = frame.rows
             nodes = Array(rows) { RenderNode("row$it") }
             codepoints = IntArray(cols * rows)
-            cellFg = IntArray(cols * rows)
             predictions.clear()
             if (!frame.full) {
                 forceFull = true
@@ -230,145 +211,12 @@ class TerminalView(context: Context) : View(context) {
     private fun record(i: Int) {
         val y = frame.rowY(i)
         if (y >= rows) return
+        for (x in 0 until cols) codepoints[y * cols + x] = frame.codepoint(i, x)
         val node = nodes[y]
         node.setPosition(0, (y * cellHeight).roundToInt(), ceil(cols * cellWidth).toInt(), ((y + 1) * cellHeight).roundToInt())
         val c = node.beginRecording()
-
-        var x = 0
-        while (x < cols) {
-            val bg = cellBg(i, x)
-            var end = x + 1
-            while (end < cols && cellBg(i, end) == bg) end++
-            if (bg != DEFAULT) {
-                fill.color = opaque(bg)
-                c.drawRect(x * cellWidth, 0f, end * cellWidth, node.height.toFloat(), fill)
-            }
-            x = end
-        }
-
-        x = 0
-        while (x < cols) {
-            val flags = frame.flags(i, x)
-            val wide = FrameBuffer.wide(flags)
-            val cp = frame.codepoint(i, x)
-            codepoints[y * cols + x] = cp
-            cellFg[y * cols + x] = cellFg(i, x)
-            if (wide >= 2 || cp == 0 || flags and FLAG_INVISIBLE != 0) {
-                x++
-                continue
-            }
-            val fg = cellFg(i, x)
-            if (cp < 0x80 && wide == 0) {
-                // A run of plain ASCII in one style draws as one string; the
-                // font is monospace, so it lands on the grid.
-                run.setLength(0)
-                var end = x
-                while (end < cols && sameRun(i, end, flags, fg)) {
-                    val e = frame.codepoint(i, end)
-                    run.append(if (e == 0) ' ' else e.toChar())
-                    codepoints[y * cols + end] = e
-                    cellFg[y * cols + end] = fg
-                    end++
-                }
-                style(flags, fg)
-                c.drawText(run, 0, run.length, x * cellWidth, baseline, text)
-                decorate(c, i, x, end, flags)
-                x = end
-            } else {
-                // Anything else (wide, emoji, graphemes, fallback fonts) is
-                // drawn alone, centered and shrunk to fit its cells.
-                run.setLength(0)
-                frame.appendText(i, x, run)
-                val span = if (wide == 1) 2 else 1
-                style(flags, fg)
-                val w = text.measureText(run, 0, run.length)
-                val room = span * cellWidth
-                val left = x * cellWidth
-                if (w > room) {
-                    c.save()
-                    c.scale(room / w, room / w, left + room / 2, cellHeight / 2)
-                    c.drawText(run, 0, run.length, left, baseline, text)
-                    c.restore()
-                } else {
-                    c.drawText(run, 0, run.length, left + (room - w) / 2, baseline, text)
-                }
-                decorate(c, i, x, x + span, flags)
-                x += span
-            }
-        }
+        painter.draw(c, frame, i, node.height.toFloat(), background, foreground)
         node.endRecording()
-    }
-
-    private fun sameRun(i: Int, x: Int, flags: Int, fg: Int): Boolean {
-        val cp = frame.codepoint(i, x)
-        val f = frame.flags(i, x)
-        return cp < 0x80 && FrameBuffer.wide(f) == 0 && f and FLAG_GRAPHEME == 0 &&
-            f and STYLE_MASK == flags and STYLE_MASK && cellFg(i, x) == fg && f and FLAG_INVISIBLE == 0
-    }
-
-    private fun cellFg(i: Int, x: Int): Int {
-        val f = frame.flags(i, x)
-        var fg = if (f and FLAG_INVERSE != 0) frame.bg(i, x).orIfDefault(background) else frame.fg(i, x).orIfDefault(foreground)
-        if (f and FLAG_SELECTED != 0) fg = background
-        return fg
-    }
-
-    private fun cellBg(i: Int, x: Int): Int {
-        val f = frame.flags(i, x)
-        if (f and FLAG_SELECTED != 0) return foreground
-        return if (f and FLAG_INVERSE != 0) frame.fg(i, x).orIfDefault(foreground) else frame.bg(i, x)
-    }
-
-    private fun style(flags: Int, fg: Int) {
-        text.typeface = if (flags and FLAG_BOLD != 0) bold else regular
-        text.textSkewX = if (flags and FLAG_ITALIC != 0) -0.2f else 0f
-        text.color = if (flags and FLAG_FAINT != 0) (fg and 0xFFFFFF) or (0x88 shl 24) else opaque(fg)
-    }
-
-    private fun decorate(c: Canvas, i: Int, from: Int, to: Int, flags: Int) {
-        val underline = FrameBuffer.underline(flags)
-        if (underline == 0 && flags and (FLAG_STRIKETHROUGH or FLAG_OVERLINE) == 0) return
-        val left = from * cellWidth
-        val right = to * cellWidth
-        val thickness = maxOf(1f, cellHeight / 16f)
-        stroke.strokeWidth = thickness
-        stroke.color = text.color
-        stroke.pathEffect = null
-        if (flags and FLAG_STRIKETHROUGH != 0) c.drawLine(left, cellHeight * 0.55f, right, cellHeight * 0.55f, stroke)
-        if (flags and FLAG_OVERLINE != 0) c.drawLine(left, thickness, right, thickness, stroke)
-        if (underline == 0) return
-
-        val ul = frame.underlineColor(i, from)
-        if (ul != DEFAULT) stroke.color = opaque(ul)
-        val y = baseline + thickness * 2
-        when (underline) {
-            2 -> {
-                c.drawLine(left, y - thickness, right, y - thickness, stroke)
-                c.drawLine(left, y + thickness, right, y + thickness, stroke)
-            }
-            3 -> {
-                curl.rewind()
-                curl.moveTo(left, y)
-                var px = left
-                var up = true
-                val step = cellWidth / 2
-                while (px < right) {
-                    curl.quadTo(px + step / 2, if (up) y - thickness * 1.5f else y + thickness * 1.5f, px + step, y)
-                    px += step
-                    up = !up
-                }
-                c.drawPath(curl, stroke)
-            }
-            4 -> {
-                stroke.pathEffect = DashPathEffect(floatArrayOf(thickness, thickness * 2), 0f)
-                c.drawLine(left, y, right, y, stroke)
-            }
-            5 -> {
-                stroke.pathEffect = DashPathEffect(floatArrayOf(cellWidth / 2, cellWidth / 4), 0f)
-                c.drawLine(left, y, right, y, stroke)
-            }
-            else -> c.drawLine(left, y, right, y, stroke)
-        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -472,7 +320,7 @@ class TerminalView(context: Context) : View(context) {
 
     private fun drawPredictions(canvas: Canvas) {
         if (predictions.isEmpty) return
-        text.typeface = regular
+        text.typeface = painter.regular
         text.textSkewX = 0f
         text.color = (foreground and 0xFFFFFF) or (0x70 shl 24)
         fill.color = opaque(background)
@@ -505,7 +353,7 @@ class TerminalView(context: Context) : View(context) {
                 if (cp > 0x20) {
                     run.setLength(0)
                     run.appendCodePoint(cp)
-                    text.typeface = regular
+                    text.typeface = painter.regular
                     text.textSkewX = 0f
                     text.color = opaque(background)
                     canvas.drawText(run, 0, run.length, left, top + baseline, text)
@@ -522,12 +370,6 @@ class TerminalView(context: Context) : View(context) {
 
 
     private fun updateMetrics() {
-        text.textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, fontSizeSp, resources.displayMetrics)
-        text.typeface = regular
-        cellWidth = text.measureText("M")
-        val fm = text.fontMetrics
-        cellHeight = ceil((fm.descent - fm.ascent) * 1.15f)
-        baseline = (cellHeight - (fm.descent - fm.ascent)) / 2 - fm.ascent
         forceFull = true
         reportGrid()
         requestFrame()
@@ -660,31 +502,8 @@ class TerminalView(context: Context) : View(context) {
     }
 
     private fun Int.orIfDefault(other: Int) = if (this == DEFAULT) other else this
-    private fun opaque(rgb: Int) = rgb or (0xFF shl 24)
 
     private companion object {
-        val STYLE_MASK = FLAG_BOLD or FLAG_ITALIC or FLAG_FAINT or (7 shl 8) or FLAG_STRIKETHROUGH or FLAG_OVERLINE or
-            FLAG_INVERSE or FLAG_SELECTED
-
         const val FADE_MS = 180L
-
-        private val typefaces = HashMap<Int, Typeface>()
-
-        /**
-         * The font, then symbols it lacks (TUI spinners, ⏺ ⎿ ⏵ ✻), then the
-         * system's fonts. Anything not in the font would otherwise depend on
-         * the phone having it. Built once: views come and go as panes do.
-         */
-        fun typeface(context: Context, font: Int): Typeface = synchronized(typefaces) {
-            typefaces.getOrPut(font) {
-                val res = context.applicationContext.resources
-                fun family(id: Int) = FontFamily.Builder(Font.Builder(res, id).build()).build()
-                Typeface.CustomFallbackBuilder(family(font))
-                    .addCustomFallback(family(R.font.symbols_fallback))
-                    .addCustomFallback(family(R.font.symbols_fallback2))
-                    .setSystemFallback("monospace")
-                    .build()
-            }
-        }
     }
 }

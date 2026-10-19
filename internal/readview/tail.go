@@ -92,7 +92,7 @@ func Tail(ctx context.Context, recording func() (Recording, bool), parser func()
 		partial  []byte
 		announce bool // say there's a conversation, if its file isn't there yet
 		measured int  // the context last sent
-		branched int       // the parser's branches, as of the entries sent
+		branched int  // the parser's branches, as of the entries sent
 	)
 	defer func() {
 		if f != nil {

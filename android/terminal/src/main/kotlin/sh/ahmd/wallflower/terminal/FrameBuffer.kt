@@ -52,6 +52,9 @@ class FrameBuffer {
     fun underlineColor(row: Int, x: Int) = ints[cell(row, x) + 3]
     fun flags(row: Int, x: Int) = ints[cell(row, x) + 4]
 
+    /** What the shell marked the cell as (OSC 133): [ROLE_OUTPUT], [ROLE_INPUT] or [ROLE_PROMPT]. */
+    fun role(row: Int, x: Int) = (flags(row, x) shr 15) and 3
+
     /** Appends the cell's text (its whole grapheme) to [out]. */
     fun appendText(row: Int, x: Int, out: StringBuilder) {
         val cp = codepoint(row, x)
@@ -103,6 +106,10 @@ class FrameBuffer {
         const val FLAG_OVERLINE = 1 shl 7
         const val FLAG_SELECTED = 1 shl 13
         const val FLAG_GRAPHEME = 1 shl 14
+
+        const val ROLE_OUTPUT = 0
+        const val ROLE_INPUT = 1
+        const val ROLE_PROMPT = 2
 
         /** Underline style: 0 none, 1 single, 2 double, 3 curly, 4 dotted, 5 dashed. */
         fun underline(flags: Int) = (flags shr 8) and 7

@@ -112,4 +112,3 @@ func (g *gateway) keys(pane string, keys []string, bindings bool) error {
 	}
 	return g.tmux.SendKeys(pane, keys...)
 }
-

@@ -2,7 +2,8 @@
 //
 // One handle per pane: the IO thread writes pane output, the UI thread packs
 // what changed into a frame buffer once per vsync. The frame layout is
-// documented in FrameBuffer.kt; the constants here must match it.
+// documented in FrameBuffer.kt; the constants here must match it. Rows of
+// the scrollback pack into the same layout, for showing commands apart.
 
 #include <jni.h>
 #include <pthread.h>
@@ -20,6 +21,7 @@
 #define MAX_GRAPHEME 16
 #define HOLD_TIMEOUT_NS 1000000000LL
 #define NO_COLOR (-1)
+#define MAX_COMMANDS 4096
 
 enum {
   FLAG_BOLD = 1 << 0,
@@ -34,7 +36,19 @@ enum {
   FLAG_WIDE_SHIFT = 11,      // 2 bits, GHOSTTY_CELL_WIDE_*
   FLAG_SELECTED = 1 << 13,
   FLAG_GRAPHEME = 1 << 14,   // more codepoints follow in the row's extras
+  FLAG_ROLE_SHIFT = 15,      // 2 bits, the OSC 133 role: 0 output, 1 input, 2 prompt
 };
+
+// A command the shell marked (OSC 133): pinned where its prompt starts and
+// where its output starts, so it keeps its place as the screen scrolls,
+// reflows and drops old scrollback.
+typedef struct {
+  int32_t id;
+  GhosttyTrackedGridRef start;
+  GhosttyTrackedGridRef output;  // NULL until it runs
+  uint32_t trimmed_for;          // the length of the rows it had when trimmed was worked out; 0 for not yet
+  uint32_t trimmed;              // rows up to its last with text
+} Command;
 
 typedef struct {
   GhosttyTerminal term;
@@ -47,6 +61,16 @@ typedef struct {
   uint8_t* scratch;
   size_t scratch_len;
   GhosttyMouseEncoder mouse; // created on first wheel event
+  bool frame_stale;          // rows were packed, which can take changes from the frame's render state
+  Command* commands;
+  size_t command_count, command_cap;
+  int32_t command_ids;
+  bool commands_changed;
+  // Rows have their own render state, packed one at a time.
+  pthread_mutex_t rows_lock;
+  GhosttyRenderState rows_state;
+  GhosttyRenderStateRowIterator rows_rows;
+  GhosttyRenderStateRowCells rows_cells;
 } Term;
 
 static int64_t now_ns(void) {
@@ -89,6 +113,102 @@ static int32_t style_color(GhosttyStyleColor c, const GhosttyRenderStateColors* 
   }
 }
 
+static GhosttyPoint active_row(uint16_t y) {
+  return (GhosttyPoint){.tag = GHOSTTY_POINT_TAG_ACTIVE, .value = {.coordinate = {.x = 0, .y = y}}};
+}
+
+static uint16_t cursor_row(Term* t) {
+  uint16_t y = 0;
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_CURSOR_Y, &y);
+  return y;
+}
+
+// Where a pinned row is now, counting from the top of the scrollback.
+static bool row_of(GhosttyTrackedGridRef ref, uint32_t* y) {
+  GhosttyPointCoordinate c;
+  if (!ref || ghostty_tracked_grid_ref_point(ref, GHOSTTY_POINT_TAG_SCREEN, &c) != GHOSTTY_SUCCESS) return false;
+  *y = c.y;
+  return true;
+}
+
+static bool cursor_screen_row(Term* t, uint32_t* y) {
+  GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+  GhosttyPointCoordinate c;
+  if (ghostty_terminal_grid_ref(t->term, active_row(cursor_row(t)), &ref) != GHOSTTY_SUCCESS ||
+      ghostty_terminal_point_from_grid_ref(t->term, &ref, GHOSTTY_POINT_TAG_SCREEN, &c) != GHOSTTY_SUCCESS) {
+    return false;
+  }
+  *y = c.y;
+  return true;
+}
+
+static GhosttyTrackedGridRef pin_cursor_row(Term* t) {
+  GhosttyTrackedGridRef ref = NULL;
+  if (ghostty_terminal_grid_ref_track(t->term, active_row(cursor_row(t)), &ref) != GHOSTTY_SUCCESS) return NULL;
+  return ref;
+}
+
+static void forget(Command* c) {
+  ghostty_tracked_grid_ref_free(c->start);
+  ghostty_tracked_grid_ref_free(c->output);
+}
+
+static void add_command(Term* t, GhosttyTrackedGridRef start) {
+  if (!start) return;
+  if (t->command_count == MAX_COMMANDS) {
+    forget(&t->commands[0]);
+    memmove(t->commands, t->commands + 1, (t->command_count - 1) * sizeof(Command));
+    t->command_count--;
+  }
+  if (t->command_count == t->command_cap) {
+    size_t cap = t->command_cap ? t->command_cap * 2 : 64;
+    Command* grown = realloc(t->commands, cap * sizeof(Command));
+    if (!grown) {
+      ghostty_tracked_grid_ref_free(start);
+      return;
+    }
+    t->commands = grown;
+    t->command_cap = cap;
+  }
+  t->commands[t->command_count++] = (Command){.id = ++t->command_ids, .start = start};
+  t->commands_changed = true;
+}
+
+// The shell marks its prompts and output (OSC 133). A primary prompt starts
+// a command; one drawn again before anything ran is the same prompt where
+// it was or higher up (redrawn, the screen cleared), or below, a new one
+// after a line left unrun (Ctrl-C, an empty line). Runs inside vt_write, so
+// the lock is held.
+static void on_semantic_prompt(GhosttyTerminal term, void* userdata, const GhosttyTerminalSemanticPrompt* e) {
+  (void)term;
+  Term* t = userdata;
+  GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
+  if (screen != GHOSTTY_TERMINAL_SCREEN_PRIMARY) return;
+  Command* last = t->command_count ? &t->commands[t->command_count - 1] : NULL;
+  switch (e->kind) {
+    case GHOSTTY_SEMANTIC_PROMPT_PROMPT_START: {
+      if (e->prompt_kind != GHOSTTY_SEMANTIC_PROMPT_PROMPT_PRIMARY) return;
+      uint32_t y = 0, at = 0;
+      if (last && !last->output && cursor_screen_row(t, &y) && row_of(last->start, &at) && y <= at) {
+        ghostty_tracked_grid_ref_set(last->start, t->term, active_row(cursor_row(t)));
+        last->trimmed_for = 0;
+        t->commands_changed = true;
+        return;
+      }
+      add_command(t, pin_cursor_row(t));
+      break;
+    }
+    case GHOSTTY_SEMANTIC_PROMPT_OUTPUT_START:
+      if (!last || last->output) return;
+      last->output = pin_cursor_row(t);
+      t->commands_changed = true;
+      break;
+    default:
+      break;
+  }
+}
+
 JNIEXPORT jlong JNICALL
 Java_sh_ahmd_wallflower_terminal_Terminal_nativeNew(JNIEnv* env, jclass cls, jint cols, jint rows, jint scrollback) {
   (void)env; (void)cls;
@@ -97,7 +217,13 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeNew(JNIEnv* env, jclass cls, jin
   if (ghostty_terminal_new(NULL, &t->term, (uint16_t)cols, (uint16_t)rows) != GHOSTTY_SUCCESS ||
       ghostty_render_state_new(NULL, &t->state) != GHOSTTY_SUCCESS ||
       ghostty_render_state_row_iterator_new(NULL, &t->rows) != GHOSTTY_SUCCESS ||
-      ghostty_render_state_row_cells_new(NULL, &t->cells) != GHOSTTY_SUCCESS) {
+      ghostty_render_state_row_cells_new(NULL, &t->cells) != GHOSTTY_SUCCESS ||
+      ghostty_render_state_new(NULL, &t->rows_state) != GHOSTTY_SUCCESS ||
+      ghostty_render_state_row_iterator_new(NULL, &t->rows_rows) != GHOSTTY_SUCCESS ||
+      ghostty_render_state_row_cells_new(NULL, &t->rows_cells) != GHOSTTY_SUCCESS) {
+    if (t->rows_cells) ghostty_render_state_row_cells_free(t->rows_cells);
+    if (t->rows_rows) ghostty_render_state_row_iterator_free(t->rows_rows);
+    if (t->rows_state) ghostty_render_state_free(t->rows_state);
     if (t->cells) ghostty_render_state_row_cells_free(t->cells);
     if (t->rows) ghostty_render_state_row_iterator_free(t->rows);
     if (t->state) ghostty_render_state_free(t->state);
@@ -106,8 +232,10 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeNew(JNIEnv* env, jclass cls, jin
     return 0;
   }
   pthread_mutex_init(&t->lock, NULL);
+  pthread_mutex_init(&t->rows_lock, NULL);
   ghostty_terminal_set(t->term, GHOSTTY_TERMINAL_OPT_USERDATA, t);
   ghostty_terminal_set(t->term, GHOSTTY_TERMINAL_OPT_RENDER_HOLD, (const void*)on_render_hold);
+  ghostty_terminal_set(t->term, GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT, (const void*)on_semantic_prompt);
   size_t lines = (size_t)scrollback;
   ghostty_terminal_set(t->term, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_LINES, &lines);
   // tmux clusters graphemes (ZWJ sequences, flags, VS16 are one wide cell),
@@ -127,27 +255,37 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeFree(JNIEnv* env, jclass cls, jl
   ghostty_render_state_row_cells_free(t->cells);
   ghostty_render_state_row_iterator_free(t->rows);
   ghostty_render_state_free(t->state);
+  ghostty_render_state_row_cells_free(t->rows_cells);
+  ghostty_render_state_row_iterator_free(t->rows_rows);
+  ghostty_render_state_free(t->rows_state);
+  for (size_t i = 0; i < t->command_count; i++) forget(&t->commands[i]);
+  free(t->commands);
   if (t->mouse) ghostty_mouse_encoder_free(t->mouse);
   ghostty_terminal_free(t->term);
   pthread_mutex_destroy(&t->lock);
+  pthread_mutex_destroy(&t->rows_lock);
   free(t->scratch);
   free(t);
 }
 
-JNIEXPORT void JNICALL
+// Returns whether the shell marked a command's prompt or output in it.
+JNIEXPORT jboolean JNICALL
 Java_sh_ahmd_wallflower_terminal_Terminal_nativeWrite(JNIEnv* env, jclass cls, jlong h, jbyteArray data, jint off, jint len) {
   (void)cls;
   Term* t = (Term*)(intptr_t)h;
   pthread_mutex_lock(&t->lock);
   if ((size_t)len > t->scratch_len) {
     uint8_t* grown = realloc(t->scratch, (size_t)len);
-    if (!grown) { pthread_mutex_unlock(&t->lock); return; }
+    if (!grown) { pthread_mutex_unlock(&t->lock); return JNI_FALSE; }
     t->scratch = grown;
     t->scratch_len = (size_t)len;
   }
   (*env)->GetByteArrayRegion(env, data, off, len, (jbyte*)t->scratch);
+  t->commands_changed = false;
   ghostty_terminal_vt_write(t->term, t->scratch, (size_t)len);
+  bool changed = t->commands_changed;
   pthread_mutex_unlock(&t->lock);
+  return changed ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
@@ -156,6 +294,7 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeResize(JNIEnv* env, jclass cls, 
   Term* t = (Term*)(intptr_t)h;
   pthread_mutex_lock(&t->lock);
   ghostty_terminal_resize(t->term, (uint16_t)cols, (uint16_t)rows, (uint32_t)cellW, (uint32_t)cellH);
+  for (size_t i = 0; i < t->command_count; i++) t->commands[i].trimmed_for = 0; // rows reflow
   pthread_mutex_unlock(&t->lock);
 }
 
@@ -335,6 +474,68 @@ static bool put(Out* o, int32_t v) {
   return true;
 }
 
+// Ints a frame of rows needs at most.
+static size_t frame_ints(uint16_t cols, size_t rows) {
+  return HEADER_INTS + rows * (ROW_HEADER_INTS + (size_t)cols * (CELL_INTS + 2 + MAX_GRAPHEME));
+}
+
+// Packs the row the iterator is on as row y.
+static void pack_row(Out* o, GhosttyRenderStateRowIterator rows, GhosttyRenderStateRowCells cells, int32_t y, uint16_t cols,
+                     const GhosttyRenderStateColors* colors) {
+  put(o, y);
+  size_t extras_at = o->len;
+  put(o, 0);
+  size_t cells_at = o->len;
+  memset(&o->buf[cells_at], 0, (size_t)cols * CELL_INTS * sizeof(int32_t));
+  o->len += (size_t)cols * CELL_INTS;
+  int32_t extras = 0;
+  uint32_t cps[MAX_GRAPHEME];
+
+  ghostty_render_state_row_get(rows, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &cells);
+  for (uint16_t x = 0; x < cols && ghostty_render_state_row_cells_next(cells); x++) {
+    int32_t* cell = &o->buf[cells_at + (size_t)x * CELL_INTS];
+    uint32_t glen = 0;
+    ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, &glen);
+    if (glen > MAX_GRAPHEME) glen = MAX_GRAPHEME;
+    if (glen > 0) ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, cps);
+
+    GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
+    ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style);
+    GhosttyColorRgb c;
+    int32_t fg = ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &c) == GHOSTTY_SUCCESS ? rgb(c) : NO_COLOR;
+    int32_t bg = ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &c) == GHOSTTY_SUCCESS ? rgb(c) : NO_COLOR;
+    bool selected = false;
+    ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_SELECTED, &selected);
+    GhosttyCell raw = 0;
+    GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+    GhosttyCellSemanticContent role = GHOSTTY_CELL_SEMANTIC_OUTPUT;
+    if (ghostty_render_state_row_cells_get(cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &raw) == GHOSTTY_SUCCESS) {
+      ghostty_cell_get(raw, GHOSTTY_CELL_DATA_WIDE, &wide);
+      ghostty_cell_get(raw, GHOSTTY_CELL_DATA_SEMANTIC_CONTENT, &role);
+    }
+
+    int32_t flags = (style.bold ? FLAG_BOLD : 0) | (style.italic ? FLAG_ITALIC : 0) |
+                    (style.faint ? FLAG_FAINT : 0) | (style.blink ? FLAG_BLINK : 0) |
+                    (style.inverse ? FLAG_INVERSE : 0) | (style.invisible ? FLAG_INVISIBLE : 0) |
+                    (style.strikethrough ? FLAG_STRIKETHROUGH : 0) | (style.overline ? FLAG_OVERLINE : 0) |
+                    ((style.underline & 7) << FLAG_UNDERLINE_SHIFT) | (((int32_t)wide & 3) << FLAG_WIDE_SHIFT) |
+                    (selected ? FLAG_SELECTED : 0) | (glen > 1 ? FLAG_GRAPHEME : 0) | (((int32_t)role & 3) << FLAG_ROLE_SHIFT);
+    cell[0] = glen > 0 ? (int32_t)cps[0] : 0;
+    cell[1] = fg;
+    cell[2] = bg;
+    cell[3] = style_color(style.underline_color, colors);
+    cell[4] = flags;
+
+    if (glen > 1) {
+      put(o, x);
+      put(o, (int32_t)glen - 1);
+      for (uint32_t i = 1; i < glen; i++) put(o, (int32_t)cps[i]);
+      extras++;
+    }
+  }
+  o->buf[extras_at] = extras;
+}
+
 // Packs the rows that changed since the last frame (all rows if force) into
 // buffer. Returns the number of bytes written, 0 if nothing changed or a
 // synchronized update is in progress, or -needed if the buffer is too small.
@@ -357,6 +558,8 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeFrame(JNIEnv* env, jclass cls, j
   ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scroll);
   GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
   ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
+  if (t->frame_stale) force = JNI_TRUE;
+  t->frame_stale = false;
   pthread_mutex_unlock(&t->lock);
 
   GhosttyRenderStateDirty dirty = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
@@ -372,7 +575,7 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeFrame(JNIEnv* env, jclass cls, j
   GhosttyRenderStateCursor cursor = GHOSTTY_INIT_SIZED(GhosttyRenderStateCursor);
   ghostty_render_state_get(t->state, GHOSTTY_RENDER_STATE_DATA_CURSOR, &cursor);
 
-  size_t needed = HEADER_INTS + (size_t)rows * (ROW_HEADER_INTS + (size_t)cols * (CELL_INTS + 2 + MAX_GRAPHEME));
+  size_t needed = frame_ints(cols, rows);
   if (o.cap < needed) return -(jint)(needed * sizeof(int32_t));
 
   int32_t cursor_flags = (cursor.visible ? 1 : 0) | (cursor.blinking ? 2 : 0) |
@@ -398,7 +601,6 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeFrame(JNIEnv* env, jclass cls, j
   ghostty_render_state_get(t->state, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &t->rows);
   int32_t row_count = 0;
   uint16_t y = 0;
-  uint32_t cps[MAX_GRAPHEME];
   for (uint16_t next = 0;; next++) {
     if (dirty == GHOSTTY_RENDER_STATE_DIRTY_FULL) {
       if (!ghostty_render_state_row_iterator_next(t->rows)) break;
@@ -407,57 +609,172 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeFrame(JNIEnv* env, jclass cls, j
       break;
     }
     row_count++;
-    put(&o, y);
-    size_t extras_at = o.len;
-    put(&o, 0);
-    size_t cells_at = o.len;
-    memset(&o.buf[cells_at], 0, (size_t)cols * CELL_INTS * sizeof(int32_t));
-    o.len += (size_t)cols * CELL_INTS;
-    int32_t extras = 0;
-
-    ghostty_render_state_row_get(t->rows, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &t->cells);
-    for (uint16_t x = 0; x < cols && ghostty_render_state_row_cells_next(t->cells); x++) {
-      int32_t* cell = &o.buf[cells_at + (size_t)x * CELL_INTS];
-      uint32_t glen = 0;
-      ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN, &glen);
-      if (glen > MAX_GRAPHEME) glen = MAX_GRAPHEME;
-      if (glen > 0) ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, cps);
-
-      GhosttyStyle style = GHOSTTY_INIT_SIZED(GhosttyStyle);
-      ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, &style);
-      GhosttyColorRgb c;
-      int32_t fg = ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &c) == GHOSTTY_SUCCESS ? rgb(c) : NO_COLOR;
-      int32_t bg = ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &c) == GHOSTTY_SUCCESS ? rgb(c) : NO_COLOR;
-      bool selected = false;
-      ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_SELECTED, &selected);
-      GhosttyCell raw = 0;
-      GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
-      if (ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &raw) == GHOSTTY_SUCCESS) {
-        ghostty_cell_get(raw, GHOSTTY_CELL_DATA_WIDE, &wide);
-      }
-
-      int32_t flags = (style.bold ? FLAG_BOLD : 0) | (style.italic ? FLAG_ITALIC : 0) |
-                      (style.faint ? FLAG_FAINT : 0) | (style.blink ? FLAG_BLINK : 0) |
-                      (style.inverse ? FLAG_INVERSE : 0) | (style.invisible ? FLAG_INVISIBLE : 0) |
-                      (style.strikethrough ? FLAG_STRIKETHROUGH : 0) | (style.overline ? FLAG_OVERLINE : 0) |
-                      ((style.underline & 7) << FLAG_UNDERLINE_SHIFT) | (((int32_t)wide & 3) << FLAG_WIDE_SHIFT) |
-                      (selected ? FLAG_SELECTED : 0) | (glen > 1 ? FLAG_GRAPHEME : 0);
-      cell[0] = glen > 0 ? (int32_t)cps[0] : 0;
-      cell[1] = fg;
-      cell[2] = bg;
-      cell[3] = style_color(style.underline_color, &colors);
-      cell[4] = flags;
-
-      if (glen > 1) {
-        put(&o, x);
-        put(&o, (int32_t)glen - 1);
-        for (uint32_t i = 1; i < glen; i++) put(&o, (int32_t)cps[i]);
-        extras++;
-      }
-    }
-    o.buf[extras_at] = extras;
+    pack_row(&o, t->rows, t->cells, y, cols, &colors);
   }
   o.buf[row_count_at] = row_count;
   ghostty_render_state_clean(t->state);
+  return (jint)(o.len * sizeof(int32_t));
+}
+
+static bool row_has_text(Term* t, uint32_t y, uint32_t active_top, uint16_t cols) {
+  for (uint16_t x = 0; x < cols; x++) {
+    GhosttyPoint pt = y >= active_top
+      ? (GhosttyPoint){.tag = GHOSTTY_POINT_TAG_ACTIVE, .value = {.coordinate = {.x = x, .y = y - active_top}}}
+      : (GhosttyPoint){.tag = GHOSTTY_POINT_TAG_SCREEN, .value = {.coordinate = {.x = x, .y = y}}};
+    GhosttyGridRef ref = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+    GhosttyCell cell;
+    bool text = false;
+    if (ghostty_terminal_grid_ref(t->term, pt, &ref) == GHOSTTY_SUCCESS && ghostty_grid_ref_cell(&ref, &cell) == GHOSTTY_SUCCESS &&
+        ghostty_cell_get(cell, GHOSTTY_CELL_DATA_HAS_TEXT, &text) == GHOSTTY_SUCCESS && text) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Rows from `from` up to `to` that end with the last one with text, at least `least`.
+static uint32_t trim(Term* t, uint32_t from, uint32_t to, uint32_t least, uint32_t active_top, uint16_t cols) {
+  uint32_t end = to;
+  while (end > from + least && !row_has_text(t, end - 1, active_top, cols)) end--;
+  return end - from;
+}
+
+// The commands the shell marked on the primary screen, oldest first, as
+// ints: alternate (1 while a full-screen app has the alternate screen, and
+// nothing else follows), rows (the screen's, scrollback included), history
+// (rows above the first command, up to the last with text), count, then per
+// command its id, the row its prompt starts on, the row its output starts on
+// (-1 if it hasn't run), and the row after its last with text. Commands
+// whose prompt left the scrollback are forgotten.
+JNIEXPORT jintArray JNICALL
+Java_sh_ahmd_wallflower_terminal_Terminal_nativeCommands(JNIEnv* env, jclass cls, jlong h) {
+  (void)cls;
+  Term* t = (Term*)(intptr_t)h;
+  pthread_mutex_lock(&t->lock);
+  GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
+  if (screen != GHOSTTY_TERMINAL_SCREEN_PRIMARY) {
+    pthread_mutex_unlock(&t->lock);
+    jintArray alt = (*env)->NewIntArray(env, 1);
+    jint one = 1;
+    if (alt) (*env)->SetIntArrayRegion(env, alt, 0, 1, &one);
+    return alt;
+  }
+  size_t kept = 0;
+  for (size_t i = 0; i < t->command_count; i++) {
+    uint32_t y;
+    if (!row_of(t->commands[i].start, &y)) {
+      forget(&t->commands[i]);
+      continue;
+    }
+    t->commands[kept++] = t->commands[i];
+  }
+  t->command_count = kept;
+
+  size_t total = 0;
+  uint16_t cols = 0, rows = 0;
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_TOTAL_ROWS, &total);
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_COLS, &cols);
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ROWS, &rows);
+  uint32_t active_top = total > rows ? (uint32_t)(total - rows) : 0;
+  size_t n = t->command_count;
+  jint* out = malloc((4 + n * 4) * sizeof(jint));
+  if (!out) {
+    pthread_mutex_unlock(&t->lock);
+    return NULL;
+  }
+  uint32_t first = 0;
+  if (n == 0 || !row_of(t->commands[0].start, &first)) first = (uint32_t)total;
+  out[0] = 0;
+  out[1] = (jint)total;
+  out[2] = (jint)trim(t, 0, first, 0, active_top, cols);
+  out[3] = (jint)n;
+  for (size_t i = 0; i < n; i++) {
+    Command* c = &t->commands[i];
+    uint32_t start = 0, output = 0, end = (uint32_t)total;
+    row_of(c->start, &start);
+    bool ran = row_of(c->output, &output);
+    if (i + 1 < n) row_of(t->commands[i + 1].start, &end);
+    if (end < start) end = start;
+    // Older commands are done, so their rows only change as they reflow; the newest is still going.
+    uint32_t length = end - start;
+    if (i + 1 == n || c->trimmed_for != length) {
+      c->trimmed = trim(t, start, end, 1, active_top, cols);
+      c->trimmed_for = i + 1 == n ? 0 : length;
+    }
+    out[4 + i * 4] = c->id;
+    out[5 + i * 4] = (jint)start;
+    out[6 + i * 4] = ran ? (jint)output : -1;
+    out[7 + i * 4] = (jint)(start + c->trimmed);
+  }
+  pthread_mutex_unlock(&t->lock);
+  jsize len = (jsize)(4 + n * 4);
+  jintArray result = (*env)->NewIntArray(env, len);
+  if (result) (*env)->SetIntArrayRegion(env, result, 0, len, out);
+  free(out);
+  return result;
+}
+
+// Packs rows from..from+count of the primary screen (row 0 is the top of the
+// scrollback) into buffer, as a full frame of count rows without a cursor:
+// the viewport scrolls there for its own render state to read, then back.
+// Returns the bytes written, 0 while a full-screen app has the alternate
+// screen, or -needed if the buffer is too small.
+JNIEXPORT jint JNICALL
+Java_sh_ahmd_wallflower_terminal_Terminal_nativeRows(JNIEnv* env, jclass cls, jlong h, jobject buffer, jint from, jint count) {
+  (void)cls;
+  Term* t = (Term*)(intptr_t)h;
+  Out o = {
+    .buf = (*env)->GetDirectBufferAddress(env, buffer),
+    .cap = (size_t)(*env)->GetDirectBufferCapacity(env, buffer) / sizeof(int32_t),
+  };
+  if (from < 0 || count <= 0) return 0;
+  pthread_mutex_lock(&t->rows_lock);
+  pthread_mutex_lock(&t->lock);
+  GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
+  uint16_t cols = 0;
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_COLS, &cols);
+  size_t needed = frame_ints(cols, (size_t)count);
+  jint result = screen != GHOSTTY_TERMINAL_SCREEN_PRIMARY ? 0 : o.cap < needed ? -(jint)(needed * sizeof(int32_t)) : 1;
+  if (result != 1) {
+    pthread_mutex_unlock(&t->lock);
+    pthread_mutex_unlock(&t->rows_lock);
+    return result;
+  }
+
+  GhosttyTerminalScrollbar was = {0};
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &was);
+  bool bottom = was.offset + was.len >= was.total;
+  GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
+  size_t head = o.len;
+  o.len += HEADER_INTS;
+  int32_t packed = 0;
+  while (packed < count) {
+    GhosttyTerminalScrollViewport to = {.tag = GHOSTTY_SCROLL_VIEWPORT_ROW, .value = {.row = (size_t)(from + packed)}};
+    ghostty_terminal_scroll_viewport(t->term, to);
+    ghostty_render_state_update(t->rows_state, t->term);
+    GhosttyTerminalScrollbar at = {0};
+    ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &at);
+    ghostty_render_state_get(t->rows_state, GHOSTTY_RENDER_STATE_DATA_COLORS, &colors);
+    ghostty_render_state_get(t->rows_state, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &t->rows_rows);
+    int32_t before = packed;
+    for (int64_t y = (int64_t)at.offset; ghostty_render_state_row_iterator_next(t->rows_rows) && packed < count; y++) {
+      if (y < from + packed) continue; // clamped above the rows asked for, at the bottom
+      pack_row(&o, t->rows_rows, t->rows_cells, packed, cols, &colors);
+      packed++;
+    }
+    if (packed == before) break; // past the last row
+  }
+  GhosttyTerminalScrollViewport back = bottom
+    ? (GhosttyTerminalScrollViewport){.tag = GHOSTTY_SCROLL_VIEWPORT_BOTTOM}
+    : (GhosttyTerminalScrollViewport){.tag = GHOSTTY_SCROLL_VIEWPORT_ROW, .value = {.row = (size_t)was.offset}};
+  ghostty_terminal_scroll_viewport(t->term, back);
+  t->frame_stale = true;
+  pthread_mutex_unlock(&t->lock);
+  pthread_mutex_unlock(&t->rows_lock);
+
+  int32_t header[HEADER_INTS] = {2, cols, packed, 0, 0, 0, 0, rgb(colors.background), rgb(colors.foreground), NO_COLOR, packed, 0, 0, 0};
+  memcpy(&o.buf[head], header, sizeof header);
   return (jint)(o.len * sizeof(int32_t));
 }
