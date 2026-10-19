@@ -44,7 +44,7 @@ func TestPaintPutsMarksBack(t *testing.T) {
 	P, O := tmux.PromptLine, tmux.OutputLine
 	// A command over two lines, its output, a line left unrun, then the prompt waiting.
 	paint(&b, []string{"$ for x", "> done", "out", "more", "$ abandoned", "$ "}, []tmux.Mark{P, P, O, 0, P, P})
-	want := "\x1b]133;A\x07$ for x\r\n> done\r\n\x1b]133;C\x07out\r\nmore\r\n\x1b]133;A\x07$ abandoned\r\n$ "
+	want := "\x1b]133;A\x07$ for x\r\n\x1b]133;A\x07> done\r\n\x1b]133;C\x07out\r\nmore\r\n\x1b]133;A\x07$ abandoned\r\n\x1b]133;A\x07$ "
 	if b.String() != want {
 		t.Errorf("paint = %q\nwant    %q", b.String(), want)
 	}

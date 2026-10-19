@@ -46,9 +46,9 @@ func repaint(c *tmux.Capture) []byte {
 // break and restore it after.
 //
 // marks, if any, put back the shell's marks (OSC 133) where tmux says they
-// were, so the client tells commands apart in the history too: a prompt
-// where a run of prompt lines starts (tmux marks a command's continuation
-// lines as prompts too), and output where it starts.
+// were, so the client tells commands apart in the history too: where each
+// prompt line starts, and where output starts. tmux keeps no more: not
+// where typing starts, nor which prompt lines continue a command.
 func paint(b *bytes.Buffer, lines []string, marks []tmux.Mark) {
 	bg := ""
 	for i, line := range lines {
@@ -60,7 +60,7 @@ func paint(b *bytes.Buffer, lines []string, marks []tmux.Mark) {
 			}
 		}
 		if marks != nil {
-			if marks[i]&tmux.PromptLine != 0 && (i == 0 || marks[i-1]&tmux.PromptLine == 0) {
+			if marks[i]&tmux.PromptLine != 0 {
 				b.WriteString(promptStarts)
 			}
 			if marks[i]&tmux.OutputLine != 0 {
