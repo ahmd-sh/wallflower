@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
@@ -19,10 +20,11 @@ import sh.ahmd.wallflower.terminal.Terminal
 import sh.ahmd.wallflower.terminal.TerminalView
 
 /**
- * A pane's page: its terminal, and its read view over it while that's on
- * ([reading]), which pauses the terminal underneath, as the cards covering
- * it do. With no pane ([actions] null), an empty terminal that measures the
- * grid until there are panes. [current]: the page on screen, which gets the
+ * A pane's page: its terminal, and its read view over it while that's on,
+ * which pauses the terminal underneath, as the cards covering it do: its
+ * program's conversation ([reading]), or its shell's commands ([commands]).
+ * With no pane ([actions] null), an empty terminal that measures the grid
+ * until there are panes. [current]: the page on screen, which gets the
  * [prompt] the pane's screen offers, can compact (with its [line]), and
  * animates; its terminal view goes to [onView].
  */
@@ -31,6 +33,7 @@ internal fun PanePage(
     actions: PaneActions?,
     terminal: Terminal?,
     reading: Reading?,
+    commands: Boolean,
     current: Boolean,
     swipe: Swipe?,
     settleHeight: Int,
@@ -46,7 +49,7 @@ internal fun PanePage(
         update = {
             it.terminal = terminal
             it.settleHeight = settleHeight
-            it.paused = covered || reading != null
+            it.paused = covered || reading != null || commands
             it.onSwipe = swipe?.let { s -> s::drag }
             it.onSwipeEnd = swipe?.let { s -> s::end }
             it.onAppScroll = { up, wheel -> actions?.wheel(up, wheel) }
@@ -54,6 +57,8 @@ internal fun PanePage(
         },
     )
     val shown = rememberLast(reading) ?: Reading()
+    val shell = rememberLast(terminal.takeIf { commands && reading == null })
+    val titles = remember(actions?.pane?.id) { Titles() }
     if (actions == null) return@Box
     AnimatedVisibility(reading != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
         val compact = actions.compact
@@ -69,6 +74,9 @@ internal fun PanePage(
             onCompact = if (current && compact != null) ({ compact(line()) }) else null,
             live = current,
         )
+    }
+    AnimatedVisibility(commands && reading == null && terminal != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
+        shell?.let { CommandsView(it, actions.pane.cols, titles, swipe, onWheel = actions::wheel) }
     }
 }
 

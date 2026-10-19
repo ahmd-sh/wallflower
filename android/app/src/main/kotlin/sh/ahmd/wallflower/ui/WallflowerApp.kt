@@ -199,7 +199,10 @@ private fun TerminalScreen(
     }.orEmpty()
     val readViews = if (readViewOn) nearby.filter { it.reader.isNotEmpty() }.map { it.id }.toSet() else emptySet()
     LaunchedEffect(readViews) { session.read(readViews) }
-    val readView = pane != null && pane.id in readViews
+    // Panes no program reads whose shell marks its commands show those instead, read off their terminals.
+    val marked by session.marked.collectAsStateWithLifecycle()
+    val commandViews = if (readViewOn) nearby.filter { it.reader.isEmpty() && it.id in marked }.map { it.id }.toSet() else emptySet()
+    val readView = pane != null && (pane.id in readViews || pane.id in commandViews)
 
     fun actionsOf(p: Pane): PaneActions {
         val program = Programs.of(p.command)
@@ -285,6 +288,7 @@ private fun TerminalScreen(
             actions = remember(session, p, bar) { p?.let(::actionsOf) },
             terminal = p?.let { terminals[it.id] },
             reading = p?.takeIf { it.id in readViews }?.let { readings[it.id] ?: Reading() },
+            commands = p != null && p.id in commandViews,
             current = current,
             swipe = swipe,
             settleHeight = settleHeight,
@@ -347,7 +351,7 @@ private fun TerminalScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AnimatedVisibility(
-                                    pane.reader.isNotEmpty(),
+                                    pane.reader.isNotEmpty() || pane.id in marked,
                                     enter = fadeIn(Motion.effect()) + expandHorizontally(Motion.spatial()),
                                     exit = fadeOut(Motion.effect()) + shrinkHorizontally(Motion.spatial()),
                                 ) {

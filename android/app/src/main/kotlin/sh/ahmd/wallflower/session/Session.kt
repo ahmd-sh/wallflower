@@ -47,6 +47,9 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
     val chosen: StateFlow<Map<String, PaneChoice>> get() = workspace.chosen
     /** Terminals of open panes, replaced on every reset. */
     val terminals: StateFlow<Map<String, Terminal>> get() = panes.terminals
+
+    /** Panes whose shell marks its commands (OSC 133), so they can be shown apart. */
+    val marked: StateFlow<Set<String>> get() = panes.marked
     /** Read views of the panes [read] asked for, as they arrive. */
     val readings: StateFlow<Map<String, Reading>> get() = reads.readings
     val undelivered: SharedFlow<Undelivered> get() = input.undelivered
