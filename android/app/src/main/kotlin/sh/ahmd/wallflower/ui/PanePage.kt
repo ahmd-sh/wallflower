@@ -12,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.text.input.TextFieldState
+import sh.ahmd.wallflower.read.Prompts
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.activityOf
 import sh.ahmd.wallflower.screen.InputLine
@@ -34,6 +36,11 @@ internal fun PanePage(
     terminal: Terminal?,
     reading: Reading?,
     commands: Boolean,
+    /** What the phone learned of prompts, and what's written in the pane's composer, for its commands. */
+    prompts: Prompts,
+    draft: TextFieldState?,
+    /** The composer has the keyboard (on the [current] page). */
+    typing: Boolean,
     current: Boolean,
     swipe: Swipe?,
     settleHeight: Int,
@@ -58,7 +65,6 @@ internal fun PanePage(
     )
     val shown = rememberLast(reading) ?: Reading()
     val shell = rememberLast(terminal.takeIf { commands && reading == null })
-    val titles = remember(actions?.pane?.id) { Titles() }
     if (actions == null) return@Box
     AnimatedVisibility(reading != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
         val compact = actions.compact
@@ -76,7 +82,18 @@ internal fun PanePage(
         )
     }
     AnimatedVisibility(commands && reading == null && terminal != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
-        shell?.let { CommandsView(it, actions.pane.cols, titles, swipe, onWheel = actions::wheel) }
+        if (shell != null && draft != null) {
+            CommandsView(
+                shell,
+                actions.pane.cols,
+                prompts,
+                draft,
+                pending = if (current) line()?.text.orEmpty() else "",
+                focused = current && typing,
+                swipe = swipe,
+                onWheel = actions::wheel,
+            )
+        }
     }
 }
 

@@ -20,8 +20,8 @@ class ShellTest {
             ),
         )
         val items = shellItems(commands, fullscreen = false)
-        assertEquals(listOf("h.0", "gap", "t1", "o1.0", "t2", "o2.0"), keys(items))
-        assertEquals(ShellItem.Title("t1", 6, 7), items[2])
+        assertEquals(listOf("h.0", "gap", "t1", "o1.0", "t2", "o2.0", "draft"), keys(items))
+        assertEquals(ShellItem.Title("t1", 1, 6, 7), items[2])
         assertEquals(ShellItem.Rows("o1.0", 7, 9, first = true, last = true, live = false), items[3])
         assertEquals(ShellItem.Rows("o2.0", 10, 10, first = true, last = true, live = false), items[5]) // an empty card
     }
@@ -30,14 +30,16 @@ class ShellTest {
     fun aLineLeftUnrunIsLeftOut() {
         val commands = Commands(20, 0, listOf(Command(1, 0, -1, 1), Command(2, 1, 2, 4), Command(3, 4, -1, 5)))
         val items = shellItems(commands, fullscreen = false)
-        assertEquals(listOf("t2", "o2.0"), keys(items))
+        assertEquals(listOf("t2", "o2.0", "draft"), keys(items))
         assertEquals(false, (items[1] as ShellItem.Rows).live) // done: a prompt came after it
     }
 
     @Test
     fun repaintedPromptsThatMayHaveRunShow() {
         val commands = Commands(20, 0, listOf(Command(1, 0, -1, 1, typed = false), Command(2, 1, 2, 4, typed = false), Command(3, 4, -1, 5, typed = false)))
-        assertEquals(listOf("t1", "o1.0", "t2", "o2.0"), keys(shellItems(commands, fullscreen = false)))
+        assertEquals(listOf("t1", "o1.0", "t2", "o2.0", "draft"), keys(shellItems(commands, fullscreen = false)))
+        // One read to have had nothing typed at it is left out.
+        assertEquals(listOf("t2", "o2.0", "draft"), keys(shellItems(commands, fullscreen = false, nothing = setOf(1))))
     }
 
     @Test

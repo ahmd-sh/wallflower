@@ -3,6 +3,7 @@ package sh.ahmd.wallflower.ui
 import android.graphics.RenderNode
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -19,11 +20,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +35,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -42,11 +46,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,6 +68,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import sh.ahmd.wallflower.read.Prompts
 import sh.ahmd.wallflower.read.ShellItem
 import sh.ahmd.wallflower.read.shellItems
 import sh.ahmd.wallflower.terminal.Commands
@@ -73,18 +82,23 @@ import sh.ahmd.wallflower.terminal.Theme
  * A shell pane's read view, in place of its terminal: the commands its shell
  * marked (OSC 133), each what was typed and a card of its output drawn as
  * the terminal draws it, the newest at the bottom, which stays in view as
- * output comes. What came before the first is one card, kept above the
- * screen until scrolled to. A full-screen app's screen shows live, the
- * pane's height, its scroll going to the app ([onWheel]). Sideways drags go
- * to [swipe], to move between panes as on the terminal.
+ * output comes, and below them the prompt waiting, as the composer's [draft]
+ * (or, while that's empty, the shell's own line, [pending]) with a caret
+ * while the composer is [focused]. What came before the first command is one
+ * card, kept above the screen until scrolled to. A full-screen app's screen
+ * shows live, the pane's height, its scroll going to the app ([onWheel]).
+ * Sideways drags go to [swipe], to move between panes as on the terminal.
  */
 @Composable
 internal fun CommandsView(
     terminal: Terminal,
     /** The pane's width in cells, which its rows are laid out for. */
     cols: Int,
-    /** What was typed at the pane's prompts, kept across its terminals. */
-    titles: Titles,
+    /** What the phone learned of prompts, to read those a repaint left without saying what was typed. */
+    prompts: Prompts,
+    draft: TextFieldState,
+    pending: String,
+    focused: Boolean,
     swipe: Swipe?,
     onWheel: (up: Boolean, bytes: ByteArray?) -> Unit,
     modifier: Modifier = Modifier,
@@ -117,6 +131,29 @@ internal fun CommandsView(
         }
     }
 
+    // What was typed at each command's prompt, by id, once read; empty for nothing.
+    val typed = remember(terminal) { mutableStateMapOf<Int, String>() }
+    var mark by remember { mutableStateOf(prompts.mark) }
+    val unread = remember(terminal) { HashMap<Int, String?>() } // prompts that couldn't be read, by the mark they were tried with
+    val list = commands?.list.orEmpty()
+    LaunchedEffect(list.size, list.lastOrNull()?.id, list.lastOrNull()?.ran, mark) {
+        for ((i, c) in list.withIndex()) {
+            if (i == list.lastIndex && !c.ran) continue // the prompt waiting
+            if (c.id in typed || (c.id in unread && unread[c.id] == mark)) continue
+            val head = rows.read(c.start, if (c.ran) c.output else c.end) ?: continue // behind a full-screen app
+            val said = typed(head)
+            val lines = lines(head)
+            if (said.isNotBlank()) {
+                prompts.learn(lines, promptOf(head), said)
+                typed[c.id] = said
+                mark = prompts.mark
+            } else {
+                val read = prompts.typed(lines, head.cols)
+                if (read == null) unread[c.id] = mark else typed[c.id] = read
+            }
+        }
+    }
+
     var dragged by remember { mutableFloatStateOf(0f) }
     Box(
         modifier
@@ -133,16 +170,18 @@ internal fun CommandsView(
                 onDragStopped = { velocity -> swipe?.end(dragged, velocity) },
             ),
     ) {
-        val shown = commands
-        val items = remember(shown, fullscreen) { shown?.let { shellItems(it, fullscreen) }.orEmpty() }
-        val list = rememberLazyListState()
+        // Behind a full-screen app from the start (opened, or repainted, while it ran), its screen is all there is.
+        val shown = commands ?: if (fullscreen) Commands(0, 0, emptyList()) else null
+        val nothing by remember(typed) { derivedStateOf { typed.filterValues { it.isEmpty() }.keys } }
+        val items = remember(shown, fullscreen, nothing) { shown?.let { shellItems(it, fullscreen, nothing) }.orEmpty() }
+        val lazy = rememberLazyListState()
         val scope = rememberCoroutineScope()
-        val atBottom by remember { derivedStateOf { list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset < 8 } }
-        val away by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 600 } }
+        val atBottom by remember { derivedStateOf { lazy.firstVisibleItemIndex == 0 && lazy.firstVisibleItemScrollOffset < 8 } }
+        val away by remember { derivedStateOf { lazy.firstVisibleItemIndex > 0 || lazy.firstVisibleItemScrollOffset > 600 } }
         // At the bottom, what comes next glides into view; scrolled up to read, the list stays put.
         val follow = atBottom
-        LaunchedEffect(items.lastOrNull()?.key) { if (follow) list.animateScrollToItem(0) }
-        val gap = rememberGap(list)
+        LaunchedEffect(items.lastOrNull()?.key) { if (follow) lazy.animateScrollToItem(0) }
+        val gap = rememberGap(lazy)
 
         Crossfade(shown == null || items.isEmpty(), animationSpec = Motion.effect(), label = "commands") { empty ->
             if (empty) {
@@ -153,16 +192,17 @@ internal fun CommandsView(
             }
             LazyColumn(
                 Modifier.fillMaxSize(),
-                state = list,
+                state = lazy,
                 reverseLayout = true,
                 contentPadding = PaddingValues(start = SIDE, end = SIDE, top = 48.dp, bottom = 12.dp),
             ) {
                 items(items.asReversed(), key = { it.key }, contentType = { it::class }) { item ->
                     when (item) {
-                        is ShellItem.Title -> Title(item, rows, painter, cols, titles, back)
+                        is ShellItem.Title -> Title(item, typed[item.id], rows, painter, cols, back)
                         is ShellItem.Rows -> Card(item, rows, painter, cols, version = if (item.live) generation else back)
                         is ShellItem.Gap -> Spacer(Modifier.height(with(LocalDensity.current) { gap.toDp() }))
                         is ShellItem.Fullscreen -> Live(terminal, onWheel, Modifier.fillParentMaxHeight().padding(vertical = 6.dp))
+                        is ShellItem.Draft -> Draft(draft, pending, focused)
                     }
                 }
             }
@@ -180,7 +220,7 @@ internal fun CommandsView(
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))
                     .background(Palette.bg2)
-                    .clickable { scope.launch { list.animateScrollToItem(0) } }
+                    .clickable { scope.launch { lazy.animateScrollToItem(0) } }
                     .padding(horizontal = 14.dp, vertical = 8.dp),
             )
         }
@@ -188,37 +228,79 @@ internal fun CommandsView(
 }
 
 /**
- * What was typed at a command's prompt, as said. Where the shell's marks
- * didn't say (a repaint of history, which keeps only where prompts and
- * output start), what the phone saw typed on the same prompt rows before;
- * failing that, the prompt rows as they are.
+ * What was typed at a command's prompt, [said], as you'd say it; where that
+ * couldn't be read, the prompt rows as they are.
  */
 @Composable
-private fun Title(item: ShellItem.Title, rows: Packer, painter: RowPainter, cols: Int, titles: Titles, version: Int) {
-    val frame by produceState<FrameBuffer?>(null, item.from, item.to, version) { rows.read(item.from, item.to)?.let { value = it } }
-    val f = frame
-    val typed = remember(f) {
-        f?.let {
-            val rows = text(it)
-            typed(it).takeIf(String::isNotBlank)?.also { t -> titles.keep(rows, t) } ?: titles.recall(rows)
-        }.orEmpty()
-    }
+private fun Title(item: ShellItem.Title, said: String?, rows: Packer, painter: RowPainter, cols: Int, version: Int) {
     Box(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 6.dp), contentAlignment = Alignment.CenterEnd) {
-        when {
-            f == null -> Spacer(Modifier.height(with(LocalDensity.current) { painter.cellHeight.toDp() }))
-            typed.isNotBlank() -> Text(
-                typed,
-                style = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 13.sp, lineHeight = 19.sp),
+        if (!said.isNullOrBlank()) {
+            Bubble { Text(said, style = promptStyle()) }
+            return@Box
+        }
+        val frame by produceState<FrameBuffer?>(null, item.from, item.to, version) { rows.read(item.from, item.to)?.let { value = it } }
+        Rows(frame, item.to - item.from, painter, cols, Modifier.fillMaxWidth())
+    }
+}
+
+/**
+ * The prompt waiting: what's written in the composer, [draft], with its
+ * caret, blinking, while the composer is [focused]; while that's empty, the
+ * shell's own line, [pending], dimmed. Nothing while there's neither and
+ * the composer is elsewhere.
+ */
+@Composable
+private fun Draft(draft: TextFieldState, pending: String, focused: Boolean) {
+    val text = draft.text.toString()
+    val shown = text.ifEmpty { pending }
+    Box(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 6.dp), contentAlignment = Alignment.CenterEnd) {
+        if (shown.isEmpty() && !focused) return@Box
+        val caret = if (text.isEmpty()) 0 else draft.selection.max.coerceIn(0, text.length)
+        val on = remember { Animatable(1f) }
+        LaunchedEffect(focused, text, caret) {
+            on.snapTo(1f) // solid while typing, blinking once it stops
+            while (focused) {
+                delay(BLINK_MS)
+                on.snapTo(0f)
+                delay(BLINK_MS)
+                on.snapTo(1f)
+            }
+        }
+        var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+        val width = with(LocalDensity.current) { 2.dp.toPx() }
+        Bubble {
+            Text(
+                shown,
+                style = promptStyle().let { if (text.isEmpty()) it.copy(color = Palette.dim) else it },
+                onTextLayout = { layout = it },
                 modifier = Modifier
-                    .padding(start = 40.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Palette.bg2)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .widthIn(min = 2.dp)
+                    .drawWithContent {
+                        drawContent()
+                        val l = layout ?: return@drawWithContent
+                        if (!focused) return@drawWithContent
+                        val r = l.getCursorRect(caret)
+                        drawRect(Palette.orange, Offset(r.left, r.top), Size(width, r.height), alpha = on.value)
+                    },
             )
-            else -> Rows(f, item.to - item.from, painter, cols, Modifier.fillMaxWidth())
         }
     }
 }
+
+/** Something typed at a prompt, as Claude's read view shows what's said to it. */
+@Composable
+private fun Bubble(content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .padding(start = 40.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Palette.bg2)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) { content() }
+}
+
+@Composable
+private fun promptStyle() = TextStyle(color = Palette.fg, fontFamily = words, fontSize = wordSize(14.sp, 15.sp), lineHeight = wordSize(21.sp, 22.sp))
 
 /** A piece of a card of rows: the first rounds its top, the last its bottom. An empty card is a row tall. */
 @Composable
@@ -328,33 +410,26 @@ private fun typed(f: FrameBuffer): String {
     return out.toString().trim()
 }
 
-/** [f]'s rows as text, each without its trailing blanks. */
-private fun text(f: FrameBuffer): String {
-    val out = StringBuilder()
-    for (i in 0 until f.rowCount) {
-        if (i > 0) out.append('\n')
-        val row = StringBuilder()
-        for (x in 0 until f.cols) if (FrameBuffer.wide(f.flags(i, x)) < 2) {
-            if (f.codepoint(i, x) == 0) row.append(' ') else f.appendText(i, x, row)
-        }
-        out.append(row.trimEnd())
+/** [f]'s rows as text, as wide as it is. */
+private fun lines(f: FrameBuffer): List<String> = List(f.rowCount) { i ->
+    val row = StringBuilder()
+    for (x in 0 until f.cols) if (FrameBuffer.wide(f.flags(i, x)) < 2) {
+        if (f.codepoint(i, x) == 0) row.append(' ') else f.appendText(i, x, row)
     }
-    return out.toString()
+    row.toString()
 }
 
-/**
- * What was typed at a pane's prompts, by the prompt rows it was typed on, so
- * a repaint (a reconnect), whose history keeps only where prompts start, can
- * still say it. The newest few hundred.
- */
-internal class Titles {
-    private val byRows = object : LinkedHashMap<String, String>(64, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > 500
+/** The prompt before what was typed in [f]: the cells the shell marked as prompt, on the row typing starts. */
+private fun promptOf(f: FrameBuffer): String {
+    for (i in 0 until f.rowCount) {
+        val at = (0 until f.cols).firstOrNull { f.role(i, it) == FrameBuffer.ROLE_INPUT } ?: continue
+        val prompt = StringBuilder()
+        for (x in 0 until at) if (f.role(i, x) == FrameBuffer.ROLE_PROMPT && FrameBuffer.wide(f.flags(i, x)) < 2) {
+            if (f.codepoint(i, x) == 0) prompt.append(' ') else f.appendText(i, x, prompt)
+        }
+        return prompt.toString()
     }
-
-    fun keep(rows: String, typed: String) = synchronized(byRows) { byRows[rows] = typed }
-
-    fun recall(rows: String): String? = synchronized(byRows) { byRows[rows] }
+    return ""
 }
 
 /** A full-screen app's screen, live, as the pane's terminal view shows it. */
@@ -404,3 +479,4 @@ private class Packer(private val terminal: Terminal) {
 private val SIDE = 6.dp
 private val INSET = 6.dp
 private const val READ_EVERY_MS = 60L
+private const val BLINK_MS = 530L

@@ -278,6 +278,7 @@ private fun TerminalScreen(
         }
         BackHandler(enabled = overview.open) { overview.hide(into = pane?.id) }
         var view by remember { mutableStateOf<TerminalView?>(null) } // the shown pane's
+        var typing by remember { mutableStateOf(false) } // the composer has the keyboard
         var paneBounds by remember { mutableStateOf(Rect.Zero) }
         var position by remember { mutableFloatStateOf(0f) }
         var areaHeight by remember { mutableIntStateOf(0) }
@@ -289,6 +290,9 @@ private fun TerminalScreen(
             terminal = p?.let { terminals[it.id] },
             reading = p?.takeIf { it.id in readViews }?.let { readings[it.id] ?: Reading() },
             commands = p != null && p.id in commandViews,
+            prompts = model.prompts,
+            draft = p?.let { model.drafts.of(it.id) },
+            typing = typing,
             current = current,
             swipe = swipe,
             settleHeight = settleHeight,
@@ -404,6 +408,7 @@ private fun TerminalScreen(
                             onEnter = actions::enter,
                             onStop = actions::stop,
                             onEditKeys = onEditKeys,
+                            onFocus = { typing = it },
                         )
                     }
                 },

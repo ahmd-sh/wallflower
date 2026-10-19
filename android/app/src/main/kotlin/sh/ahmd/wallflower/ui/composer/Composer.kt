@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -81,6 +82,8 @@ internal fun Composer(
     onEnter: () -> Unit,
     onStop: () -> Unit,
     onEditKeys: () -> Unit,
+    /** Whether the box has the keyboard, as that changes. */
+    onFocus: (Boolean) -> Unit = {},
 ) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -138,7 +141,7 @@ internal fun Composer(
                         field()
                     }
                 },
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus).onFocusChanged { onFocus(it.hasFocus) },
             )
             if (empty && armed == null && ghost.isNotEmpty()) {
                 val type = {

@@ -12,8 +12,8 @@ import sh.ahmd.wallflower.terminal.Commands
 internal sealed interface ShellItem {
     val key: String
 
-    /** A command's prompt rows, [from] up to [to], as typed. */
-    data class Title(override val key: String, val from: Int, val to: Int) : ShellItem
+    /** Command [id]'s prompt rows, [from] up to [to], as typed. */
+    data class Title(override val key: String, val id: Int, val from: Int, val to: Int) : ShellItem
 
     /** Rows [from] up to [to] of a card, none for an empty one; [first] and [last] piece of it, [live] while its command runs. */
     data class Rows(override val key: String, val from: Int, val to: Int, val first: Boolean, val last: Boolean, val live: Boolean) : ShellItem
@@ -25,16 +25,22 @@ internal sealed interface ShellItem {
 
     /** The newest command's screen, while it's a full-screen app's. */
     data class Fullscreen(override val key: String) : ShellItem
+
+    /** The prompt waiting for a command, as what's being written for it. */
+    data object Draft : ShellItem {
+        override val key = "draft"
+    }
 }
 
 /**
  * What [commands] shows, oldest first; [fullscreen] while the newest runs a
- * full-screen app. A prompt nothing ran from isn't shown: the one waiting
- * has its line in the composer, and the rest were left (Ctrl-C, an empty
- * line). Repainted history doesn't say which prompts ran without output, so
- * those all show, with empty cards.
+ * full-screen app. A prompt nothing ran from isn't shown: the one waiting is
+ * what's being written for it ([ShellItem.Draft]), and the rest were left
+ * (Ctrl-C, an empty line). Repainted history doesn't say which prompts ran
+ * without output, so those show, with empty cards, but for those known to
+ * have had [nothing] typed at them.
  */
-internal fun shellItems(commands: Commands, fullscreen: Boolean, piece: Int = PIECE_ROWS): List<ShellItem> {
+internal fun shellItems(commands: Commands, fullscreen: Boolean, nothing: Set<Int> = emptySet(), piece: Int = PIECE_ROWS): List<ShellItem> {
     val items = mutableListOf<ShellItem>()
     fun card(key: String, from: Int, to: Int, live: Boolean) {
         if (to <= from) {
@@ -57,8 +63,12 @@ internal fun shellItems(commands: Commands, fullscreen: Boolean, piece: Int = PI
     val list = commands.list
     for ((i, c) in list.withIndex()) {
         val newest = i == list.lastIndex
-        if (!c.ran && (if (newest) !fullscreen else c.typed)) continue
-        items += ShellItem.Title("t${c.id}", c.start, if (c.ran) c.output else c.end)
+        if (newest && !c.ran && !fullscreen) {
+            items += ShellItem.Draft
+            continue
+        }
+        if (!newest && !c.ran && (c.typed || c.id in nothing)) continue
+        items += ShellItem.Title("t${c.id}", c.id, c.start, if (c.ran) c.output else c.end)
         when {
             newest && fullscreen -> items += ShellItem.Fullscreen("f${c.id}")
             c.ran -> card("o${c.id}", c.output, c.end, live = newest)
