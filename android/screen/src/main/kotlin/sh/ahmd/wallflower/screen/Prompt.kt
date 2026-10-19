@@ -16,8 +16,18 @@ package sh.ahmd.wallflower.screen
  * say it scrolls. Its foot ("Enter to continue · Esc to cancel") may be
  * past the bottom of a short pane. [quote] is what either quotes (│ rows),
  * a message it's about.
+ *
+ * A menu can have a box beside it previewing the option under the cursor,
+ * as Claude Code's questions do: the menu is what's left of it, and a
+ * number only moves the cursor ([previewed]).
  */
-data class Prompt(val lines: List<Line>, val options: List<Option>, val tabs: List<Tab>, val quote: String = "") {
+data class Prompt(
+    val lines: List<Line>,
+    val options: List<Option>,
+    val tabs: List<Tab>,
+    val quote: String = "",
+    val previewed: Boolean = false,
+) {
     data class Line(val text: String, val code: Boolean)
 
     data class Option(
@@ -40,11 +50,12 @@ data class Prompt(val lines: List<Line>, val options: List<Option>, val tabs: Li
 
     /**
      * Keys that pick [option]: its number, which these menus take at once
-     * (a multiple choice's toggles), or the cursor moved there and Enter.
+     * (a multiple choice's toggles) unless [previewed], or the cursor moved
+     * there and Enter.
      */
     fun keys(option: Option): List<String> {
         val n = option.number
-        if (n != null && n in 1..9) return listOf(n.toString())
+        if (n != null && n in 1..9) return if (previewed) listOf(n.toString(), "Enter") else listOf(n.toString())
         val from = options.indexOfFirst { it.current }.coerceAtLeast(0)
         if (option.scroll != 0) {
             // One past the last shown that way, which scrolls the list.
@@ -70,6 +81,7 @@ data class Prompt(val lines: List<Line>, val options: List<Option>, val tabs: Li
         private val ago = Regex("""^\(.*\bago\)$""")
         private val box = Regex("""^\[(.)]\s+(.*)$""")
         private val chips = Regex("""([☐☒✔☑✓])\s*([^☐☒✔☑✓←→]*)""")
+        private val bar = Regex("""^\s*│(.*)$""")
         private const val CONTEXT = 24 // rows above the options at most
         private const val EDGE = 2
 
@@ -112,6 +124,15 @@ data class Prompt(val lines: List<Line>, val options: List<Option>, val tabs: Li
                 return at?.takeIf { a -> (from until a).any { !text[it].isWhitespace() && !muted[cells[it]] } }
             }
 
+            /** The character drawn from cell [x], if one starts there. */
+            fun at(x: Int): Char? = text.indices.firstOrNull { cells[it] == x }?.let { text[it] }
+
+            /** The cell [i]'s character is drawn from. */
+            fun cell(i: Int) = cells[i]
+
+            /** What's left of cell [x]. */
+            fun before(x: Int) = Row(text.substring(0, text.indices.firstOrNull { cells[it] >= x } ?: text.length), cells, muted, lit)
+
             companion object {
                 fun of(s: Screen, y: Int): Row {
                     val text = StringBuilder(s.cols)
@@ -130,7 +151,9 @@ data class Prompt(val lines: List<Line>, val options: List<Option>, val tabs: Li
         }
 
         /** The menu whose first option is on row [top], if it is one. */
-        private fun block(rows: List<Row>, top: Int): Prompt? {
+        private fun block(screen: List<Row>, top: Int): Prompt? {
+            val beside = preview(screen, top)
+            val rows = if (beside == null) screen else screen.mapIndexed { y, row -> if (y >= top) row.before(beside) else row }
             val first = option.matchEntire(rows[top].text)!!
             val numberAt = first.groups[3]!!.range.first
             val options = mutableListOf<Option>()
@@ -167,6 +190,9 @@ data class Prompt(val lines: List<Line>, val options: List<Option>, val tabs: Li
                         if (after == null || option.matchEntire(rows[after].text)?.groupValues?.get(3) != next.toString()) break
                     }
                     row.isBlank() -> break
+                    // Beside a preview, options say nothing more: rows under one are its label, wrapped.
+                    beside != null && indent(row) > numberAt && options.isNotEmpty() ->
+                        options[options.lastIndex] = options.last().let { it.copy(label = it.label + " " + row.trim()) }
                     indent(row) >= labelAt && options.isNotEmpty() -> {
                         val text = row.trim()
                         val last = options.last()
@@ -188,7 +214,14 @@ data class Prompt(val lines: List<Line>, val options: List<Option>, val tabs: Li
             }
             if (options.count { it.number != null } < 2 || options.none { it.current }) return null
             val (lines, tabs, quote) = about(rows, top)
-            return Prompt(lines, options, tabs, quote)
+            return Prompt(lines, options, tabs, quote, previewed = beside != null)
+        }
+
+        /** The cell a box beside the menu on row [top] starts at, if there's one: ┌ on its first option's row, └ under it. */
+        private fun preview(rows: List<Row>, top: Int): Int? {
+            val at = rows[top].text.indexOf(" ┌").takeIf { it >= 0 } ?: return null
+            val x = rows[top].cell(at + 1)
+            return x.takeIf { (top + 1 until rows.size).any { rows[it].at(x) == '└' } }
         }
 
         /** A list picked from with the cursor, below the last rule. */
@@ -229,32 +262,34 @@ data class Prompt(val lines: List<Line>, val options: List<Option>, val tabs: Li
 
         /** What a menu whose options start on row [top] is about: up to the rule that opens its box. */
         private fun about(rows: List<Row>, top: Int): Triple<List<Line>, List<Tab>, String> {
-            val above = mutableListOf<Int>()
             var r = top - 1
-            while (r >= 0 && top - r <= CONTEXT && !rule(rows[r].text)) {
-                if (rows[r].text.isNotBlank()) above += r
-                r--
-            }
+            while (r >= 0 && top - r <= CONTEXT && !rule(rows[r].text)) r--
             val lines = mutableListOf<Line>()
             val tabs = mutableListOf<Tab>()
+            val quoted = mutableListOf<String>()
             var code = false
-            var previous: String? = null // the row before, if it was words
-            for (row in above.reversed()) {
+            var previous: String? = null // the row before, if it was words; a quoted (│) one without its bar
+            var previousQuoted = false
+            for (row in r + 1 until top) {
                 val text = rows[row].text
+                val quote = bar.matchEntire(text)?.groupValues?.get(1)
+                val words = quote ?: text
+                val chipped = text.trimStart().firstOrNull()?.let { it in "☐☒✔☑✓←" } == true && chips.containsMatchIn(text)
                 when {
+                    text.isBlank() -> {}
                     dashed(text) -> code = !code
-                    text.trim().first() in "☐☒✔☑✓←" && chips.containsMatchIn(text) -> tabs += tabs(rows[row])
+                    chipped -> tabs += tabs(rows[row])
                     code -> lines += Line(text.trimEnd(), true)
-                    // Words the app wrapped onto this row join the row before.
-                    previous != null && wraps(previous, text.trim()) ->
-                        lines[lines.lastIndex] = Line(lines.last().text + " " + text.trim(), false)
-                    else -> lines += Line(text.trim(), false)
+                    // Words the app wrapped onto this row join the row before, quoted or not as it was.
+                    previous != null && previousQuoted == (quote != null) && wraps(previous, words.trim()) ->
+                        lines[lines.lastIndex] = Line(lines.last().text + " " + words.trim(), false)
+                    else -> lines += Line(words.trim(), false)
                 }
-                previous = text.takeIf { !code && !dashed(it) }
+                if (quote != null) quoted += quote.trim()
+                previous = words.takeIf { text.isNotBlank() && !dashed(text) && !chipped && !code }
+                previousQuoted = quote != null
             }
-            val quote = above.reversed().map { rows[it].text.trim() }.filter { it.startsWith("│") }
-                .map { it.removePrefix("│").trim() }.filterNot { ago.matches(it) }.joinToString(" ")
-            return Triple(dedent(lines), tabs, quote)
+            return Triple(dedent(lines), tabs, quoted.filterNot { ago.matches(it) }.joinToString(" "))
         }
 
         private fun tabs(row: Row) = chips.findAll(row.text).map { m ->

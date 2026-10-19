@@ -283,6 +283,73 @@ class PromptTest {
     }
 
     @Test
+    fun aRealQuestionWithDescriptions() {
+        val menu = Prompt.read(captured("claude-question.ansi", 52))!!
+        assertEquals(listOf(Tab("☒ Fullscreen", false), Tab("☐ zsh hook", true), Tab("✔ Submit", false)), menu.tabs)
+        assertEquals(listOf(Line("Where should the zsh side (the OSC 133 marks plus the command record) live?", false)), menu.lines)
+        assertEquals(
+            listOf(
+                Option(
+                    1, "wallflower repo (Recommended)",
+                    "~/dev/wallflower/shell/wallflower.zsh holds the marks and the record. .zshrc keeps a single source line, and its OSC 133 lines move out. wallflower's needs stay in wallflower.",
+                    null, current = true, muted = false,
+                ),
+                Option(2, "Inline in .zshrc", "Add the record's few lines next to the OSC 133 lines already in your .zshrc.", null, current = false, muted = false),
+                Option(3, "Type something.", "", null, current = false, muted = true),
+                Option(4, "Chat about this", "", null, current = false, muted = false),
+            ),
+            menu.options,
+        )
+        assertEquals(listOf("2"), menu.keys(menu.options[1]))
+    }
+
+    @Test
+    fun aRealQuestionPreviewingItsOptionsBesideThem() {
+        val menu = Prompt.read(captured("claude-question-previews.ansi", 52))!!
+        assertEquals(listOf(Tab("☐ Fullscreen", true), Tab("☐ zsh hook", false), Tab("✔ Submit", false)), menu.tabs)
+        assertEquals(
+            listOf(Line("When a command goes fullscreen (nvim, htop, lazygit, git log's pager), what should a shell pane's read view do?", false)),
+            menu.lines,
+        )
+        assertEquals(
+            listOf(
+                Option(1, "Hand over to terminal (Recommended)", "", null, current = true, muted = false),
+                Option(2, "Live preview card", "", null, current = false, muted = false),
+                Option(3, "Plain card", "", null, current = false, muted = false),
+            ),
+            menu.options,
+        )
+        // A number only moves the cursor there.
+        assertEquals(listOf("3", "Enter"), menu.keys(menu.options[2]))
+    }
+
+    @Test
+    fun aRealQuestionPreviewInAShortPane() {
+        val menu = Prompt.read(captured("claude-question-previews-short.ansi", 52))!!
+        assertEquals(listOf(Line("lazygit, git log's pager), what should a shell pane's read view do?", false)), menu.lines)
+        assertEquals(listOf("Hand over to terminal (Recommended)", "Live preview card", "Plain card"), menu.options.map { it.label })
+        assertEquals(listOf("2", "Enter"), menu.keys(menu.options[1]))
+    }
+
+    @Test
+    fun aRealReviewOfAnswersQuotesTheQuestionItsOn() {
+        val menu = Prompt.read(captured("claude-question-review.ansi", 52))!!
+        assertEquals(
+            listOf(
+                "Review your answers",
+                "● When a command goes fullscreen (nvim, htop, lazygit, git log's pager), what should a shell pane's read view do?",
+                "→ Live preview card",
+                "● Where should the zsh side (the OSC 133 marks plus the command record) live?",
+                "→ Inline in .zshrc",
+                "Ready to submit your answers?",
+            ),
+            menu.lines.map { it.text },
+        )
+        assertEquals(listOf("Submit answers", "Cancel"), menu.options.map { it.label })
+        assertEquals(listOf("2"), menu.keys(menu.options[1]))
+    }
+
+    @Test
     fun aPromptsSuggestionsAreNotAList() {
         val s = screen(
             plain(rule),

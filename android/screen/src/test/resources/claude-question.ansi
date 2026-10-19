@@ -1,0 +1,40 @@
+[38;5;246m[48;5;237m❯ [38;5;231mRead .wf-q.json and call the AskUserQuestion tool[39m
+  [38;5;231mwith exactly that JSON as its input, unchanged. [39m
+  [38;5;231mNothing else.[39m
+
+[49m  [38;5;246mRead [1m1[0m[38;5;246m file [39m
+[38;5;246m────────────────────────────────────────────────────
+[39m←  ☒ Fullscreen [38;5;16m[48;5;153m ☐ zsh hook [39m[49m ✔ Submit  →
+
+[1m[38;5;231mWhere should the zsh side (the OSC 133 marks plus [0m
+[1m[38;5;231mthe command record) live?[0m
+
+[38;5;153m❯[39m [38;5;246m1.[39m [38;5;153mwallflower repo (Recommended)[39m
+     [38;5;246m~/dev/wallflower/shell/wallflower.zsh holds the
+[39m     [38;5;246mmarks and the record. .zshrc keeps a single [39m
+     [38;5;246msource line, and its OSC 133 lines move out. [39m
+     [38;5;246mwallflower's needs stay in wallflower.[39m
+  [38;5;246m2.[39m Inline in .zshrc
+     [38;5;246mAdd the record's few lines next to the OSC 133
+[39m     [38;5;246mlines already in your .zshrc.[39m
+  [38;5;246m3. Type something.[39m
+[38;5;246m────────────────────────────────────────────────────
+[39m  4. Chat about this
+
+[38;5;246mEnter to select · Tab/Arrow keys to navigate · Esc [39m
+[38;5;246mto cancel[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
