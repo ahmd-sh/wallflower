@@ -231,8 +231,9 @@ func TestRepaint(t *testing.T) {
 	c.tmux("send-keys", "-t", "t", `printf '\033[?1049hFULLSCREEN'; sleep 30`, "Enter")
 	c.state("alt screen", func(s protocol.State) bool { return activePane(s).Alt })
 	c.send(protocol.Open{Pane: p})
+	// The app's own output can come after its state says so; the repaint starts by clearing.
 	f, _ = c.expect("alt repaint", func(f protocol.Frame, _ protocol.Message) bool {
-		return f.Type == protocol.FrameData && bytes.Contains(f.Data, []byte("\x1b[?1049h"))
+		return f.Type == protocol.FrameData && bytes.Contains(f.Data, []byte("\x1b[H\x1b[2J")) && bytes.Contains(f.Data, []byte("\x1b[?1049h"))
 	})
 	alt := bytes.Index(f.Data, []byte("\x1b[?1049h"))
 	if !bytes.Contains(f.Data[:alt], []byte("line-30")) || !bytes.Contains(f.Data[alt:], []byte("FULLSCREEN")) {
