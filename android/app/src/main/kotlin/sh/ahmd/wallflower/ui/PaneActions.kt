@@ -27,6 +27,9 @@ internal class PaneActions(
 
     fun stop() = keys(stopKeys)
 
+    /** Ends the program running in it, even one that won't take [stop]. */
+    fun quit() = session.quit(pane.id)
+
     /** Whether anything empties its input line. */
     val clears: Boolean get() = clearKeys.isNotEmpty()
 

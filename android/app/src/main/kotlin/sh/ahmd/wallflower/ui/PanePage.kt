@@ -39,8 +39,9 @@ internal fun PanePage(
     /** What the phone learned of prompts, and what's written in the pane's composer, for its commands. */
     prompts: Prompts,
     draft: TextFieldState?,
-    /** The composer has the keyboard (on the [current] page). */
+    /** The composer has the keyboard (on the [current] page), and the lines its text takes. */
     typing: Boolean,
+    composing: Int,
     current: Boolean,
     swipe: Swipe?,
     settleHeight: Int,
@@ -90,8 +91,10 @@ internal fun PanePage(
                 draft,
                 pending = if (current) line()?.text.orEmpty() else "",
                 focused = current && typing,
+                lines = composing,
                 swipe = swipe,
                 onWheel = actions::wheel,
+                onQuit = actions::quit,
             )
         }
     }

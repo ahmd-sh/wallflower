@@ -84,6 +84,8 @@ internal fun Composer(
     onEditKeys: () -> Unit,
     /** Whether the box has the keyboard, as that changes. */
     onFocus: (Boolean) -> Unit = {},
+    /** How many lines the box's text takes, as that changes. */
+    onLines: (Int) -> Unit = {},
 ) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -127,6 +129,7 @@ internal fun Composer(
                 lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 6),
                 textStyle = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp, lineHeight = 21.sp),
                 cursorBrush = SolidColor(Palette.orange),
+                onTextLayout = { layout -> layout()?.let { onLines(it.lineCount) } },
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
                     autoCorrectEnabled = true,

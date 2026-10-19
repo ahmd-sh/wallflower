@@ -37,6 +37,13 @@ class PromptsTest {
     }
 
     @Test
+    fun whatAPromptSaysBeforeItsMark() {
+        assertEquals("dotfiles/zsh", promptBefore("➜", listOf("dotfiles/zsh ➜ ls     main")))
+        assertEquals("dotfiles", withoutMark("dotfiles ➜ ", "➜"))
+        assertEquals("dotfiles ➜", withoutMark("dotfiles ➜", null))
+    }
+
+    @Test
     fun rowsWithoutTheMarkCantBeRead() {
         assertNull(typedAfter("➜", listOf("$ ls"), 20))
         assertNull(typedAfter("➜", listOf("a➜b"), 20)) // not a prompt's mark: no space after it
