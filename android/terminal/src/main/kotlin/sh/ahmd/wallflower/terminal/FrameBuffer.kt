@@ -18,8 +18,10 @@ import java.nio.IntBuffer
  * Colors are 0xRRGGBB, or [DEFAULT] for the terminal default. Only rows that
  * changed are present unless [full].
  */
-class FrameBuffer {
-    var buffer: ByteBuffer = allocate(64 * 1024)
+class FrameBuffer private constructor(bytes: Int) {
+    constructor() : this(64 * 1024)
+
+    var buffer: ByteBuffer = allocate(bytes)
         private set
     private var ints: IntBuffer = buffer.asIntBuffer()
     private var rowOffsets = IntArray(64)
@@ -73,6 +75,16 @@ class FrameBuffer {
     }
 
     private fun cell(row: Int, x: Int) = rowOffsets[row] + ROW_HEADER + x * CELL
+
+    /** What's loaded, in a buffer of its own just big enough: kept while this one is packed again. */
+    fun copy(): FrameBuffer {
+        val bytes = ints.limit() * 4
+        val c = FrameBuffer(maxOf(bytes, 4))
+        val from = buffer.duplicate().apply { position(0); limit(bytes) }
+        c.buffer.put(from).rewind()
+        c.load(bytes)
+        return c
+    }
 
     internal fun load(bytes: Int) {
         ints = buffer.asIntBuffer()

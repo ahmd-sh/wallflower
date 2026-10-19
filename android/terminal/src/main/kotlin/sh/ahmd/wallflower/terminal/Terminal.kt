@@ -44,7 +44,7 @@ class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
         if (handle == 0L) return@read null
         val a = nativeCommands(handle) ?: return@read null
         if (a[0] == 1) return@read null
-        Commands(a[1], a[2], List(a[3]) { i -> Command(a[4 + i * 4], a[5 + i * 4], a[6 + i * 4], a[7 + i * 4]) })
+        Commands(a[1], a[2], List(a[3]) { i -> (4 + i * 5).let { o -> Command(a[o], a[o + 1], a[o + 2], a[o + 3], a[o + 4] == 1) } })
     }
 
     /**
@@ -162,8 +162,10 @@ class Commands(val rows: Int, val history: Int, val list: List<Command>)
 /**
  * A command a shell marked: its prompt from row [start], its output from row
  * [output] (-1 until it runs), up to [end], after its last row with anything
- * on it. Its [id] stays as its rows move.
+ * on it. Its [id] stays as its rows move. [typed]: the shell marked where
+ * typing starts, as it does live; a repaint keeps only where prompts and
+ * output start, so whether one ran without output isn't known.
  */
-data class Command(val id: Int, val start: Int, val output: Int, val end: Int) {
+data class Command(val id: Int, val start: Int, val output: Int, val end: Int, val typed: Boolean = true) {
     val ran get() = output >= 0
 }

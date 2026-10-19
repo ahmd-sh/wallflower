@@ -46,6 +46,7 @@ typedef struct {
   int32_t id;
   GhosttyTrackedGridRef start;
   GhosttyTrackedGridRef output;  // NULL until it runs
+  bool input;                    // the shell marked where typing starts: seen live, not repainted
   uint32_t trimmed_for;          // the length of the rows it had when trimmed was worked out; 0 for not yet
   uint32_t trimmed;              // rows up to its last with text
 } Command;
@@ -199,6 +200,9 @@ static void on_semantic_prompt(GhosttyTerminal term, void* userdata, const Ghost
       add_command(t, pin_cursor_row(t));
       break;
     }
+    case GHOSTTY_SEMANTIC_PROMPT_INPUT_START:
+      if (last && !last->output) last->input = true;
+      break;
     case GHOSTTY_SEMANTIC_PROMPT_OUTPUT_START:
       if (!last || last->output) return;
       last->output = pin_cursor_row(t);
@@ -644,8 +648,9 @@ static uint32_t trim(Term* t, uint32_t from, uint32_t to, uint32_t least, uint32
 // nothing else follows), rows (the screen's, scrollback included), history
 // (rows above the first command, up to the last with text), count, then per
 // command its id, the row its prompt starts on, the row its output starts on
-// (-1 if it hasn't run), and the row after its last with text. Commands
-// whose prompt left the scrollback are forgotten.
+// (-1 if it hasn't run), the row after its last with text, and 1 if the
+// shell marked where typing starts. Commands whose prompt left the
+// scrollback are forgotten.
 JNIEXPORT jintArray JNICALL
 Java_sh_ahmd_wallflower_terminal_Terminal_nativeCommands(JNIEnv* env, jclass cls, jlong h) {
   (void)cls;
@@ -678,7 +683,7 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeCommands(JNIEnv* env, jclass cls
   ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ROWS, &rows);
   uint32_t active_top = total > rows ? (uint32_t)(total - rows) : 0;
   size_t n = t->command_count;
-  jint* out = malloc((4 + n * 4) * sizeof(jint));
+  jint* out = malloc((4 + n * 5) * sizeof(jint));
   if (!out) {
     pthread_mutex_unlock(&t->lock);
     return NULL;
@@ -702,13 +707,15 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeCommands(JNIEnv* env, jclass cls
       c->trimmed = trim(t, start, end, 1, active_top, cols);
       c->trimmed_for = i + 1 == n ? 0 : length;
     }
-    out[4 + i * 4] = c->id;
-    out[5 + i * 4] = (jint)start;
-    out[6 + i * 4] = ran ? (jint)output : -1;
-    out[7 + i * 4] = (jint)(start + c->trimmed);
+    jint* o = out + 4 + i * 5;
+    o[0] = c->id;
+    o[1] = (jint)start;
+    o[2] = ran ? (jint)output : -1;
+    o[3] = (jint)(start + c->trimmed);
+    o[4] = c->input ? 1 : 0;
   }
   pthread_mutex_unlock(&t->lock);
-  jsize len = (jsize)(4 + n * 4);
+  jsize len = (jsize)(4 + n * 5);
   jintArray result = (*env)->NewIntArray(env, len);
   if (result) (*env)->SetIntArrayRegion(env, result, 0, len, out);
   free(out);
