@@ -32,8 +32,19 @@ func TestBackground(t *testing.T) {
 
 func TestPaintDropsBackgroundAtBreaks(t *testing.T) {
 	var b bytes.Buffer
-	paint(&b, []string{"\x1b[42mgreen", "more", "\x1b[49mdone"})
+	paint(&b, []string{"\x1b[42mgreen", "more", "\x1b[49mdone"}, nil)
 	want := "\x1b[42mgreen\x1b[49m\r\n\x1b[42mmore\x1b[49m\r\n\x1b[42m\x1b[49mdone"
+	if b.String() != want {
+		t.Errorf("paint = %q\nwant    %q", b.String(), want)
+	}
+}
+
+func TestPaintPutsMarksBack(t *testing.T) {
+	var b bytes.Buffer
+	P, O := tmux.PromptLine, tmux.OutputLine
+	// A command over two lines, its output, a line left unrun, then the prompt waiting.
+	paint(&b, []string{"$ for x", "> done", "out", "more", "$ abandoned", "$ "}, []tmux.Mark{P, P, O, 0, P, P})
+	want := "\x1b]133;A\x07$ for x\r\n> done\r\n\x1b]133;C\x07out\r\nmore\r\n\x1b]133;A\x07$ abandoned\r\n$ "
 	if b.String() != want {
 		t.Errorf("paint = %q\nwant    %q", b.String(), want)
 	}
@@ -44,6 +55,13 @@ func TestRepaintEscapes(t *testing.T) {
 	want := "\x1b[0m\x1b[H\x1b[2Jh2\r\nh3\r\na\r\nb\r\n\x1b[0m\x1b[2;5H"
 	if got := string(repaint(c)); got != want {
 		t.Errorf("repaint = %q\nwant      %q", got, want)
+	}
+
+	// Marks run on from the history into the screen.
+	c.HistoryMarks, c.NormalMarks = []tmux.Mark{tmux.PromptLine, tmux.OutputLine}, []tmux.Mark{0, tmux.PromptLine, 0}
+	want = "\x1b[0m\x1b[H\x1b[2J\x1b]133;A\x07h2\r\n\x1b]133;C\x07h3\r\na\r\n\x1b]133;A\x07b\r\n\x1b[0m\x1b[2;5H"
+	if got := string(repaint(c)); got != want {
+		t.Errorf("marked repaint = %q\nwant             %q", got, want)
 	}
 
 	// A full-screen app with the mouse on, as Claude Code runs: any-event tracking, SGR encoding.

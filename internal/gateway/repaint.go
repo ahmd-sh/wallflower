@@ -10,16 +10,21 @@ import (
 )
 
 // repaint returns bytes that rebuild a captured pane in a fresh terminal of
-// the same size: history scrolls into the scrollback, then the screen, then
-// the alternate screen on top if one is active, then cursor state, and the
-// mouse modes, which a full-screen app needs to get its scroll wheel.
+// the same size: history scrolls into the scrollback, then the screen, with
+// the shell's marks tmux kept on them, then the alternate screen on top if
+// one is active, then cursor state, and the mouse modes, which a full-screen
+// app needs to get its scroll wheel.
 func repaint(c *tmux.Capture) []byte {
 	var b bytes.Buffer
 	b.WriteString("\x1b[0m\x1b[H\x1b[2J")
-	paint(&b, append(c.History[:len(c.History):len(c.History)], c.Normal...))
+	var marks []tmux.Mark
+	if c.HistoryMarks != nil {
+		marks = append(c.HistoryMarks[:len(c.HistoryMarks):len(c.HistoryMarks)], c.NormalMarks...)
+	}
+	paint(&b, append(c.History[:len(c.History):len(c.History)], c.Normal...), marks)
 	if c.Alt {
 		b.WriteString("\x1b[0m\x1b[?1049h\x1b[H\x1b[2J")
-		paint(&b, c.AltScreen)
+		paint(&b, c.AltScreen, nil)
 	}
 	b.WriteString("\x1b[0m")
 	if c.Top != 0 || c.Bottom != c.Rows-1 {
@@ -39,7 +44,12 @@ func repaint(c *tmux.Capture) []byte {
 // across lines, so a background colour can be active at a line break, and a
 // newline that scrolls would fill the new line with it; drop it for the
 // break and restore it after.
-func paint(b *bytes.Buffer, lines []string) {
+//
+// marks, if any, put back the shell's marks (OSC 133) where tmux says they
+// were, so the client tells commands apart in the history too: a prompt
+// where a run of prompt lines starts (tmux marks a command's continuation
+// lines as prompts too), and output where it starts.
+func paint(b *bytes.Buffer, lines []string, marks []tmux.Mark) {
 	bg := ""
 	for i, line := range lines {
 		if i > 0 {
@@ -49,10 +59,23 @@ func paint(b *bytes.Buffer, lines []string) {
 				b.WriteString("\r\n")
 			}
 		}
+		if marks != nil {
+			if marks[i]&tmux.PromptLine != 0 && (i == 0 || marks[i-1]&tmux.PromptLine == 0) {
+				b.WriteString(promptStarts)
+			}
+			if marks[i]&tmux.OutputLine != 0 {
+				b.WriteString(outputStarts)
+			}
+		}
 		b.WriteString(line)
 		bg = background(bg, line)
 	}
 }
+
+const (
+	promptStarts = "\x1b]133;A\x07"
+	outputStarts = "\x1b]133;C\x07"
+)
 
 var sgr = regexp.MustCompile(`\x1b\[([0-9;:]*)m`)
 
