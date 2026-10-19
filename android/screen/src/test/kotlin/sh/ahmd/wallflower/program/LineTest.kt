@@ -54,6 +54,12 @@ class LineTest {
     }
 
     @Test
+    fun aBlankTheShellLeftUndrawnStaysInTheLine() {
+        val s = screen(listOf("dotfiles ➜ ls -G     main "), listOf("p".repeat(11) + "ii.ii" + "     pppp"), cursor = 16 to 0)
+        assertEquals(InputLine("ls -G", 1), Shell().line(s))
+    }
+
+    @Test
     fun anEmptyPromptIsAnEmptyLine() {
         val s = screen(listOf("dotfiles ➜           main "), listOf("p".repeat(11) + "i".repeat(10) + "pppp"), cursor = 11 to 0)
         assertEquals(InputLine("", 1), Shell().line(s))

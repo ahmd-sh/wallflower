@@ -29,8 +29,11 @@ class Shell(override val clearKeys: List<String> = emptyList()) : Program {
         val out = StringBuilder()
         for (y in prompt..last) {
             val row = StringBuilder()
-            for (x in 0 until s.cols) {
-                if (s.role(x, y) != INPUT || s.spacer(x, y)) continue
+            // From its first input cell to its last: a shell can leave a blank it typed undrawn, unmarked.
+            val first = (0 until s.cols).firstOrNull { s.role(it, y) == INPUT } ?: -1
+            val end = (s.cols - 1 downTo 0).firstOrNull { s.role(it, y) == INPUT } ?: -2
+            for (x in maxOf(first, 0)..end) {
+                if (s.spacer(x, y)) continue
                 val afterCursor = y > s.cursorY || (y == s.cursorY && x >= s.cursorX)
                 if (afterCursor && (s.grey(x, y) || s.faint(x, y))) continue
                 row.append(s.text(x, y).ifEmpty { " " })
