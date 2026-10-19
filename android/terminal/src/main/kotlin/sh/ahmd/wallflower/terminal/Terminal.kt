@@ -48,6 +48,16 @@ class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
     }
 
     /**
+     * What was typed at command [id] as it started to run, read then, while
+     * its prompt was on the screen as typed (a full-screen app it starts
+     * covers it next); null if it wasn't seen run.
+     */
+    fun typed(id: Int): Typed? = lock.read {
+        if (handle == 0L) return@read null
+        nativeTyped(handle, id)?.let { Typed(it[0], it[1]) }
+    }
+
+    /**
      * Packs [count] rows of the primary screen from row [from] (0 is the top
      * of the scrollback) into [into], as a full frame without a cursor; fewer
      * if the screen ends first. False if there are none to read, as while a
@@ -149,6 +159,7 @@ class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
         @JvmStatic external fun nativeFrame(handle: Long, buffer: ByteBuffer, force: Boolean): Int
         @JvmStatic external fun nativeCommands(handle: Long): IntArray?
         @JvmStatic external fun nativeRows(handle: Long, buffer: ByteBuffer, from: Int, count: Int): Int
+        @JvmStatic external fun nativeTyped(handle: Long, id: Int): Array<String>?
     }
 }
 
@@ -169,3 +180,6 @@ class Commands(val rows: Int, val history: Int, val list: List<Command>)
 data class Command(val id: Int, val start: Int, val output: Int, val end: Int, val typed: Boolean = true) {
     val ran get() = output >= 0
 }
+
+/** What was typed at a command's prompt, [text], after the prompt's own cells, [prompt], as the shell marked them. */
+data class Typed(val prompt: String, val text: String)

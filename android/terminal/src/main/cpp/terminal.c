@@ -47,6 +47,10 @@ typedef struct {
   GhosttyTrackedGridRef start;
   GhosttyTrackedGridRef output;  // NULL until it runs
   bool input;                    // the shell marked where typing starts: seen live, not repainted
+  jchar* typed;                  // what was typed at it, read as it started to run (UTF-16); NULL if not
+  size_t typed_len;
+  jchar* prompt;                 // the prompt it was typed after
+  size_t prompt_len;
   uint32_t trimmed_for;          // the length of the rows it had when trimmed was worked out; 0 for not yet
   uint32_t trimmed;              // rows up to its last with text
 } Command;
@@ -152,6 +156,122 @@ static GhosttyTrackedGridRef pin_cursor_row(Term* t) {
 static void forget(Command* c) {
   ghostty_tracked_grid_ref_free(c->start);
   ghostty_tracked_grid_ref_free(c->output);
+  free(c->typed);
+  free(c->prompt);
+}
+
+typedef struct {
+  jchar* buf;
+  size_t len, cap;
+} Text;
+
+static void text_put(Text* s, jchar c) {
+  if (s->len == s->cap) {
+    size_t cap = s->cap ? s->cap * 2 : 64;
+    jchar* grown = realloc(s->buf, cap * sizeof(jchar));
+    if (!grown) return;
+    s->buf = grown;
+    s->cap = cap;
+  }
+  s->buf[s->len++] = c;
+}
+
+static void text_codepoint(Text* s, uint32_t cp) {
+  if (cp >= 0x10000) {
+    cp -= 0x10000;
+    text_put(s, (jchar)(0xD800 + (cp >> 10)));
+    text_put(s, (jchar)(0xDC00 + (cp & 0x3FF)));
+  } else {
+    text_put(s, (jchar)cp);
+  }
+}
+
+// The cell at screen row y (counting from the top of the scrollback), column x.
+static bool cell_at(Term* t, uint32_t y, uint16_t x, uint32_t active_top, GhosttyGridRef* ref, GhosttyCell* cell) {
+  GhosttyPoint pt = y >= active_top
+    ? (GhosttyPoint){.tag = GHOSTTY_POINT_TAG_ACTIVE, .value = {.coordinate = {.x = x, .y = y - active_top}}}
+    : (GhosttyPoint){.tag = GHOSTTY_POINT_TAG_SCREEN, .value = {.coordinate = {.x = x, .y = y}}};
+  *ref = (GhosttyGridRef)GHOSTTY_INIT_SIZED(GhosttyGridRef);
+  return ghostty_terminal_grid_ref(t->term, pt, ref) == GHOSTTY_SUCCESS && ghostty_grid_ref_cell(ref, cell) == GHOSTTY_SUCCESS;
+}
+
+static GhosttyCellSemanticContent role_at(Term* t, uint32_t y, uint16_t x, uint32_t active_top) {
+  GhosttyGridRef ref;
+  GhosttyCell cell;
+  GhosttyCellSemanticContent role = GHOSTTY_CELL_SEMANTIC_OUTPUT;
+  if (cell_at(t, y, x, active_top, &ref, &cell)) ghostty_cell_get(cell, GHOSTTY_CELL_DATA_SEMANTIC_CONTENT, &role);
+  return role;
+}
+
+// Appends the cell's text, a space for an empty one, nothing for the second half of a wide one. Says whether it had text.
+static bool append_cell(Term* t, Text* s, uint32_t y, uint16_t x, uint32_t active_top) {
+  GhosttyGridRef ref;
+  GhosttyCell cell;
+  if (!cell_at(t, y, x, active_top, &ref, &cell)) return false;
+  GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+  ghostty_cell_get(cell, GHOSTTY_CELL_DATA_WIDE, &wide);
+  if (wide == GHOSTTY_CELL_WIDE_SPACER_TAIL || wide == GHOSTTY_CELL_WIDE_SPACER_HEAD) return true;
+  uint32_t cps[MAX_GRAPHEME];
+  size_t n = 0;
+  if (ghostty_grid_ref_graphemes(&ref, cps, MAX_GRAPHEME, &n) != GHOSTTY_SUCCESS || n == 0) {
+    text_put(s, ' ');
+    return false;
+  }
+  for (size_t i = 0; i < n; i++) text_codepoint(s, cps[i]);
+  return true;
+}
+
+// Reads what was typed at a command as it starts to run, while its prompt
+// rows are on the screen as typed (a full-screen app it starts covers them
+// next): the input cells, first to last on each row (a shell can leave a
+// blank it typed undrawn, unmarked), a row that runs to the edge going on
+// into the next; and the run of prompt cells the row typing starts on
+// starts with.
+static void read_typed(Term* t, Command* c) {
+  uint32_t start = 0, end = 0;
+  if (!row_of(c->start, &start) || !row_of(c->output, &end) || end <= start || end - start > 32) return;
+  size_t total = 0;
+  uint16_t cols = 0, rows = 0;
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_TOTAL_ROWS, &total);
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_COLS, &cols);
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ROWS, &rows);
+  uint32_t active_top = total > rows ? (uint32_t)(total - rows) : 0;
+  Text typed = {0}, prompt = {0};
+  bool joins = false, prompted = false;
+  for (uint32_t y = start; y < end; y++) {
+    int first = -1, last = -1;
+    for (uint16_t x = 0; x < cols; x++) {
+      if (role_at(t, y, x, active_top) != GHOSTTY_CELL_SEMANTIC_INPUT) continue;
+      if (first < 0) first = x;
+      last = x;
+    }
+    if (first < 0) {
+      joins = false;
+      continue;
+    }
+    if (!prompted) {
+      for (uint16_t x = 0; x < cols && role_at(t, y, x, active_top) == GHOSTTY_CELL_SEMANTIC_PROMPT; x++) append_cell(t, &prompt, y, x, active_top);
+      prompted = true;
+    }
+    if (typed.len > 0 && !joins) text_put(&typed, '\n');
+    size_t from = typed.len;
+    bool edge = false;
+    for (int x = first; x <= last; x++) {
+      bool text = append_cell(t, &typed, y, (uint16_t)x, active_top);
+      if (x == cols - 1) edge = text;
+    }
+    if (!edge) while (typed.len > from && typed.buf[typed.len - 1] == ' ') typed.len--;
+    joins = edge;
+  }
+  if (typed.len == 0) {
+    free(typed.buf);
+    free(prompt.buf);
+    return;
+  }
+  c->typed = typed.buf;
+  c->typed_len = typed.len;
+  c->prompt = prompt.buf;
+  c->prompt_len = prompt.len;
 }
 
 static void add_command(Term* t, GhosttyTrackedGridRef start) {
@@ -206,6 +326,7 @@ static void on_semantic_prompt(GhosttyTerminal term, void* userdata, const Ghost
     case GHOSTTY_SEMANTIC_PROMPT_OUTPUT_START:
       if (!last || last->output) return;
       last->output = pin_cursor_row(t);
+      if (last->input) read_typed(t, last);
       t->commands_changed = true;
       break;
     default:
@@ -784,4 +905,32 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeRows(JNIEnv* env, jclass cls, jl
   int32_t header[HEADER_INTS] = {2, cols, packed, 0, 0, 0, 0, rgb(colors.background), rgb(colors.foreground), NO_COLOR, packed, 0, 0, 0};
   memcpy(&o.buf[head], header, sizeof header);
   return (jint)(o.len * sizeof(int32_t));
+}
+
+// What was typed at command id as it started to run, and the prompt it was
+// typed after: two strings, or null if it wasn't read (not seen run, or
+// gone).
+JNIEXPORT jobjectArray JNICALL
+Java_sh_ahmd_wallflower_terminal_Terminal_nativeTyped(JNIEnv* env, jclass cls, jlong h, jint id) {
+  (void)cls;
+  Term* t = (Term*)(intptr_t)h;
+  pthread_mutex_lock(&t->lock);
+  jobjectArray result = NULL;
+  for (size_t i = 0; i < t->command_count; i++) {
+    Command* c = &t->commands[i];
+    if (c->id != id) continue;
+    if (!c->typed) break;
+    static const jchar none = 0;
+    jclass string = (*env)->FindClass(env, "java/lang/String");
+    result = string ? (*env)->NewObjectArray(env, 2, string, NULL) : NULL;
+    if (result) {
+      jstring prompt = (*env)->NewString(env, c->prompt ? c->prompt : &none, (jsize)c->prompt_len);
+      jstring typed = (*env)->NewString(env, c->typed, (jsize)c->typed_len);
+      (*env)->SetObjectArrayElement(env, result, 0, prompt);
+      (*env)->SetObjectArrayElement(env, result, 1, typed);
+    }
+    break;
+  }
+  pthread_mutex_unlock(&t->lock);
+  return result;
 }

@@ -234,7 +234,7 @@ class TerminalView(context: Context) : View(context) {
         settled()
         val scale = fitScale()
         canvas.save()
-        canvas.translate(0f, -shift())
+        canvas.translate(left(), -shift())
         canvas.scale(scale, scale)
         for (node in nodes) {
             if (!node.hasDisplayList()) continue
@@ -302,6 +302,9 @@ class TerminalView(context: Context) : View(context) {
     /** How wide the grid is drawn, in pixels; 0 before the first frame. */
     fun gridWidth(): Float = cols * cellWidth * fitScale()
 
+    /** Where the grid's drawn from: centered, when shrunk to fit the height. */
+    private fun left(): Float = if (fitsHeight) ((width - gridWidth()) / 2).coerceAtLeast(0f) else 0f
+
     /** Rows down to the cursor's, which tmux keeps in view; all of them if it's hidden. */
     private fun cursorRows() = if (cursorVisible) cursorY + 1 else rows
 
@@ -362,10 +365,20 @@ class TerminalView(context: Context) : View(context) {
         }
     }
 
+    /** Shrinks a grid taller than the view to fit too, whole, rather than show the rows by the cursor. */
+    var fitsHeight = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     /** A pane wider than the view (the desktop owns the size) shrinks to fit. */
     private fun fitScale(): Float {
         val w = cols * cellWidth
-        return if (w > width && width > 0) width / w else 1f
+        var scale = if (w > width && width > 0) width / w else 1f
+        val h = rows * cellHeight
+        if (fitsHeight && h * scale > height && height > 0) scale = height / h
+        return scale
     }
 
 
@@ -439,7 +452,7 @@ class TerminalView(context: Context) : View(context) {
         if (rows == 0) return
         scrollRemainder -= rows
         val up = rows < 0 // towards history
-        val col = (touchX / (cellWidth * fitScale())).toInt().coerceIn(0, maxOf(cols - 1, 0))
+        val col = ((touchX - left()) / (cellWidth * fitScale())).toInt().coerceIn(0, maxOf(cols - 1, 0))
         val row = ((touchY + shift()) / cell).toInt().coerceIn(0, maxOf(this.rows - 1, 0))
         when (val wheel = t.wheel(up, col, row)) {
             Terminal.Wheel.Local -> {
