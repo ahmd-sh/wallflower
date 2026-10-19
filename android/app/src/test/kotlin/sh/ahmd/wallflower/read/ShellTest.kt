@@ -20,9 +20,10 @@ class ShellTest {
             ),
         )
         val items = shellItems(commands, fullscreen = false)
-        assertEquals(listOf("h.0", "gap", "t1", "o1.0", "t2"), keys(items))
+        assertEquals(listOf("h.0", "gap", "t1", "o1.0", "t2", "o2.0"), keys(items))
         assertEquals(ShellItem.Title("t1", 6, 7), items[2])
         assertEquals(ShellItem.Rows("o1.0", 7, 9, first = true, last = true, live = false), items[3])
+        assertEquals(ShellItem.Rows("o2.0", 10, 10, first = true, last = true, live = false), items[5]) // an empty card
     }
 
     @Test
@@ -36,13 +37,19 @@ class ShellTest {
     @Test
     fun repaintedPromptsThatMayHaveRunShow() {
         val commands = Commands(20, 0, listOf(Command(1, 0, -1, 1, typed = false), Command(2, 1, 2, 4, typed = false), Command(3, 4, -1, 5, typed = false)))
-        assertEquals(listOf("t1", "t2", "o2.0"), keys(shellItems(commands, fullscreen = false)))
+        assertEquals(listOf("t1", "o1.0", "t2", "o2.0"), keys(shellItems(commands, fullscreen = false)))
     }
 
     @Test
     fun theNewestCommandRunningIsLive() {
         val commands = Commands(20, 0, listOf(Command(1, 0, 1, 3)))
         assertEquals(true, (shellItems(commands, fullscreen = false)[1] as ShellItem.Rows).live)
+    }
+
+    @Test
+    fun aCommandStartedButSilentHasAnEmptyLiveCard() {
+        val commands = Commands(20, 0, listOf(Command(1, 0, 1, 1)))
+        assertEquals(ShellItem.Rows("o1.0", 1, 1, first = true, last = true, live = true), shellItems(commands, fullscreen = false)[1])
     }
 
     @Test

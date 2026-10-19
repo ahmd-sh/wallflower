@@ -220,7 +220,7 @@ private fun Title(item: ShellItem.Title, rows: Packer, painter: RowPainter, cols
     }
 }
 
-/** A piece of a card of rows: the first rounds its top, the last its bottom. */
+/** A piece of a card of rows: the first rounds its top, the last its bottom. An empty card is a row tall. */
 @Composable
 private fun Card(item: ShellItem.Rows, rows: Packer, painter: RowPainter, cols: Int, version: Int) {
     val frame by produceState<FrameBuffer?>(null, item.from, item.to, version) { rows.read(item.from, item.to)?.let { value = it } }
@@ -238,7 +238,7 @@ private fun Card(item: ShellItem.Rows, rows: Packer, painter: RowPainter, cols: 
             .background(Palette.bg1)
             .padding(start = INSET, end = INSET, top = if (item.first) INSET else 0.dp, bottom = if (item.last) INSET else 0.dp),
     ) {
-        Rows(frame, item.to - item.from, painter, cols, Modifier.fillMaxWidth())
+        Rows(frame, maxOf(1, item.to - item.from), painter, cols, Modifier.fillMaxWidth())
     }
 }
 
