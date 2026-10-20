@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"sync/atomic"
 )
 
 type Options struct {
@@ -42,8 +41,6 @@ type Client struct {
 	events *queue
 	done   chan struct{}
 	err    error
-
-	lineMarks atomic.Int32 // whether capture-pane says which lines the shell marked; see Capture
 }
 
 // Reply is the output of one command line.
