@@ -18,10 +18,8 @@ import java.nio.IntBuffer
  * Colors are 0xRRGGBB, or [DEFAULT] for the terminal default. Only rows that
  * changed are present unless [full].
  */
-class FrameBuffer private constructor(bytes: Int) {
-    constructor() : this(64 * 1024)
-
-    var buffer: ByteBuffer = allocate(bytes)
+class FrameBuffer {
+    var buffer: ByteBuffer = allocate(64 * 1024)
         private set
     private var ints: IntBuffer = buffer.asIntBuffer()
     private var rowOffsets = IntArray(64)
@@ -54,9 +52,6 @@ class FrameBuffer private constructor(bytes: Int) {
     fun underlineColor(row: Int, x: Int) = ints[cell(row, x) + 3]
     fun flags(row: Int, x: Int) = ints[cell(row, x) + 4]
 
-    /** What the shell marked the cell as (OSC 133): [ROLE_OUTPUT], [ROLE_INPUT] or [ROLE_PROMPT]. */
-    fun role(row: Int, x: Int) = (flags(row, x) shr 15) and 3
-
     /** Appends the cell's text (its whole grapheme) to [out]. */
     fun appendText(row: Int, x: Int, out: StringBuilder) {
         val cp = codepoint(row, x)
@@ -75,16 +70,6 @@ class FrameBuffer private constructor(bytes: Int) {
     }
 
     private fun cell(row: Int, x: Int) = rowOffsets[row] + ROW_HEADER + x * CELL
-
-    /** What's loaded, in a buffer of its own just big enough: kept while this one is packed again. */
-    fun copy(): FrameBuffer {
-        val bytes = ints.limit() * 4
-        val c = FrameBuffer(maxOf(bytes, 4))
-        val from = buffer.duplicate().apply { position(0); limit(bytes) }
-        c.buffer.put(from).rewind()
-        c.load(bytes)
-        return c
-    }
 
     internal fun load(bytes: Int) {
         ints = buffer.asIntBuffer()
@@ -118,10 +103,6 @@ class FrameBuffer private constructor(bytes: Int) {
         const val FLAG_OVERLINE = 1 shl 7
         const val FLAG_SELECTED = 1 shl 13
         const val FLAG_GRAPHEME = 1 shl 14
-
-        const val ROLE_OUTPUT = 0
-        const val ROLE_INPUT = 1
-        const val ROLE_PROMPT = 2
 
         /** Underline style: 0 none, 1 single, 2 double, 3 curly, 4 dotted, 5 dashed. */
         fun underline(flags: Int) = (flags shr 8) and 7
