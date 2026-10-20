@@ -61,7 +61,6 @@ client never has to resync on its own.
 | `new` | | open a window, current in the client's session only |
 | `rename` | `window`, `name` | |
 | `kill` | `window` or `pane` | close it; closing a window's last pane closes the window |
-| `quit` | `pane` | end the program the pane's shell runs in its foreground: SIGTERM to its process group, which ends even one that won't take Ctrl-C (an error if the shell has the terminal) |
 | `read` | `pane`, `on` | start or stop the pane's read view arriving as `entries`; for panes whose `reader` is set |
 | `picture` | `pane`, `id` | a picture entry's bytes, which come in a picture frame |
 | `upload` | `id`, `name`, `size` | send a file: `size` bytes follow in upload frames with this `id`, see below |

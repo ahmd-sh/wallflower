@@ -37,7 +37,6 @@ class FramesTest {
             Rename("@2", "logs ✓"),
             Kill(pane = "%2"),
             Kill(window = "@2"),
-            Quit("%2"),
             Read("%2", on = true),
             Read("%2", on = false),
             Picture("%2", "u2.0"),

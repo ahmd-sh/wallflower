@@ -17,27 +17,6 @@ func TTY(pid int) string {
 	return ""
 }
 
-// ForegroundJob is the process group a terminal's shell runs in its
-// foreground, or 0 if the shell has the terminal itself (or it can't tell).
-func ForegroundJob(tty string) int {
-	out, err := exec.Command("ps", "-o", "pid=,tpgid=,stat=", "-t", strings.TrimPrefix(tty, "/dev/")).Output()
-	if err != nil {
-		return 0
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		f := strings.Fields(line)
-		if len(f) < 3 || f[0] != f[1] {
-			continue
-		}
-		if strings.Contains(f[2], "s") { // a session leader: the shell
-			return 0
-		}
-		pid, _ := strconv.Atoi(f[0])
-		return pid
-	}
-	return 0
-}
-
 // Foreground is the name a terminal's foreground process was run as
 // (argv[0]), or "" if it can't tell.
 func Foreground(tty string) string {

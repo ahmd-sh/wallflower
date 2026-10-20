@@ -96,11 +96,6 @@ data class Rename(val window: String, val name: String) : ClientMessage
 @SerialName("kill")
 data class Kill(val window: String? = null, val pane: String? = null) : ClientMessage
 
-/** Ends the program [pane]'s shell runs in its foreground (SIGTERM), even one that won't take Ctrl-C; not the shell itself. */
-@Serializable
-@SerialName("quit")
-data class Quit(val pane: String) : ClientMessage
-
 /** Starts or stops [pane]'s read view arriving as [Entries]; panes with one name their reader ([Pane.reader]). */
 @Serializable
 @SerialName("read")

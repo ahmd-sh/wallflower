@@ -653,19 +653,3 @@ func TestUploadsAreTheirOwnRuns(t *testing.T) {
 		t.Errorf("plain text: %+v", got)
 	}
 }
-
-func TestQuitEndsWhatTheShellRuns(t *testing.T) {
-	c := connect(t, 60, 10)
-	s := c.state("state", func(s protocol.State) bool { return activePane(s).Cols == 60 })
-	p := activePane(s).ID
-	shell := activePane(s).Command
-
-	c.tmux("send-keys", "-t", "t", "trap '' INT; sleep 300", "Enter") // won't take Ctrl-C
-	c.state("sleep runs", func(s protocol.State) bool { return activePane(s).Command == "sleep" })
-	c.send(protocol.Quit{Pane: p})
-	c.state("sleep ended", func(s protocol.State) bool { return activePane(s).Command == shell })
-
-	// The shell itself isn't ended.
-	c.send(protocol.Quit{Pane: p})
-	c.expect("an error", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Error); return ok })
-}
