@@ -14,7 +14,6 @@ import sh.ahmd.wallflower.protocol.ClientHello
 import sh.ahmd.wallflower.protocol.Entries
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Pong
-import sh.ahmd.wallflower.protocol.Quit
 import sh.ahmd.wallflower.protocol.Reset
 import sh.ahmd.wallflower.protocol.Resize
 import sh.ahmd.wallflower.protocol.ServerHello
@@ -48,9 +47,6 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
     val chosen: StateFlow<Map<String, PaneChoice>> get() = workspace.chosen
     /** Terminals of open panes, replaced on every reset. */
     val terminals: StateFlow<Map<String, Terminal>> get() = panes.terminals
-
-    /** Panes whose shell marks its commands (OSC 133), so they can be shown apart. */
-    val marked: StateFlow<Set<String>> get() = panes.marked
     /** Read views of the panes [read] asked for, as they arrive. */
     val readings: StateFlow<Map<String, Reading>> get() = reads.readings
     val undelivered: SharedFlow<Undelivered> get() = input.undelivered
@@ -157,9 +153,6 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
     fun rewound(pane: String, said: (String) -> Boolean) = reads.rewound(pane, said)
 
     fun keys(pane: String, keys: List<String>, bindings: Boolean = false) = input.keys(pane, keys, bindings)
-
-    /** Ends what [pane]'s shell runs, even what won't take Ctrl-C. */
-    fun quit(pane: String) = link.send(Quit(pane))
 
     fun bytes(pane: String, bytes: ByteArray) = input.bytes(pane, bytes)
 

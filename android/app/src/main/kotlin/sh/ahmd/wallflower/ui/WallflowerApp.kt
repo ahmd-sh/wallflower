@@ -199,10 +199,7 @@ private fun TerminalScreen(
     }.orEmpty()
     val readViews = if (readViewOn) nearby.filter { it.reader.isNotEmpty() }.map { it.id }.toSet() else emptySet()
     LaunchedEffect(readViews) { session.read(readViews) }
-    // Panes no program reads whose shell marks its commands show those instead, read off their terminals.
-    val marked by session.marked.collectAsStateWithLifecycle()
-    val commandViews = if (readViewOn) nearby.filter { it.reader.isEmpty() && it.id in marked }.map { it.id }.toSet() else emptySet()
-    val readView = pane != null && (pane.id in readViews || pane.id in commandViews)
+    val readView = pane != null && pane.id in readViews
 
     fun actionsOf(p: Pane): PaneActions {
         val program = Programs.of(p.command)
@@ -278,8 +275,6 @@ private fun TerminalScreen(
         }
         BackHandler(enabled = overview.open) { overview.hide(into = pane?.id) }
         var view by remember { mutableStateOf<TerminalView?>(null) } // the shown pane's
-        var typing by remember { mutableStateOf(false) } // the composer has the keyboard
-        var composing by remember { mutableIntStateOf(1) } // lines the composer's text takes
         var paneBounds by remember { mutableStateOf(Rect.Zero) }
         var position by remember { mutableFloatStateOf(0f) }
         var areaHeight by remember { mutableIntStateOf(0) }
@@ -290,11 +285,6 @@ private fun TerminalScreen(
             actions = remember(session, p, bar) { p?.let(::actionsOf) },
             terminal = p?.let { terminals[it.id] },
             reading = p?.takeIf { it.id in readViews }?.let { readings[it.id] ?: Reading() },
-            commands = p != null && p.id in commandViews,
-            prompts = model.prompts,
-            draft = p?.let { model.drafts.of(it.id) },
-            typing = typing,
-            composing = composing,
             current = current,
             swipe = swipe,
             settleHeight = settleHeight,
@@ -357,7 +347,7 @@ private fun TerminalScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AnimatedVisibility(
-                                    pane.reader.isNotEmpty() || pane.id in marked,
+                                    pane.reader.isNotEmpty(),
                                     enter = fadeIn(Motion.effect()) + expandHorizontally(Motion.spatial()),
                                     exit = fadeOut(Motion.effect()) + shrinkHorizontally(Motion.spatial()),
                                 ) {
@@ -410,8 +400,6 @@ private fun TerminalScreen(
                             onEnter = actions::enter,
                             onStop = actions::stop,
                             onEditKeys = onEditKeys,
-                            onFocus = { typing = it },
-                            onLines = { composing = it },
                         )
                     }
                 },
