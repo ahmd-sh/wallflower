@@ -551,6 +551,9 @@ class TerminalView(context: Context) : View(context) {
      */
     var onAppScroll: ((up: Boolean, wheel: ByteArray?) -> Unit)? = null
 
+    /** A tap, not a scroll or a swipe. */
+    var onTap: (() -> Unit)? = null
+
     /** A sideways drag, for moving between panes: how far it has gone, as it goes. */
     var onSwipe: ((dx: Float) -> Unit)? = null
 
@@ -565,6 +568,11 @@ class TerminalView(context: Context) : View(context) {
         override fun onDown(e: MotionEvent): Boolean {
             scroller.forceFinished(true)
             return true
+        }
+
+        override fun onSingleTapUp(e: MotionEvent): Boolean {
+            onTap?.invoke()
+            return onTap != null
         }
 
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
