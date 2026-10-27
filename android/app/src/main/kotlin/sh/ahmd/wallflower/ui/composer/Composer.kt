@@ -186,7 +186,7 @@ internal fun Composer(
             KeyRow(keys, sticky.armed, sticky::press, onEditKeys, Modifier.weight(1f))
             SendButton(
                 action = when {
-                    typing != null -> Action.Enter
+                    typing != null -> Action.Run
                     !empty -> Action.Send
                     pending.isNotEmpty() -> Action.Enter
                     else -> Action.Stop

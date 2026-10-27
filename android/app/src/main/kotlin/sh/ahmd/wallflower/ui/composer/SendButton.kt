@@ -28,8 +28,8 @@ import sh.ahmd.wallflower.ui.Motion
 import sh.ahmd.wallflower.ui.Palette
 import sh.ahmd.wallflower.ui.haptics
 
-/** What the send button does: send the box, enter the app's own line, or stop the app. */
-internal enum class Action { Send, Enter, Stop }
+/** What the send button does: send the box, run what's typed straight into the pane, enter the app's own line, or stop the app. */
+internal enum class Action { Send, Run, Enter, Stop }
 
 /** Its color follows whether there's anything to send; the mark turns into the next one. */
 @Composable
@@ -72,7 +72,7 @@ internal fun SendButton(action: Action, connected: Boolean, onSend: (enter: Bool
                     haptics.confirm()
                     when (action) {
                         Action.Send -> onSend(true)
-                        Action.Enter -> onEnter()
+                        Action.Run, Action.Enter -> onEnter()
                         Action.Stop -> onStop()
                     }
                 },
@@ -97,7 +97,7 @@ private fun Mark(action: Action, ink: () -> Color) {
         fun line(x0: Float, y0: Float, x1: Float, y1: Float) =
             drawLine(color, Offset(c.x + x0 * h, c.y + y0 * h), Offset(c.x + x1 * h, c.y + y1 * h), w, StrokeCap.Round)
         when (action) {
-            Action.Send -> {
+            Action.Send, Action.Run -> {
                 line(0f, 1f, 0f, -1f)
                 line(-0.8f, -0.2f, 0f, -1f)
                 line(0.8f, -0.2f, 0f, -1f)
