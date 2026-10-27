@@ -31,10 +31,9 @@ skipped, so the protocol can grow by adding them. Ids are opaque strings
 
 ## Session
 
-1. Client sends `hello`. The gateway gives the client its own tmux session,
-   grouped with the one it asked for (default: the one tmux would pick): same
-   windows, its own current window, destroyed when the client disconnects.
-   Switching windows on the client never moves another client's view.
+1. Client sends `hello`. The gateway attaches to the tmux session it asked
+   for (default: the one tmux would pick), as any other client of it does:
+   a window switched to on the client is switched to on the others too.
 2. Gateway sends `hello`, then `state`.
 3. Client sends `open` for the panes it wants to show. For each, the gateway
    sends `reset` and one data frame that repaints the pane, then streams its
@@ -83,7 +82,7 @@ them at once takes it all as a paste, Enter and all.
 | t | fields | |
 |---|--------|---|
 | `hello` | `v`, `tmux`, `uploads`? | tmux version; the directory uploads are saved in |
-| `state` | `session`, `name`, `windows` | everything in the session, see below; `name` is the group the client asked for |
+| `state` | `session`, `name`, `windows` | everything in the session, see below |
 | `reset` | `pane`, `cols`, `rows` | recreate the pane's terminal at this size; the next data frame repaints it |
 | `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `context`? | a pane's read view, see below |
 | `error` | `message` | a message failed |

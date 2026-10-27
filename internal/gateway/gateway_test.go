@@ -350,11 +350,11 @@ func TestPaneAndWindowActions(t *testing.T) {
 	c.send(protocol.Kill{Pane: activePane(s).ID})
 	c.state("back to one pane", func(s protocol.State) bool { return len(activeWindow(s).Panes) == 1 })
 
-	// A new window is current for the phone, not the desktop.
+	// A new window is current, for the desktop too: they're one session.
 	c.send(protocol.New{})
 	s = c.state("two windows", func(s protocol.State) bool { return len(s.Windows) == 2 && activeWindow(s).Index == 1 })
-	if w := c.tmux("display", "-p", "-t", "t:", "#{window_index}"); w != "0" {
-		t.Errorf("desktop moved to window %s", w)
+	if w := c.tmux("display", "-p", "-t", "t:", "#{window_index}"); w != "1" {
+		t.Errorf("desktop on window %s, want the new one", w)
 	}
 	added := activeWindow(s).ID
 	c.send(protocol.Rename{Window: added, Name: "logs $HOME ✓"})
@@ -401,9 +401,8 @@ func TestStateFollowsTmux(t *testing.T) {
 	c := connect(t, 60, 20)
 	c.state("initial", func(s protocol.State) bool { return len(s.Windows) == 1 })
 
-	// A window opened on the desktop shows up, but doesn't take over the
-	// phone's current window.
-	c.tmux("new-window", "-t", "t:", "-n", "second")
+	// A window opened on the desktop shows up.
+	c.tmux("new-window", "-d", "-t", "t:", "-n", "second")
 	c.tmux("new-pane", "-t", "t:second", "-x", "20", "-y", "6")
 	s := c.state("floating pane", func(s protocol.State) bool {
 		return len(s.Windows) == 2 && len(s.Windows[1].Panes) == 2
@@ -412,7 +411,7 @@ func TestStateFollowsTmux(t *testing.T) {
 		t.Errorf("window = %+v", w)
 	}
 	if s.Name != "t" {
-		t.Errorf("state names the client's own session %q, want the group t", s.Name)
+		t.Errorf("state names session %q, want t", s.Name)
 	}
 }
 
@@ -505,16 +504,22 @@ func TestVersionedProgram(t *testing.T) {
 	c.state("program named tool", func(s protocol.State) bool { return activePane(s).Command == "tool" })
 }
 
-func TestOwnCurrentWindow(t *testing.T) {
+func TestOneSession(t *testing.T) {
 	c := connect(t, 60, 20)
 	c.tmux("new-window", "-d", "-t", "t:", "-n", "second")
 	s := c.state("two windows", func(s protocol.State) bool { return len(s.Windows) == 2 })
+	if ls := c.tmux("list-sessions", "-F", "#{session_name}"); ls != "t" {
+		t.Errorf("sessions while connected = %q, want only t", ls)
+	}
 
+	// A window switched to on the phone is the desktop's too, and back.
 	c.send(protocol.Select{Window: s.Windows[1].ID})
 	c.state("phone on second", func(s protocol.State) bool { return activeWindow(s).Name == "second" })
-	if w := c.tmux("display", "-p", "-t", "t:", "#{window_index}"); w != "0" {
-		t.Errorf("desktop session moved to window %s", w)
+	if w := c.tmux("display", "-p", "-t", "t:", "#{window_name}"); w != "second" {
+		t.Errorf("desktop on window %s, want second", w)
 	}
+	c.tmux("select-window", "-t", "t:0")
+	c.state("desktop back on the first", func(s protocol.State) bool { return activeWindow(s).Name != "second" })
 
 	if err := c.disconnect(); err != nil {
 		t.Fatal(err)

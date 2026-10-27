@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/protocol"
@@ -91,15 +90,13 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 		return err
 	}
 
-	// The client gets its own session in the target's group: the same
-	// windows, but its own current window, so switching windows on the phone
-	// never moves the desktop. Not tied to ctx: cleanup still needs tmux
-	// after a signal.
+	// The client attaches to the session itself, as the desktop does, so
+	// both are one session: a window switched to on one is switched to on
+	// the other. Not tied to ctx: cleanup still needs tmux after a signal.
 	g.tmux, err = tmux.Start(context.Background(), tmux.Options{
-		Socket:     opts.Socket,
-		Session:    g.target,
-		NewSession: fmt.Sprintf("%s-wallflower-%d", g.target, os.Getpid()),
-		Flags:      []string{"new-layouts", "no-detach-on-destroy"},
+		Socket:  opts.Socket,
+		Session: g.target,
+		Flags:   []string{"new-layouts", "no-detach-on-destroy"},
 	})
 	if err != nil {
 		g.send(protocol.Bye{Reason: err.Error()})

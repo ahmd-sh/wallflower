@@ -29,7 +29,6 @@ func (g *gateway) sendState() {
 		g.found[id] = r.found
 	}
 	st := stateOf(s, g.program, readers)
-	st.Name = g.target // the client's own session is an implementation detail
 	if b, _ := protocol.AppendJSON(nil, st); !bytes.Equal(b, g.lastState) {
 		g.out.push(b)
 		g.lastState = b
