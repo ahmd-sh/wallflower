@@ -24,7 +24,8 @@ import sh.ahmd.wallflower.terminal.TerminalView
  * it do. With no pane ([actions] null), an empty terminal that measures the
  * grid until there are panes. [current]: the page on screen, which gets the
  * [prompt] the pane's screen offers, can compact (with its [line]), and
- * animates; its terminal view goes to [onView].
+ * animates; its terminal view goes to [onView]. A tap on the terminal
+ * goes to [onTap].
  */
 @Composable
 internal fun PanePage(
@@ -39,6 +40,7 @@ internal fun PanePage(
     line: () -> InputLine?,
     onGridSize: (cols: Int, rows: Int, ahead: Boolean) -> Unit,
     onView: (TerminalView) -> Unit,
+    onTap: (() -> Unit)?,
 ) = Box(Modifier.fillMaxSize()) {
     AndroidView(
         modifier = Modifier.fillMaxSize().padding(horizontal = PAGE_PADDING).clipToBounds(),
@@ -50,6 +52,7 @@ internal fun PanePage(
             it.onSwipe = swipe?.let { s -> s::drag }
             it.onSwipeEnd = swipe?.let { s -> s::end }
             it.onAppScroll = { up, wheel -> actions?.wheel(up, wheel) }
+            it.onTap = onTap
             if (current) onView(it)
         },
     )

@@ -14,7 +14,8 @@ import sh.ahmd.wallflower.BarKey
 /**
  * The key bar's sticky keys (pfx, ctrl): one pressed is [armed], waiting
  * for the next key, from the bar or the keyboard, to go with it. While one
- * is armed, [intercept] takes the next character typed into the box.
+ * is armed, [intercept] takes the next character typed into the box, or
+ * [type] the next key typed straight into the pane.
  */
 @Stable
 internal class StickyKeys(private val onKey: (BarKey) -> Unit) {
@@ -47,6 +48,18 @@ internal class StickyKeys(private val onKey: (BarKey) -> Unit) {
     }
 
     val intercept: InputTransformation? get() = if (armed != null) interceptor else null
+
+    /** What's typed straight into the pane: with one armed, its first key goes with it; text otherwise goes to [onText]. */
+    fun type(typed: Typed, onText: (String) -> Unit) {
+        when (typed) {
+            is Typed.Key -> press(BarKey(typed.name, listOf(typed.name)))
+            is Typed.Text -> {
+                if (armed == null) return onText(typed.text)
+                press(BarKey.typed(typed.text[0]))
+                if (typed.text.length > 1) onText(typed.text.substring(1))
+            }
+        }
+    }
 }
 
 @Composable

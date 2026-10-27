@@ -25,6 +25,15 @@ internal class PaneActions(
 
     fun enter() = keys(listOf("Enter"))
 
+    /** Text typed straight into the pane: as it is, but pasted if it has lines (from the clipboard), so they don't run one by one. */
+    fun type(text: String) {
+        if ('\n' in text && text.length > 1) {
+            session.submit(pane.id, text, enter = false)
+        } else {
+            session.bytes(pane.id, text.replace('\n', '\r').encodeToByteArray())
+        }
+    }
+
     fun stop() = keys(stopKeys)
 
     /** Whether anything empties its input line. */

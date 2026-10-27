@@ -33,7 +33,7 @@ data class BarKey(
 
     companion object {
         /** A character typed on the keyboard, as a key. */
-        fun typed(c: Char) = BarKey(c.toString(), listOf(if (c == ' ') "Space" else c.toString()))
+        fun typed(c: Char) = BarKey(c.toString(), listOf(when (c) { ' ' -> "Space"; '\n' -> "Enter"; else -> c.toString() }))
     }
 }
 

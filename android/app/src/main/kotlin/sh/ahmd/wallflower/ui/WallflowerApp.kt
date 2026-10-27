@@ -55,6 +55,7 @@ import sh.ahmd.wallflower.session.shownPane
 import sh.ahmd.wallflower.terminal.TerminalView
 import sh.ahmd.wallflower.ui.composer.Attachments
 import sh.ahmd.wallflower.ui.composer.Composer
+import sh.ahmd.wallflower.ui.composer.Typing
 
 private sealed interface Screen {
     data object Terminal : Screen
@@ -161,7 +162,9 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
 /**
  * The session's terminals: tabs, the shown window's panes to swipe between
  * (each its terminal, or its read view), the composer, and the cards of
- * every pane. What's shown is the phone's own; tmux follows.
+ * every pane. What's shown is the phone's own; tmux follows. A terminal is
+ * typed into straight from the keyboard, which a tap on it brings up; a
+ * read view is written for in the composer's box.
  */
 @Composable
 private fun TerminalScreen(
@@ -275,6 +278,7 @@ private fun TerminalScreen(
         }
         BackHandler(enabled = overview.open) { overview.hide(into = pane?.id) }
         var view by remember { mutableStateOf<TerminalView?>(null) } // the shown pane's
+        val typing = remember { Typing() }
         var paneBounds by remember { mutableStateOf(Rect.Zero) }
         var position by remember { mutableFloatStateOf(0f) }
         var areaHeight by remember { mutableIntStateOf(0) }
@@ -293,6 +297,7 @@ private fun TerminalScreen(
             line = { screen.line },
             onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
             onView = { view = it },
+            onTap = if (current && p != null && p.id !in readViews) typing::start else null,
         )
 
         // The panes take what the composer leaves; the cards cover both. While the
@@ -389,7 +394,16 @@ private fun TerminalScreen(
                                     screen.line = null // gone at once; the next read says what's there now
                                 }
                             },
-                            onKey = { actions.keys(it.keys, it.bindings) },
+                            onKey = {
+                                if (!readView) view?.scrollToBottom()
+                                actions.keys(it.keys, it.bindings)
+                            },
+                            typing = if (readView) null else typing,
+                            onType = { text ->
+                                view?.scrollToBottom()
+                                if (screen.line != null) view?.predict(text) // at a prompt, which echoes
+                                actions.type(text)
+                            },
                             onSend = { text, enter ->
                                 // The box replaces whatever the app's line holds.
                                 val known = screen.line
@@ -397,7 +411,10 @@ private fun TerminalScreen(
                                     if (sent && '\n' !in text && known?.text.isNullOrEmpty()) view?.predict(text)
                                 }
                             },
-                            onEnter = actions::enter,
+                            onEnter = {
+                                if (!readView) view?.scrollToBottom()
+                                actions.enter()
+                            },
                             onStop = actions::stop,
                             onEditKeys = onEditKeys,
                         )

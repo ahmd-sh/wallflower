@@ -65,6 +65,10 @@ import sh.ahmd.wallflower.ui.Palette
  * + sends photos or files to the Mac ([attachments]); each shows above the
  * box on its way, then its path goes in at the cursor, shown as its name.
  * What the draft holds shows above it too, each with × to take it out.
+ *
+ * With [typing], the keyboard types straight into the pane instead, as a
+ * terminal's does ([onType], other keys to [onKey] by name): no box, no +,
+ * just the key bar and the button, which presses Enter.
  */
 @OptIn(ExperimentalLayoutApi::class) // whether the keyboard is up
 @Composable
@@ -77,6 +81,8 @@ internal fun Composer(
     attachments: Attachments,
     onClear: (() -> Unit)?,
     onKey: (BarKey) -> Unit,
+    typing: Typing?,
+    onType: (String) -> Unit,
     onSend: (text: String, enter: Boolean) -> Boolean,
     onEnter: () -> Unit,
     onStop: () -> Unit,
@@ -105,6 +111,19 @@ internal fun Composer(
     val named = remember(paths) { paths?.let(::UploadNames) }
     val whole = remember(paths) { paths?.let(::WholeUploads) }
     val empty by remember(state) { derivedStateOf { state.text.isEmpty() } } // not every keystroke
+    // From a pane written for to one typed into, or back, the keyboard stays up for the next.
+    var wasTyping by remember { mutableStateOf(typing != null) }
+    LaunchedEffect(typing) {
+        if ((typing != null) == wasTyping) return@LaunchedEffect
+        wasTyping = typing != null
+        if (!imeVisible) return@LaunchedEffect
+        if (typing != null) {
+            typing.start()
+        } else {
+            focus.requestFocus()
+            keyboard?.show()
+        }
+    }
     Column(
         Modifier
             .fillMaxWidth()
@@ -112,56 +131,60 @@ internal fun Composer(
             .clip(RoundedCornerShape(26.dp))
             .background(Palette.bg1)
             .animateContentSize(Motion.spatial())
-            .padding(top = 14.dp, bottom = 8.dp),
+            .then(if (typing == null) Modifier else Modifier.typing(typing) { sticky.type(it, onType) })
+            .padding(top = if (typing == null) 14.dp else 8.dp, bottom = 8.dp),
     ) {
-        AttachmentsRow(state, paths, attachments)
-        Box(Modifier.fillMaxWidth().animateContentSize(Motion.spatial()).padding(horizontal = 18.dp)) {
-            val armed = sticky.armed
-            BasicTextField(
-                state = state,
-                inputTransformation = sticky.intercept ?: whole,
-                outputTransformation = named,
-                lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 6),
-                textStyle = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp, lineHeight = 21.sp),
-                cursorBrush = SolidColor(Palette.orange),
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrectEnabled = true,
-                    imeAction = ImeAction.Default,
-                ),
-                decorator = { field ->
-                    Box {
-                        if (empty && (armed != null || ghost.isEmpty())) {
-                            val hint = armed?.let { "${it.label} + key" } ?: "send to ${program.ifEmpty { "pane" }}"
-                            Text(hint, color = if (armed != null) Palette.orange else Palette.dim, fontFamily = Mono, fontSize = 15.sp)
+        if (typing == null) {
+            AttachmentsRow(state, paths, attachments)
+            Box(Modifier.fillMaxWidth().animateContentSize(Motion.spatial()).padding(horizontal = 18.dp)) {
+                val armed = sticky.armed
+                BasicTextField(
+                    state = state,
+                    inputTransformation = sticky.intercept ?: whole,
+                    outputTransformation = named,
+                    lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 6),
+                    textStyle = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp, lineHeight = 21.sp),
+                    cursorBrush = SolidColor(Palette.orange),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrectEnabled = true,
+                        imeAction = ImeAction.Default,
+                    ),
+                    decorator = { field ->
+                        Box {
+                            if (empty && (armed != null || ghost.isEmpty())) {
+                                val hint = armed?.let { "${it.label} + key" } ?: "send to ${program.ifEmpty { "pane" }}"
+                                Text(hint, color = if (armed != null) Palette.orange else Palette.dim, fontFamily = Mono, fontSize = 15.sp)
+                            }
+                            field()
                         }
-                        field()
+                    },
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                )
+                if (empty && armed == null && ghost.isNotEmpty()) {
+                    val type = {
+                        focus.requestFocus()
+                        keyboard?.show()
                     }
-                },
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
-            )
-            if (empty && armed == null && ghost.isNotEmpty()) {
-                val type = {
-                    focus.requestFocus()
-                    keyboard?.show()
-                }
-                GhostLine(ghost, suggested = pending.isEmpty(), onClear = onClear, onTap = { type() }) {
-                    state.edit {
-                        replace(0, length, ghost)
-                        placeCursorAtEnd()
+                    GhostLine(ghost, suggested = pending.isEmpty(), onClear = onClear, onTap = { type() }) {
+                        state.edit {
+                            replace(0, length, ghost)
+                            placeCursorAtEnd()
+                        }
+                        type()
                     }
-                    type()
                 }
             }
         }
         Row(
-            Modifier.fillMaxWidth().padding(top = 10.dp, start = 8.dp, end = 8.dp),
+            Modifier.fillMaxWidth().padding(top = if (typing == null) 10.dp else 0.dp, start = 8.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AttachButton(enabled = connected, typing = { imeVisible }, onAttach = attachments.onAttach, onBack = { refocus = true })
+            if (typing == null) AttachButton(enabled = connected, typing = { imeVisible }, onAttach = attachments.onAttach, onBack = { refocus = true })
             KeyRow(keys, sticky.armed, sticky::press, onEditKeys, Modifier.weight(1f))
             SendButton(
                 action = when {
+                    typing != null -> Action.Enter
                     !empty -> Action.Send
                     pending.isNotEmpty() -> Action.Enter
                     else -> Action.Stop
