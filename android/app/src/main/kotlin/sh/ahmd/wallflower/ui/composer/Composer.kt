@@ -40,6 +40,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import sh.ahmd.wallflower.BarKey
+import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.screen.InputLine
 import sh.ahmd.wallflower.session.uploadPaths
 import sh.ahmd.wallflower.ui.Mono
@@ -69,7 +70,7 @@ import sh.ahmd.wallflower.ui.Palette
  * With [typing], the keyboard types straight into the pane instead, as a
  * terminal's does ([onType], other keys to [onKey] by name, its return key
  * as [returnKeys]): no box, no +, just the key bar and the button
- * ([onEnter]).
+ * ([onEnter], pressing [sendKeys], which it shows if they aren't Enter).
  */
 @OptIn(ExperimentalLayoutApi::class) // whether the keyboard is up
 @Composable
@@ -83,6 +84,7 @@ internal fun Composer(
     onClear: (() -> Unit)?,
     onKey: (BarKey) -> Unit,
     typing: Typing?,
+    sendKeys: List<String>,
     returnKeys: List<String>,
     onType: (String) -> Unit,
     onSend: (text: String, enter: Boolean) -> Boolean,
@@ -192,6 +194,7 @@ internal fun Composer(
                     else -> Action.Stop
                 },
                 connected = connected,
+                label = if (typing == null || sendKeys == listOf("Enter")) null else KeyBar.labelOf(sendKeys),
                 onSend = { enter -> if (onSend(state.text.toString(), enter)) state.clearText() },
                 onEnter = onEnter,
                 onStop = onStop,

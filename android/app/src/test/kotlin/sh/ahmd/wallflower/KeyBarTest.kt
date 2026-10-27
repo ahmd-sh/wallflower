@@ -23,6 +23,16 @@ class KeyBarTest {
     }
 
     @Test
+    fun keysShowAsTheyWouldOnTheBar() {
+        assertEquals("^j", KeyBar.labelOf(listOf("C-j")))
+        assertEquals("⌥⏎", KeyBar.labelOf(listOf("M-Enter")))
+        assertEquals("^⌥←", KeyBar.labelOf(listOf("C-M-Left")))
+        assertEquals("esc :w ⏎", KeyBar.labelOf(listOf("Escape", ":w", "Enter")))
+        assertEquals("C-", KeyBar.labelOf(listOf("C-")))
+        assertEquals("q", KeyBar.labelOf(listOf("q")))
+    }
+
+    @Test
     fun claudeStopsWithEscapeAndShellsWithCtrlC() {
         assertEquals(listOf("Escape"), bar.profileFor("claude").stop)
         assertEquals(listOf("C-c"), bar.profileFor("zsh").stop)

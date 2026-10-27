@@ -19,7 +19,7 @@ internal class PaneActions(
     val program: Program,
     private val clearKeys: List<String>,
     private val stopKeys: List<String>,
-    private val sendKeys: List<String>,
+    val sendKeys: List<String>,
     val returnKeys: List<String>,
 ) {
     fun keys(keys: List<String>, bindings: Boolean = false) = session.keys(pane.id, keys, bindings)

@@ -234,20 +234,20 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
         Section("stop")
         Body("What the send button sends when the read view's box is empty.")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for ((label, keys) in stops) Chip(label, profile.stop == keys) { save(profile.copy(stop = keys)) }
+            for (keys in stops) Chip(KeyBar.labelOf(keys), profile.stop == keys) { save(profile.copy(stop = keys)) }
         }
 
         Section("send button")
         Body("What it presses in the terminal, where the keyboard types straight into the pane.")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for ((label, keys) in presses) Chip(label, profile.sendKeys() == keys) { save(profile.copy(send = keys)) }
+            for (keys in presses) Chip(KeyBar.labelOf(keys), profile.sendKeys() == keys) { save(profile.copy(send = keys)) }
         }
 
         Section("return key")
         Body("What the keyboard's return key presses there. ^j and ⌥⏎ start a new line in apps that take several, as Claude Code does; a shell runs the line.")
         val program = Programs.of(profile.programs.firstOrNull().orEmpty())
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for ((label, keys) in presses) Chip(label, profile.returnKeys(program) == keys) { save(profile.copy(returnKey = keys)) }
+            for (keys in presses) Chip(KeyBar.labelOf(keys), profile.returnKeys(program) == keys) { save(profile.copy(returnKey = keys)) }
         }
 
         Section("clear")
@@ -264,17 +264,28 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
         }
 
         Section("custom")
-        Body("tmux key names, space-separated (C-a d, Escape :w Enter); anything else is typed as is.")
+        Body(
+            "tmux key names, space-separated; anything else is typed as is (Escape :w Enter). C- is ctrl, M- alt (⌥) and S- shift, " +
+                "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is ⇧tab, BSpace ⌫, DC delete, IC insert; F1 to F12 work too. Tap one to add it.",
+        )
         var label by remember(ref) { mutableStateOf("") }
         var sends by remember(ref) { mutableStateOf("") }
         var bound by remember(ref) { mutableStateOf(false) }
+        val keys = sends.split(' ').filter(String::isNotEmpty)
         Field("sends", sends) { sends = it }
-        Field("label", label) { label = it }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (name in names) {
+                Chip(name, false) {
+                    val joins = sends.isEmpty() || sends.endsWith(' ') || sends.substringAfterLast(' ').matches(held)
+                    sends = if (joins) sends + name else "$sends $name"
+                }
+            }
+        }
+        Field(if (label.isBlank() && keys.isNotEmpty()) "label (blank: ${KeyBar.labelOf(keys)})" else "label", label) { label = it }
         Toggle("through tmux's key bindings (C-j to change pane; prefix is your prefix)", bound) { bound = it }
         Button("add key") {
-            val keys = sends.split(' ').filter(String::isNotEmpty)
             if (keys.isNotEmpty()) {
-                save(profile.copy(keys = profile.keys + BarKey(label.ifBlank { sends.trim() }, keys, bindings = bound)))
+                save(profile.copy(keys = profile.keys + BarKey(label.ifBlank { KeyBar.labelOf(keys) }, keys, bindings = bound)))
                 label = ""
                 sends = ""
             }
@@ -290,8 +301,15 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
     }
 }
 
-private val stops = listOf("^c" to listOf("C-c"), "esc" to listOf("Escape"), "^d" to listOf("C-d"), "q" to listOf("q"))
-private val presses = listOf("⏎" to listOf("Enter"), "^j" to listOf("C-j"), "⌥⏎" to listOf("M-Enter"))
+private val stops = listOf("C-c", "Escape", "C-d", "q").map { listOf(it) }
+private val presses = listOf("Enter", "C-j", "M-Enter").map { listOf(it) }
+
+/** tmux's names for what a custom key sends, beyond text. */
+private val names = listOf(
+    "C-", "M-", "S-", "Enter", "Escape", "Tab", "BTab", "BSpace", "Space",
+    "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "DC", "IC",
+)
+private val held = Regex("([CMS]-)+")
 
 /** A full-screen page over the terminal, with a back arrow. */
 @Composable

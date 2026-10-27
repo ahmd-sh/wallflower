@@ -92,6 +92,25 @@ data class KeyBar(
             BarKey("alt", listOf("M-"), sticky = true),
         )
 
+        /** How [keys] show on a key: ^c, ⌥⏎, ⇧↑, esc :w ⏎. */
+        fun labelOf(keys: List<String>): String = keys.joinToString(" ") { key ->
+            var rest = key
+            val held = buildString {
+                while (rest.length > 2 && rest[1] == '-' && rest[0] in MODIFIERS) {
+                    append(MODIFIERS.getValue(rest[0]))
+                    rest = rest.drop(2)
+                }
+            }
+            held + (NAMED[rest] ?: rest)
+        }
+
+        private val MODIFIERS = mapOf('C' to "^", 'M' to "⌥", 'S' to "⇧")
+        private val NAMED = mapOf(
+            "Enter" to "⏎", "Escape" to "esc", "Tab" to "tab", "BTab" to "⇧tab", "BSpace" to "⌫", "Space" to "space",
+            "Up" to "↑", "Down" to "↓", "Left" to "←", "Right" to "→", "Home" to "home", "End" to "end",
+            "PageUp" to "pgup", "PageDown" to "pgdn", "DC" to "del", "IC" to "ins", "prefix" to "pfx",
+        )
+
         /** Held down, these repeat. */
         val repeating = setOf("Up", "Down", "Left", "Right", "BSpace", "PageUp", "PageDown")
 

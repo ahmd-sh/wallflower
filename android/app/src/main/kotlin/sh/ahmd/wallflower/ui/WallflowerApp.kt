@@ -399,6 +399,7 @@ private fun TerminalScreen(
                                 actions.keys(it.keys, it.bindings)
                             },
                             typing = if (readView) null else typing,
+                            sendKeys = actions.sendKeys,
                             returnKeys = actions.returnKeys,
                             onType = { text ->
                                 view?.scrollToBottom()

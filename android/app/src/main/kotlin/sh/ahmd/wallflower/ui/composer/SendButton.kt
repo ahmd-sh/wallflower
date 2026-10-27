@@ -13,6 +13,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -23,7 +24,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import sh.ahmd.wallflower.ui.Mono
 import sh.ahmd.wallflower.ui.Motion
 import sh.ahmd.wallflower.ui.Palette
 import sh.ahmd.wallflower.ui.haptics
@@ -31,9 +35,9 @@ import sh.ahmd.wallflower.ui.haptics
 /** What the send button does: send the box, run what's typed straight into the pane, enter the app's own line, or stop the app. */
 internal enum class Action { Send, Run, Enter, Stop }
 
-/** Its color follows whether there's anything to send; the mark turns into the next one. */
+/** Its color follows whether there's anything to send; the mark (or the [label] of the keys it presses) turns into the next one. */
 @Composable
-internal fun SendButton(action: Action, connected: Boolean, onSend: (enter: Boolean) -> Unit, onEnter: () -> Unit, onStop: () -> Unit) {
+internal fun SendButton(action: Action, connected: Boolean, label: String?, onSend: (enter: Boolean) -> Unit, onEnter: () -> Unit, onStop: () -> Unit) {
     val haptics = haptics()
     val background by animateColorAsState(
         when {
@@ -80,10 +84,16 @@ internal fun SendButton(action: Action, connected: Boolean, onSend: (enter: Bool
         contentAlignment = Alignment.Center,
     ) {
         AnimatedContent(
-            action,
+            action to label,
             transitionSpec = { (fadeIn(Motion.effect()) + scaleIn(Motion.effect(), 0.4f)) togetherWith (fadeOut(Motion.effect()) + scaleOut(Motion.effect(), 0.4f)) },
             label = "mark",
-        ) { a -> Mark(a, { ink }) }
+        ) { (a, l) ->
+            if (l == null) {
+                Mark(a, { ink })
+            } else {
+                Text(l, color = ink, fontFamily = Mono, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+        }
     }
 }
 
