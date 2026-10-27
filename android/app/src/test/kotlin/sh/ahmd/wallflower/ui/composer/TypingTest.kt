@@ -56,8 +56,8 @@ class StickyTypingTest {
 
     @Test
     fun withNothingArmedTextIsTypedAndKeysSent() {
-        sticky.type(Typed.Text("ls"), typed::add)
-        sticky.type(Typed.Key("Enter"), typed::add)
+        sticky.type(Typed.Text("ls"), RETURN, typed::add)
+        sticky.type(Typed.Key("Enter"), RETURN, typed::add)
         assertEquals(listOf("ls"), typed)
         assertEquals(listOf(listOf("Enter")), sent)
     }
@@ -65,7 +65,7 @@ class StickyTypingTest {
     @Test
     fun anArmedKeyTakesTheFirstKeyTyped() {
         sticky.press(ctrl)
-        sticky.type(Typed.Text("cd"), typed::add)
+        sticky.type(Typed.Text("cd"), RETURN, typed::add)
         assertEquals(listOf(listOf("C-c")), sent)
         assertEquals(listOf("d"), typed)
         assertNull(sticky.armed)
@@ -74,7 +74,17 @@ class StickyTypingTest {
     @Test
     fun anArmedKeyGoesWithANamedKeyToo() {
         sticky.press(ctrl)
-        sticky.type(Typed.Key("Left"), typed::add)
+        sticky.type(Typed.Key("Left"), RETURN, typed::add)
         assertEquals(listOf(listOf("C-Left")), sent)
+    }
+
+    @Test
+    fun theReturnKeyPressesWhatItsSetTo() {
+        sticky.type(Typed.Return, RETURN, typed::add)
+        assertEquals(listOf(RETURN), sent)
+    }
+
+    private companion object {
+        val RETURN = listOf("C-j")
     }
 }

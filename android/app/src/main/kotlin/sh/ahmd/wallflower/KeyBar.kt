@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import sh.ahmd.wallflower.program.Program
 
 /**
  * A key on the bar: what it shows, and the tmux keys it sends (`Escape`,
@@ -48,7 +49,18 @@ data class KeyProfile(
     val stop: List<String> = listOf("C-c"),
     /** What empties a row of the app's input line, as the user set it; null leaves it to the program (Program.clearKeys). */
     val clear: List<String>? = null,
-)
+    /** What the send button presses where the keyboard types straight into the pane, as the user set it; null is Enter. */
+    val send: List<String>? = null,
+    /** What the keyboard's return key presses there, as the user set it; null leaves it to the program. */
+    val returnKey: List<String>? = null,
+) {
+    fun sendKeys(): List<String> = send ?: ENTER
+
+    /** A new line, in a program that takes several (Program.newlineKeys); else Enter. */
+    fun returnKeys(program: Program): List<String> = returnKey ?: program.newlineKeys ?: ENTER
+}
+
+private val ENTER = listOf("Enter")
 
 /**
  * Which keys sit next to the composer. The focused pane's program picks the

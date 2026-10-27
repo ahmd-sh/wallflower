@@ -26,6 +26,9 @@ interface Program {
     fun clear(line: InputLine, keys: List<String> = clearKeys, unseen: Boolean = false): List<String> =
         List(line.rows * 2 + 1) { keys }.flatten()
 
+    /** What starts a new line of what's being typed without sending it, if the program takes several; a shell runs the line. */
+    val newlineKeys: List<String>? get() = null
+
     /** What the program is sent to compact its conversation, if it can. */
     val compact: String? get() = null
 

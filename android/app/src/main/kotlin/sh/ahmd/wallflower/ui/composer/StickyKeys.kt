@@ -49,10 +49,15 @@ internal class StickyKeys(private val onKey: (BarKey) -> Unit) {
 
     val intercept: InputTransformation? get() = if (armed != null) interceptor else null
 
-    /** What's typed straight into the pane: with one armed, its first key goes with it; text otherwise goes to [onText]. */
-    fun type(typed: Typed, onText: (String) -> Unit) {
+    /**
+     * What's typed straight into the pane, the keyboard's return key being
+     * [returnKeys]: with one armed, its first key goes with it; text
+     * otherwise goes to [onText].
+     */
+    fun type(typed: Typed, returnKeys: List<String>, onText: (String) -> Unit) {
         when (typed) {
             is Typed.Key -> press(BarKey(typed.name, listOf(typed.name)))
+            Typed.Return -> press(BarKey("⏎", returnKeys))
             is Typed.Text -> {
                 if (armed == null) return onText(typed.text)
                 press(BarKey.typed(typed.text[0]))

@@ -46,10 +46,15 @@ internal class Typing {
     }
 }
 
-/** What a key typed straight into a pane is: [Text] typed as it is, or a [Key] by its tmux name. */
+/**
+ * What a key typed straight into a pane is: [Text] typed as it is, a [Key]
+ * by its tmux name, or the keyboard on screen's [Return] key, which does
+ * what the program's profile says.
+ */
 internal sealed interface Typed {
     data class Text(val text: String) : Typed
     data class Key(val name: String) : Typed
+    data object Return : Typed
 }
 
 /**
@@ -151,11 +156,16 @@ internal class TypingNode(var typing: Typing, var onTyped: (Typed) -> Unit) :
     }
 
     override fun onKeyEvent(event: ComposeKeyEvent): Boolean =
-        event.type == KeyEventType.KeyDown && press(event.nativeKeyEvent)
+        event.type == KeyEventType.KeyDown && press(event.nativeKeyEvent, onScreen = false)
 
     override fun onPreKeyEvent(event: ComposeKeyEvent) = false
 
-    private fun press(e: KeyEvent): Boolean {
+    /** A key pressed, [onScreen] on the keyboard's, whose Enter is its return key; a plugged-in keyboard's is Enter. */
+    private fun press(e: KeyEvent, onScreen: Boolean): Boolean {
+        if (onScreen && e.keyCode == KeyEvent.KEYCODE_ENTER && !e.isCtrlPressed && !e.isAltPressed) {
+            onTyped(Typed.Return)
+            return true
+        }
         val char = e.getUnicodeChar(e.metaState and (KeyEvent.META_CTRL_MASK or KeyEvent.META_ALT_MASK).inv())
         val t = typed(e.keyCode, char, e.isCtrlPressed, e.isAltPressed, e.isShiftPressed) ?: return false
         onTyped(t)
@@ -167,7 +177,7 @@ internal class TypingNode(var typing: Typing, var onTyped: (Typed) -> Unit) :
      * characters, as Termux asks for. Text comes as it's committed (the
      * keyboard may hold a word back while it composes it), and the
      * connection's own text is emptied each time, so it never has anything
-     * to delete: ⌫ and Enter come as keys.
+     * to delete: ⌫ and return come as keys.
      */
     private inner class Request(private val host: View) : PlatformTextInputMethodRequest {
         override fun createInputConnection(outAttributes: EditorInfo): InputConnection {
@@ -194,18 +204,21 @@ internal class TypingNode(var typing: Typing, var onTyped: (Typed) -> Unit) :
                 }
 
                 override fun performEditorAction(editorAction: Int): Boolean {
-                    onTyped(Typed.Key("Enter"))
+                    onTyped(Typed.Return)
                     return true
                 }
 
                 override fun sendKeyEvent(event: KeyEvent): Boolean {
-                    if (event.action == KeyEvent.ACTION_DOWN) press(event)
+                    if (event.action == KeyEvent.ACTION_DOWN) press(event, onScreen = true)
                     return true
                 }
 
                 private fun flush() {
                     val content = editable ?: return
-                    if (content.isNotEmpty()) onTyped(Typed.Text(content.toString()))
+                    when {
+                        content.toString() == "\n" -> onTyped(Typed.Return)
+                        content.isNotEmpty() -> onTyped(Typed.Text(content.toString()))
+                    }
                     content.clear()
                 }
             }

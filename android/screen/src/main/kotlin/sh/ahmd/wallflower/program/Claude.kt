@@ -11,6 +11,8 @@ import sh.ahmd.wallflower.screen.Screen
 object Claude : Program {
     override val clearKeys = listOf("C-u") // a row at a time
 
+    override val newlineKeys = listOf("C-j") // one key: ⌥⏎ comes as Escape then Enter, which vim mode can take apart
+
     override val compact = "/compact"
 
     /**

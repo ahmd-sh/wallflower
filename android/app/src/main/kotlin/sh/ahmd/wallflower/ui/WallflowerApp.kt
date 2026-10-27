@@ -207,7 +207,7 @@ private fun TerminalScreen(
     fun actionsOf(p: Pane): PaneActions {
         val program = Programs.of(p.command)
         val profile = bar.profileFor(p.command)
-        return PaneActions(session, p, program, profile.clear ?: program.clearKeys, profile.stop)
+        return PaneActions(session, p, program, profile.clear ?: program.clearKeys, profile.stop, profile.sendKeys(), profile.returnKeys(program))
     }
     val actions = remember(session, pane, bar) { pane?.let(::actionsOf) }
     val activity = activityOf(pane)
@@ -399,6 +399,7 @@ private fun TerminalScreen(
                                 actions.keys(it.keys, it.bindings)
                             },
                             typing = if (readView) null else typing,
+                            returnKeys = actions.returnKeys,
                             onType = { text ->
                                 view?.scrollToBottom()
                                 if (screen.line != null) view?.predict(text) // at a prompt, which echoes
@@ -412,8 +413,12 @@ private fun TerminalScreen(
                                 }
                             },
                             onEnter = {
-                                if (!readView) view?.scrollToBottom()
-                                actions.enter()
+                                if (readView) {
+                                    actions.enter()
+                                } else {
+                                    view?.scrollToBottom()
+                                    actions.press()
+                                }
                             },
                             onStop = actions::stop,
                             onEditKeys = onEditKeys,

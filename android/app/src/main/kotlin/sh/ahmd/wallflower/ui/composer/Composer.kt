@@ -67,8 +67,9 @@ import sh.ahmd.wallflower.ui.Palette
  * What the draft holds shows above it too, each with × to take it out.
  *
  * With [typing], the keyboard types straight into the pane instead, as a
- * terminal's does ([onType], other keys to [onKey] by name): no box, no +,
- * just the key bar and the button, which presses Enter.
+ * terminal's does ([onType], other keys to [onKey] by name, its return key
+ * as [returnKeys]): no box, no +, just the key bar and the button
+ * ([onEnter]).
  */
 @OptIn(ExperimentalLayoutApi::class) // whether the keyboard is up
 @Composable
@@ -82,6 +83,7 @@ internal fun Composer(
     onClear: (() -> Unit)?,
     onKey: (BarKey) -> Unit,
     typing: Typing?,
+    returnKeys: List<String>,
     onType: (String) -> Unit,
     onSend: (text: String, enter: Boolean) -> Boolean,
     onEnter: () -> Unit,
@@ -131,7 +133,7 @@ internal fun Composer(
             .clip(RoundedCornerShape(26.dp))
             .background(Palette.bg1)
             .animateContentSize(Motion.spatial())
-            .then(if (typing == null) Modifier else Modifier.typing(typing) { sticky.type(it, onType) })
+            .then(if (typing == null) Modifier else Modifier.typing(typing) { sticky.type(it, returnKeys, onType) })
             .padding(top = if (typing == null) 14.dp else 8.dp, bottom = 8.dp),
     ) {
         if (typing == null) {

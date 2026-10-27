@@ -232,9 +232,22 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
         }
 
         Section("stop")
-        Body("What the send button sends when the box is empty.")
+        Body("What the send button sends when the read view's box is empty.")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for ((label, keys) in stops) Chip(label, profile.stop == keys) { save(profile.copy(stop = keys)) }
+        }
+
+        Section("send button")
+        Body("What it presses in the terminal, where the keyboard types straight into the pane.")
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for ((label, keys) in presses) Chip(label, profile.sendKeys() == keys) { save(profile.copy(send = keys)) }
+        }
+
+        Section("return key")
+        Body("What the keyboard's return key presses there. ^j and ⌥⏎ start a new line in apps that take several, as Claude Code does; a shell runs the line.")
+        val program = Programs.of(profile.programs.firstOrNull().orEmpty())
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for ((label, keys) in presses) Chip(label, profile.returnKeys(program) == keys) { save(profile.copy(returnKey = keys)) }
         }
 
         Section("clear")
@@ -278,6 +291,7 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
 }
 
 private val stops = listOf("^c" to listOf("C-c"), "esc" to listOf("Escape"), "^d" to listOf("C-d"), "q" to listOf("q"))
+private val presses = listOf("⏎" to listOf("Enter"), "^j" to listOf("C-j"), "⌥⏎" to listOf("M-Enter"))
 
 /** A full-screen page over the terminal, with a back arrow. */
 @Composable

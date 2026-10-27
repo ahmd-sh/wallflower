@@ -9,7 +9,9 @@ import sh.ahmd.wallflower.session.Session
 
 /**
  * What the user can do to a pane, in its program's terms: [clearKeys] empty
- * a row of its input line (the user's, or the program's), [stopKeys] stop it.
+ * a row of its input line (the user's, or the program's), [stopKeys] stop it,
+ * and where the keyboard types straight in, [sendKeys] are the send button's
+ * and [returnKeys] the keyboard's return key.
  */
 internal class PaneActions(
     private val session: Session,
@@ -17,6 +19,8 @@ internal class PaneActions(
     val program: Program,
     private val clearKeys: List<String>,
     private val stopKeys: List<String>,
+    private val sendKeys: List<String>,
+    val returnKeys: List<String>,
 ) {
     fun keys(keys: List<String>, bindings: Boolean = false) = session.keys(pane.id, keys, bindings)
 
@@ -24,6 +28,9 @@ internal class PaneActions(
     fun wheel(up: Boolean, bytes: ByteArray?) = if (bytes != null) session.bytes(pane.id, bytes) else keys(listOf(if (up) "Up" else "Down"))
 
     fun enter() = keys(listOf("Enter"))
+
+    /** The send button, where the keyboard types straight in. */
+    fun press() = keys(sendKeys)
 
     /** Text typed straight into the pane: as it is, but pasted if it has lines (from the clipboard), so they don't run one by one. */
     fun type(text: String) {

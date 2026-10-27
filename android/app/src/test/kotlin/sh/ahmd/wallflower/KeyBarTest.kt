@@ -3,6 +3,7 @@ package sh.ahmd.wallflower
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import sh.ahmd.wallflower.program.Programs
 
 class KeyBarTest {
     private val bar = KeyBar.defaults
@@ -35,6 +36,18 @@ class KeyBarTest {
         assertEquals(listOf("C-j"), ctrl.then(BarKey.typed('j')).keys)
         assertEquals(listOf("C-Up"), ctrl.then(KeyBar.common.first { it.label == "↑" }).keys)
         assertEquals(listOf("Space"), BarKey.typed(' ').keys)
+    }
+
+    @Test
+    fun inTheTerminalReturnIsANewLineWhereTheProgramTakesSeveral() {
+        val claude = bar.profileFor("claude")
+        assertEquals(listOf("C-j"), claude.returnKeys(Programs.of("claude")))
+        assertEquals(listOf("Enter"), claude.sendKeys())
+        assertEquals(listOf("Enter"), bar.profileFor("zsh").returnKeys(Programs.of("zsh")))
+        // What the user picked wins, and a bar saved before there was a choice leaves it to the program.
+        assertEquals(listOf("Enter"), claude.copy(returnKey = listOf("Enter")).returnKeys(Programs.of("claude")))
+        val saved = Json.decodeFromString<KeyBar>("""{"profiles":[{"name":"c","programs":["claude"],"keys":[]}],"default":{"name":"d","keys":[]}}""")
+        assertEquals(listOf("C-j"), saved.profileFor("claude").returnKeys(Programs.of("claude")))
     }
 
     @Test
