@@ -48,7 +48,7 @@ client never has to resync on its own.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `cols`, `rows`, `session`? | first message; `v` is 2 |
+| `hello` | `v`, `cols`, `rows`, `session`?, `away`? | first message; `v` is 2 |
 | `resize` | `cols`, `rows` | the client's terminal area changed |
 | `open` | `pane`, `history`? | repaint and stream a pane; `history` lines of scrollback (default 1000) |
 | `close` | `pane` | stop streaming a pane |
@@ -64,6 +64,7 @@ client never has to resync on its own.
 | `picture` | `pane`, `id` | a picture entry's bytes, which come in a picture frame |
 | `upload` | `id`, `name`, `size` | send a file: `size` bytes follow in upload frames with this `id`, see below |
 | `ping` | `id` | |
+| `away` | `on` | the user has left the client for now (or is back): see Sizing |
 
 Messages are handled in order, so a `pong` means everything sent before its
 `ping` has reached tmux.
@@ -89,6 +90,7 @@ them at once takes it all as a paste, Enter and all.
 | `pong` | `id` | |
 | `uploaded` | `id`, `path`?, `error`? | where an upload was saved, or why it wasn't |
 | `bye` | `reason` | the gateway is exiting |
+| `notification` | `pane`, `title`?, `body` | a desktop notification a program sent, see below |
 
 A window is `id`, `index`, `name`, `active` and `panes`. A pane is:
 
@@ -159,6 +161,22 @@ The client's size applies to windows it resizes or selects, and stays until
 another client does the same. tmux doesn't count typing, so the gateway
 reclaims the current window when the client types and the window has a
 different size.
+
+While the client says it's `away` (in `hello`, or since), it doesn't size
+windows at all, as if it weren't attached: a client left in the background
+keeps a connection without the desktop's windows taking its size. Back, it
+selects the window it shows to take it again.
+
+## Notifications
+
+Programs send desktop notifications through their terminal: OSC 9
+(iTerm2's), OSC 777 `notify` (rxvt's) and OSC 99 (kitty's). tmux drops
+these, and passes them on to its terminal only from a pane on screen when a
+program wraps them in its passthrough. The gateway reads them from every
+pane's output, open or not, wrapped or not, and sends each as a
+`notification`: `body` is what it says, `title` what it's about if the
+program gave one. A client shows them however it likes, typically while the
+user is away.
 
 ## Uploads
 

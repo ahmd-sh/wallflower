@@ -45,6 +45,11 @@ func (g *gateway) sendState() {
 			g.unread(id)
 		}
 	}
+	for id := range g.scanners {
+		if _, ok := sizes[id]; !ok {
+			delete(g.scanners, id)
+		}
+	}
 	g.resized(sizes)
 }
 

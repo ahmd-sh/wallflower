@@ -86,6 +86,8 @@ func (g *gateway) handle(f protocol.Frame) error {
 	case *protocol.Ping:
 		g.send(protocol.Pong{ID: m.ID})
 		return nil
+	case *protocol.Away:
+		return g.tmux.IgnoreSize(m.On)
 	case *protocol.ClientHello:
 		return errors.New("already said hello")
 	}

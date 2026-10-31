@@ -16,6 +16,13 @@ type ClientHello struct {
 	Cols    int    `json:"cols"`
 	Rows    int    `json:"rows"`
 	Session string `json:"session,omitempty"`
+	Away    bool   `json:"away,omitempty"` // see Away
+}
+
+// Away says whether the user has left the client for now: while they have,
+// it doesn't size the session's windows.
+type Away struct {
+	On bool `json:"on"`
 }
 
 type Resize struct {
@@ -127,6 +134,7 @@ func (Read) Type() string        { return "read" }
 func (Picture) Type() string     { return "picture" }
 func (Upload) Type() string      { return "upload" }
 func (Ping) Type() string        { return "ping" }
+func (Away) Type() string        { return "away" }
 
 // Gateway to client.
 
@@ -253,22 +261,31 @@ type Bye struct {
 	Reason string `json:"reason"`
 }
 
-func (ServerHello) Type() string { return "hello" }
-func (State) Type() string       { return "state" }
-func (Reset) Type() string       { return "reset" }
-func (Error) Type() string       { return "error" }
-func (Pong) Type() string        { return "pong" }
-func (Bye) Type() string         { return "bye" }
-func (Entries) Type() string     { return "entries" }
-func (Uploaded) Type() string    { return "uploaded" }
+// Notification is a desktop notification a pane's program sent through its
+// terminal (OSC 9, 777 or 99), from any pane in the session.
+type Notification struct {
+	Pane  string `json:"pane"`
+	Title string `json:"title,omitempty"`
+	Body  string `json:"body"`
+}
+
+func (ServerHello) Type() string  { return "hello" }
+func (State) Type() string        { return "state" }
+func (Reset) Type() string        { return "reset" }
+func (Error) Type() string        { return "error" }
+func (Pong) Type() string         { return "pong" }
+func (Bye) Type() string          { return "bye" }
+func (Entries) Type() string      { return "entries" }
+func (Uploaded) Type() string     { return "uploaded" }
+func (Notification) Type() string { return "notification" }
 
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Submit{}, Select{}, Focus{}, Split{}, New{}, Rename{}, Kill{},
-	Read{}, Picture{}, Upload{}, Ping{},
+	Read{}, Picture{}, Upload{}, Ping{}, Away{},
 )
 
 var serverMessages = registry(
-	ServerHello{}, State{}, Reset{}, Error{}, Pong{}, Bye{}, Entries{}, Uploaded{},
+	ServerHello{}, State{}, Reset{}, Error{}, Pong{}, Bye{}, Entries{}, Uploaded{}, Notification{},
 )
 
 // DecodeClient decodes a message sent by a client. It returns a pointer to

@@ -22,9 +22,17 @@ val WireJson = Json {
 @Serializable
 sealed interface ClientMessage
 
+/** The first message; [away] as in [Away]. */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @SerialName("hello")
-data class ClientHello(val v: Int = VERSION, val cols: Int, val rows: Int, val session: String? = null) : ClientMessage
+data class ClientHello(
+    val v: Int = VERSION,
+    val cols: Int,
+    val rows: Int,
+    val session: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val away: Boolean = false,
+) : ClientMessage
 
 @Serializable
 @SerialName("resize")
@@ -114,6 +122,11 @@ data class Upload(val id: String, val name: String, val size: Long) : ClientMess
 @Serializable
 @SerialName("ping")
 data class Ping(val id: Int) : ClientMessage
+
+/** The user has left the app for now ([on]), or is back: while away, it doesn't size the session's windows. */
+@Serializable
+@SerialName("away")
+data class Away(val on: Boolean) : ClientMessage
 
 @Serializable
 sealed interface ServerMessage
@@ -226,3 +239,8 @@ data class Bye(val reason: String = "") : ServerMessage
 @Serializable
 @SerialName("uploaded")
 data class Uploaded(val id: String, val path: String? = null, val error: String? = null) : ServerMessage
+
+/** A desktop notification [pane]'s program sent through its terminal (OSC 9, 777 or 99). */
+@Serializable
+@SerialName("notification")
+data class Notification(val pane: String, val title: String? = null, val body: String) : ServerMessage

@@ -21,6 +21,7 @@ class FramesTest {
         listOf(
             ClientHello(cols = 56, rows = 20),
             ClientHello(cols = 56, rows = 20, session = "o"),
+            ClientHello(cols = 56, rows = 20, away = true),
             Resize(70, 25),
             Open("%1"),
             Open("%1", history = 500),
@@ -42,6 +43,8 @@ class FramesTest {
             Picture("%2", "u2.0"),
             Upload("u1", "PXL 1 ✓.jpg", 3),
             Ping(3),
+            Away(true),
+            Away(false),
         ).forEach(w::send)
         w.sendData("%1", "\u001b[<64;10;5M".encodeToByteArray())
         w.sendUpload("u1", byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0), length = 3)
@@ -96,6 +99,8 @@ class FramesTest {
         assertEquals(Entries("%2", entries = listOf(Entry("n1", "user", "note", "[Request interrupted by user]"))), message())
         assertEquals(Entries("%2", context = 0), message())
         assertEquals(Entries("%2", reset = true, error = "the conversation ended"), message())
+        assertEquals(Notification("%2", "Claude Code", "Claude needs your permission to use Bash ✓"), message())
+        assertEquals(Notification("%3", body = "build done"), message())
         val picture = assertIs<Frame.Picture>(r.next())
         assertEquals("u2.0", picture.id)
         assertEquals(listOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte()), picture.bytes.copyOfRange(picture.offset, picture.offset + picture.length).toList())

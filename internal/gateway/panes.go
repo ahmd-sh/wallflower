@@ -3,6 +3,7 @@ package gateway
 import (
 	"time"
 
+	"github.com/ahmd-sh/wallflower/internal/desktop"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
@@ -36,6 +37,18 @@ func (g *gateway) open(id string, history int) error {
 	g.send(protocol.Reset{Pane: id, Cols: c.Cols, Rows: c.Rows})
 	g.out.push(protocol.AppendData(nil, id, repaint(c)))
 	return nil
+}
+
+// scan passes on the notifications in a pane's output, open or not.
+func (g *gateway) scan(n tmux.Notification) {
+	s := g.scanners[n.Pane]
+	if s == nil {
+		s = &desktop.Scanner{}
+		g.scanners[n.Pane] = s
+	}
+	for _, d := range s.Scan(n.Data) {
+		g.send(protocol.Notification{Pane: n.Pane, Title: d.Title, Body: d.Body})
+	}
 }
 
 // output forwards a pane's output, unless the client is too far behind to

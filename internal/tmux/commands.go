@@ -68,6 +68,16 @@ func (c *Client) Resize(cols, rows int) error {
 	return c.run(fmt.Sprintf("refresh-client -C %dx%d", cols, rows))
 }
 
+// IgnoreSize says whether this client stays out of sizing windows, as one
+// whose user isn't looking.
+func (c *Client) IgnoreSize(on bool) error {
+	flag := "ignore-size"
+	if !on {
+		flag = "!" + flag
+	}
+	return c.run("refresh-client -f " + Quote(flag))
+}
+
 // SendKeys sends tmux key names (Enter, C-c, BTab...) to a pane, encoded
 // for its modes.
 func (c *Client) SendKeys(pane string, keys ...string) error {

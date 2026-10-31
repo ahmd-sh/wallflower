@@ -19,6 +19,7 @@ func goldenClient(t *testing.T) []byte {
 	for _, m := range []Message{
 		ClientHello{V: Version, Cols: 56, Rows: 20},
 		ClientHello{V: Version, Cols: 56, Rows: 20, Session: "o"},
+		ClientHello{V: Version, Cols: 56, Rows: 20, Away: true},
 		Resize{Cols: 70, Rows: 25},
 		Open{Pane: "%1"},
 		Open{Pane: "%1", History: 500},
@@ -40,6 +41,8 @@ func goldenClient(t *testing.T) []byte {
 		Picture{Pane: "%2", ID: "u2.0"},
 		Upload{ID: "u1", Name: "PXL 1 ✓.jpg", Size: 3},
 		Ping{ID: 3},
+		Away{On: true},
+		Away{},
 	} {
 		b = mustJSON(t, b, m)
 	}
@@ -76,6 +79,8 @@ func goldenServer(t *testing.T) []byte {
 	b = mustJSON(t, b, Entries{Pane: "%2", Entries: []Entry{{ID: "n1", From: FromUser, Kind: KindNote, Text: "[Request interrupted by user]"}}})
 	b = mustJSON(t, b, Entries{Pane: "%2", Context: new(int)})
 	b = mustJSON(t, b, Entries{Pane: "%2", Reset: true, Error: "the conversation ended"})
+	b = mustJSON(t, b, Notification{Pane: "%2", Title: "Claude Code", Body: "Claude needs your permission to use Bash ✓"})
+	b = mustJSON(t, b, Notification{Pane: "%3", Body: "build done"})
 	b = AppendPicture(b, "u2.0", []byte{0x89, 'P', 'N'})
 	b = AppendPicture(b, "gone", nil)
 	b = mustJSON(t, b, Uploaded{ID: "u1", Path: "/Users/me/Library/Caches/wallflower/uploads/PXL-1.jpg"})

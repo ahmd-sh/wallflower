@@ -658,3 +658,57 @@ func TestUploadsAreTheirOwnRuns(t *testing.T) {
 		t.Errorf("plain text: %+v", got)
 	}
 }
+
+func TestNotificationsFromEveryPane(t *testing.T) {
+	c := connect(t, 60, 20)
+	c.state("first", func(s protocol.State) bool { return len(s.Windows) == 1 })
+	// A window the phone hasn't opened, behind the current one.
+	c.tmux("new-window", "-d", "-t", "t:", `printf '\033]777;notify;Tests;all pass\007\033Ptmux;\033\033]9;wrapped\007\033\134'; sleep 30`)
+	var got []protocol.Notification
+	c.expect("two notifications", func(_ protocol.Frame, m protocol.Message) bool {
+		if n, ok := m.(*protocol.Notification); ok {
+			got = append(got, *n)
+		}
+		return len(got) == 2
+	})
+	back := c.tmux("display", "-p", "-t", "t:1", "#{pane_id}")
+	want := []protocol.Notification{{Pane: back, Title: "Tests", Body: "all pass"}, {Pane: back, Body: "wrapped"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestAwayLeavesSizing(t *testing.T) {
+	c := connect(t, 50, 20)
+	c.state("phone-sized", func(s protocol.State) bool { return activePane(s).Cols == 50 })
+	desk, err := tmux.Start(context.Background(), tmux.Options{Socket: c.socket, Session: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer desk.Close()
+	go func() {
+		for range desk.Events() {
+		}
+	}()
+	if _, err := desk.Run("refresh-client -C 120x40"); err != nil {
+		t.Fatal(err)
+	}
+	s := c.state("desktop-sized", func(s protocol.State) bool { return activePane(s).Cols == 120 })
+	flags := func() string { return c.tmux("list-clients", "-F", "#{client_flags}") }
+
+	// Away, the phone's resizes and selects leave the desktop's size alone.
+	c.send(protocol.Away{On: true})
+	c.until("ignore-size", func() bool { return strings.Contains(flags(), "ignore-size") })
+	c.send(protocol.Resize{Cols: 50, Rows: 15})
+	c.send(protocol.Select{Window: s.Windows[0].ID})
+	c.send(protocol.Ping{ID: 1})
+	c.expect("pong", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Pong); return ok })
+	if w := c.tmux("display", "-p", "-t", "t:", "#{window_width}"); w != "120" {
+		t.Errorf("window %s wide while away, want the desktop's 120", w)
+	}
+
+	c.send(protocol.Away{})
+	c.until("sizing again", func() bool { return !strings.Contains(flags(), "ignore-size") })
+	c.send(protocol.Select{Window: s.Windows[0].ID})
+	c.state("phone-sized again", func(s protocol.State) bool { p := activePane(s); return p.Cols == 50 && p.Rows == 15 })
+}

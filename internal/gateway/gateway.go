@@ -15,6 +15,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/ahmd-sh/wallflower/internal/desktop"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 	"github.com/ahmd-sh/wallflower/internal/readview"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
@@ -42,9 +43,10 @@ type gateway struct {
 	programs  map[string]string         // tty and versioned command -> the name it was run as
 	found     map[string]readview.Found // panes read, and what their programs are doing, as last sent
 
-	panes  map[string]*pane // panes the client has open
-	stale  bool             // some are, so repaintStale is due
-	zoomed map[string]bool  // windows the client zoomed -> zoomed before
+	panes    map[string]*pane            // panes the client has open
+	scanners map[string]*desktop.Scanner // every pane's output, for notifications
+	stale    bool                        // some are, so repaintStale is due
+	zoomed   map[string]bool             // windows the client zoomed -> zoomed before
 
 	held   []func() error   // work waiting for resume, in order: the client's frames, and the rest of what one asked
 	resume <-chan time.Time // while a pane settles; see hold
@@ -64,7 +66,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	defer cancel()
 	g := &gateway{
 		ctx: ctx, out: newOutbox(out), programs: map[string]string{},
-		panes: map[string]*pane{}, zoomed: map[string]bool{},
+		panes: map[string]*pane{}, scanners: map[string]*desktop.Scanner{}, zoomed: map[string]bool{},
 		sources: opts.Readers, reading: map[string]reading{}, updates: make(chan readUpdate, 16),
 		uploads: uploads{dir: opts.Uploads, open: map[string]*upload{}},
 	}
@@ -93,11 +95,11 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	// The client attaches to the session itself, as the desktop does, so
 	// both are one session: a window switched to on one is switched to on
 	// the other. Not tied to ctx: cleanup still needs tmux after a signal.
-	g.tmux, err = tmux.Start(context.Background(), tmux.Options{
-		Socket:  opts.Socket,
-		Session: g.target,
-		Flags:   []string{"new-layouts", "no-detach-on-destroy"},
-	})
+	flags := []string{"new-layouts", "no-detach-on-destroy"}
+	if hello.Away {
+		flags = append(flags, "ignore-size")
+	}
+	g.tmux, err = tmux.Start(context.Background(), tmux.Options{Socket: opts.Socket, Session: g.target, Flags: flags})
 	if err != nil {
 		g.send(protocol.Bye{Reason: err.Error()})
 		return err
@@ -213,6 +215,7 @@ func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readEr
 func (g *gateway) notify(n tmux.Notification) {
 	switch n.Type {
 	case "output":
+		g.scan(n)
 		g.output(n)
 	case "layout-change", "window-add", "window-close", "window-renamed", "window-pane-changed",
 		"session-window-changed", "session-changed", "session-renamed", "subscription-changed":
