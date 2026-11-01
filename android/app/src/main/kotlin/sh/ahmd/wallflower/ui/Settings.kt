@@ -338,17 +338,3 @@ private fun Page(title: String, onBack: () -> Unit, content: @Composable () -> U
         ) { content() }
     }
 }
-
-@Composable
-private fun Chip(label: String, selected: Boolean, font: FontFamily = Mono, onClick: () -> Unit) {
-    val haptics = haptics()
-    Pill(
-        label,
-        on = selected,
-        font = font,
-        input = Modifier.clickable {
-            if (!selected) haptics.tick()
-            onClick()
-        },
-    )
-}

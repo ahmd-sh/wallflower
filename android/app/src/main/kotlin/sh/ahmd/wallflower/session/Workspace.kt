@@ -46,6 +46,9 @@ internal class Workspace(private val link: Link, private val terminals: Terminal
     @Volatile private var awaitingWindow: Set<String>? = null // windows there were when the phone opened one
     @Volatile private var synced = false // this connection's session has the window being viewed current
 
+    /** The user is away: a new connection leaves the desktop's window as it is (coming back takes it, see [reclaim]). */
+    @Volatile var away = false
+
     /** A new connection's session starts wherever the desktop is. */
     fun linked() {
         synced = false
@@ -65,13 +68,22 @@ internal class Workspace(private val link: Link, private val terminals: Terminal
         // What's shown is the phone's choice.
         if (!synced) {
             synced = true
-            if (m.windows.none { it.id == _viewing.value && it.active }) _viewing.value?.let { link.send(Select(window = it)) }
+            if (!away && m.windows.none { it.id == _viewing.value && it.active }) _viewing.value?.let { link.send(Select(window = it)) }
         }
+        open(m)
+        terminals.keep(m.windows.flatMapTo(HashSet()) { w -> w.panes.map { it.id } })
+    }
+
+    /** Opens every pane again, after they went quiet. */
+    fun reopen() {
+        _state.value?.let(::open)
+    }
+
+    private fun open(m: State) {
         val chosen = _chosen.value
         m.windows.firstOrNull { it.id == _viewing.value }?.shownPane(chosen)?.let { terminals.open(it.id, viewed = true) }
         for (w in m.windows) w.shownPane(chosen)?.let { terminals.open(it.id, viewed = false, full = true) }
         for (w in m.windows) for (p in w.panes.sortedBy { it.index }) terminals.open(p.id, viewed = false)
-        terminals.keep(m.windows.flatMapTo(HashSet()) { w -> w.panes.map { it.id } })
     }
 
     /** Shows a window now; tmux follows in the background (it sizes the window for the phone). */

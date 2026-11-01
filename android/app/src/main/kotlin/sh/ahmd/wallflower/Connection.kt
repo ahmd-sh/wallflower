@@ -1,0 +1,106 @@
+package sh.ahmd.wallflower
+
+import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import sh.ahmd.wallflower.notify.ConnectionService
+import sh.ahmd.wallflower.notify.Notices
+import sh.ahmd.wallflower.session.HardwareKey
+import sh.ahmd.wallflower.session.Host
+import sh.ahmd.wallflower.session.HostKeys
+import sh.ahmd.wallflower.session.Session
+import sh.ahmd.wallflower.session.SshTransport
+import sh.ahmd.wallflower.session.Status
+import sh.ahmd.wallflower.session.TcpTransport
+
+/**
+ * The session with the Mac, which outlives the app's screen: while the user
+ * is away, [ConnectionService] keeps it, and what the Mac's programs notify
+ * shows in the phone's notifications ([Notices]). It ends when the user
+ * disconnects.
+ */
+class Connection(private val context: Context, private val scope: CoroutineScope) {
+    private val prefs = context.getSharedPreferences("wallflower", Context.MODE_PRIVATE)
+    val key = HardwareKey()
+    val hostKeys = HostKeys(prefs)
+    val notices = Notices(context)
+
+    private val _host = MutableStateFlow(Host.load(prefs))
+    val host: StateFlow<Host?> = _host.asStateFlow()
+
+    private val _session = MutableStateFlow<Session?>(null)
+    val session: StateFlow<Session?> = _session.asStateFlow()
+
+    /** The user isn't looking at the app. */
+    @Volatile var away = true
+        private set
+    private var watching: Job? = null
+
+    fun configure(host: Host) {
+        host.save(prefs)
+        _host.value = host
+        connect(host)
+    }
+
+    /** Connects to the configured Mac, unless already connected. */
+    fun ensure() {
+        if (_session.value == null) _host.value?.let(::connect)
+    }
+
+    private fun connect(host: Host) {
+        _session.value?.stop()
+        watching?.cancel()
+        val transport = if (host.dev) TcpTransport() else SshTransport(host, key, hostKeys)
+        val session = Session(transport, scope)
+        session.away(away)
+        watching = scope.launch {
+            launch {
+                session.notifications.collect { n ->
+                    if (away || n.pane != session.shownPane()) notices.show(n, session.state.value)
+                }
+            }
+            session.status.collect { s ->
+                when {
+                    s is Status.Connected -> notices.lost(null)
+                    s is Status.NeedsUser && away -> {
+                        // It can't get back on its own: the user has to, from the app.
+                        notices.lost(s)
+                        ConnectionService.stop(context)
+                    }
+                }
+            }
+        }
+        _session.value = session
+        if (!away) ConnectionService.start(context)
+    }
+
+    /** Ends the session, and the service keeping it. */
+    fun disconnect() {
+        watching?.cancel()
+        _session.value?.stop()
+        _session.value = null
+        ConnectionService.stop(context)
+        notices.clear()
+    }
+
+    /** The user left the app (it's no longer on screen), or came back to it. */
+    fun away(on: Boolean) {
+        away = on
+        if (on) {
+            _session.value?.away(true)
+            return
+        }
+        ensure()
+        val session = _session.value ?: return
+        session.away(false)
+        notices.lost(null)
+        ConnectionService.start(context)
+    }
+
+    /** The pane the app shows: what the Mac's programs said there has been seen. */
+    fun seen(pane: String) = notices.cancel(pane)
+}

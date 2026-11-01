@@ -9,68 +9,66 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
 import sh.ahmd.wallflower.prefs.Preferences
-import sh.ahmd.wallflower.ui.composer.Drafts
 import sh.ahmd.wallflower.session.HardwareKey
 import sh.ahmd.wallflower.session.Host
-import sh.ahmd.wallflower.session.HostKeys
 import sh.ahmd.wallflower.session.Session
-import sh.ahmd.wallflower.session.SshTransport
-import sh.ahmd.wallflower.session.TcpTransport
+import sh.ahmd.wallflower.ui.composer.Drafts
 
+/** What the app's screen works with; the connection itself outlives it ([Connection]). */
 class AppModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("wallflower", Context.MODE_PRIVATE)
-    val key = HardwareKey()
-    val hostKeys = HostKeys(prefs)
+    private val connection = app.connection
+    val key get() = connection.key
+    val hostKeys get() = connection.hostKeys
     val drafts = Drafts(prefs, viewModelScope)
     val keyBar = KeyBarStore(prefs)
     val settings = Preferences(prefs)
     val uploads = Uploads(app.contentResolver, prefs, drafts, File(app.cacheDir, "thumbs"), viewModelScope)
-    private var listening: Job? = null
 
-    private val _host = MutableStateFlow(Host.load(prefs))
-    val host: StateFlow<Host?> = _host.asStateFlow()
-
-    private val _session = MutableStateFlow<Session?>(null)
-    val session: StateFlow<Session?> = _session.asStateFlow()
+    val host: StateFlow<Host?> get() = connection.host
+    val session: StateFlow<Session?> get() = connection.session
 
     private val _hasKey = MutableStateFlow(key.exists)
     val hasKey: StateFlow<Boolean> = _hasKey.asStateFlow()
 
+    private val _unlockSeconds = MutableStateFlow(key.unlockSeconds)
+    /** How long an unlock lets the key sign, so the app can reconnect on its own while the user is away. */
+    val unlockSeconds: StateFlow<Int?> = _unlockSeconds.asStateFlow()
+
     init {
-        _host.value?.let(::connect)
-    }
-
-    fun configure(host: Host) {
-        host.save(prefs)
-        _host.value = host
-        connect(host)
-    }
-
-    private fun connect(host: Host) {
-        _session.value?.stop()
-        listening?.cancel()
-        val transport = if (host.dev) TcpTransport() else SshTransport(host, key, hostKeys)
-        val session = Session(transport, viewModelScope)
-        listening = viewModelScope.launch {
-            launch { session.undelivered.collect { drafts.restore(it.pane, it.text) } }
-            launch { session.state.filterNotNull().collect { s -> drafts.keep(s.windows.flatMapTo(HashSet()) { w -> w.panes.map { it.id } }) } }
-            session.uploadDir.filterNotNull().collect(uploads::savedIn)
+        connection.ensure()
+        viewModelScope.launch {
+            connection.session.filterNotNull().collectLatest { session ->
+                launch { session.undelivered.collect { drafts.restore(it.pane, it.text) } }
+                launch { session.state.filterNotNull().collect { s -> drafts.keep(s.windows.flatMapTo(HashSet()) { w -> w.panes.map { it.id } }) } }
+                session.uploadDir.filterNotNull().collect(uploads::savedIn)
+            }
         }
-        _session.value = session
     }
 
-    fun onForeground() {
-        _session.value?.probe()
-    }
+    /** A pane to show, from a notification tapped. */
+    val opening = MutableStateFlow<String?>(null)
+
+    fun configure(host: Host) = connection.configure(host)
+
+    /** The app shows [pane]: what its program notified has been seen. */
+    fun seen(pane: String) = connection.seen(pane)
+
+    /** Ends the session: the app's done with the Mac until it's opened again. */
+    fun disconnect() = connection.disconnect()
 
     /** Creates the key if needed; returns why it couldn't, e.g. no screen lock. */
-    fun createKey(): String? = try {
-        if (!key.exists) key.generate()
+    fun createKey(): String? = if (key.exists) null else newKey(HardwareKey.AUTH_SECONDS)
+
+    /** Makes a new key, usable for [seconds] after an unlock, in place of the old; it needs authorizing on the Mac. */
+    fun newKey(seconds: Int): String? = try {
+        key.generate(seconds)
         _hasKey.value = true
+        _unlockSeconds.value = key.unlockSeconds
         null
     } catch (e: IllegalStateException) {
         "Set a screen lock first: the key is guarded by your fingerprint or PIN. (${e.message})"
@@ -79,8 +77,4 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     /** The command that authorizes this phone's key on the Mac. */
     fun authorizeCommand(): String =
         "~/go/bin/wallflower authorize '${key.authorizedKey("wallflower@" + Build.MODEL.replace(' ', '-'))}'"
-
-    override fun onCleared() {
-        _session.value?.stop()
-    }
 }

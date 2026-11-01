@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import sh.ahmd.wallflower.BuildConfig
 import sh.ahmd.wallflower.session.Blocked
+import sh.ahmd.wallflower.session.HardwareKey
 import sh.ahmd.wallflower.session.Host
 
 @Composable
@@ -41,6 +42,8 @@ fun SetupScreen(
     fingerprint: String?,
     authorizeCommand: () -> String,
     createKey: () -> String?,
+    unlockSeconds: Int?,
+    newKey: (seconds: Int) -> String?,
     onConnect: (Host) -> Unit,
 ) {
     val initial = host ?: Host()
@@ -83,6 +86,20 @@ fun SetupScreen(
                 Button("copy") { copy(context, command) }
                 Button("share") { share(context, command) }
             }
+            Text("Unlocked for", color = Palette.fg, style = Type.label)
+            Body("How long after your fingerprint or screen lock (unlocking the phone counts) the key works, so the app can reconnect on its own while you're away.")
+            var picked by remember { mutableStateOf<Int?>(null) }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (s in UNLOCKS) Chip(unlockLabel(s), (picked ?: unlockSeconds) == s) { picked = s.takeIf { it != unlockSeconds } }
+            }
+            picked?.let { s ->
+                Body("The time is part of the key, so this makes a new one. Authorize it on the Mac before this connection ends (a pane here works): until then, only the Mac can let the phone back in.")
+                Button("make a new key, unlocked for ${unlockLabel(s)}", primary = true) {
+                    keyError = newKey(s)
+                    picked = null
+                }
+            }
+            keyError?.let { Text(it, color = Palette.red, style = Type.label) }
         } else {
             Button("create key") { keyError = createKey() }
             keyError?.let { Text(it, color = Palette.red, style = Type.label) }
@@ -95,10 +112,15 @@ fun SetupScreen(
     }
 }
 
+private val UNLOCKS = listOf(5 * 60, 30 * 60, 2 * 3600, 8 * 3600)
+
+private fun unlockLabel(seconds: Int) = if (seconds < 3600) "${seconds / 60} min" else "${seconds / 3600} h"
+
 /** What to do about a connection that's waiting on the user. */
 @Composable
 fun BlockedCard(
     blocked: Blocked,
+    unlockSeconds: Int?,
     authorizeCommand: () -> String,
     onUnlock: () -> Unit,
     onTrust: (Blocked.UnknownHost) -> Unit,
@@ -119,7 +141,7 @@ fun BlockedCard(
         when (blocked) {
             is Blocked.KeyLocked -> {
                 Title("key locked")
-                Body("Your fingerprint or screen lock unlocks the key for 5 minutes.")
+                Body("Your fingerprint or screen lock unlocks the key for ${unlockLabel(unlockSeconds ?: HardwareKey.AUTH_SECONDS)}.")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button("unlock", primary = true, onClick = onUnlock)
                     Button("settings", onClick = onSetup)

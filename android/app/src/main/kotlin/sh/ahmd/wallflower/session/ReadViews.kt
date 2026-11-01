@@ -15,16 +15,29 @@ internal class ReadViews(private val link: Link) {
     val readings: StateFlow<Map<String, Reading>> = _readings.asStateFlow()
 
     @Volatile private var wanted: Set<String> = emptySet()
+    @Volatile private var quiet = false // the user is away: none stream, until they're back
     private val asked = HashSet<String>() // what this connection was asked for; guarded by the link's lock
 
     fun linked() = asked.clear()
 
     /** A new connection is asked for them all again. */
-    fun up() = read(wanted)
+    fun up() = ask()
 
     /** Has the gateway send these panes' read views, and no others'. */
     fun read(panes: Set<String>) {
         wanted = panes
+        ask()
+        _readings.update { r -> if (r.keys.all { it in panes }) r else r.filterKeys { it in panes } }
+    }
+
+    /** Away a while, none stream; what they showed stays until they're back. */
+    fun quiet(on: Boolean) {
+        quiet = on
+        ask()
+    }
+
+    private fun ask() {
+        val panes = if (quiet) emptySet() else wanted
         synchronized(link.lock) {
             if (link.linked) {
                 for (p in asked - panes) link.send(Read(p, on = false))
@@ -33,7 +46,6 @@ internal class ReadViews(private val link: Link) {
                 asked += panes
             }
         }
-        _readings.update { r -> if (r.keys.all { it in panes }) r else r.filterKeys { it in panes } }
     }
 
     fun entries(m: Entries) {

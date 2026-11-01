@@ -1,12 +1,14 @@
 package sh.ahmd.wallflower.session
 
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
 import android.security.keystore.UserNotAuthenticatedException
 import com.jcraft.jsch.Identity
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
+import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -20,7 +22,8 @@ import java.util.Base64
  * The phone's SSH key: ECDSA P-256 generated inside Android Keystore,
  * StrongBox-backed where the device has one. The private key can't leave the
  * secure hardware. Signing needs the device unlocked, and the user's
- * fingerprint or screen lock at most every [AUTH_SECONDS].
+ * fingerprint or screen lock (unlocking the phone counts) within the time
+ * it was made with ([unlockSeconds]); that can't change after.
  */
 class HardwareKey(private val alias: String = "wallflower-ssh") {
     private val keystore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -31,21 +34,27 @@ class HardwareKey(private val alias: String = "wallflower-ssh") {
     @Volatile var locked = false
         private set
 
-    /** Throws IllegalStateException if the device has no secure screen lock. */
-    fun generate() {
+    /** How long an unlock lets it sign, as it was made; null without one. */
+    val unlockSeconds: Int?
+        get() = if (!exists) null else KeyFactory.getInstance(privateKey.algorithm, "AndroidKeyStore")
+            .getKeySpec(privateKey, KeyInfo::class.java).userAuthenticationValidityDurationSeconds
+
+    /** Makes the key, in place of any before, usable for [seconds] after an unlock. Throws IllegalStateException if the device has no secure screen lock. */
+    fun generate(seconds: Int = AUTH_SECONDS) {
+        if (exists) keystore.deleteEntry(alias)
         try {
-            generate(strongBox = true)
+            generate(seconds, strongBox = true)
         } catch (_: StrongBoxUnavailableException) {
-            generate(strongBox = false)
+            generate(seconds, strongBox = false)
         }
     }
 
-    private fun generate(strongBox: Boolean) {
+    private fun generate(seconds: Int, strongBox: Boolean) {
         val spec = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
             .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
             .setDigests(KeyProperties.DIGEST_SHA256)
             .setUserAuthenticationRequired(true)
-            .setUserAuthenticationParameters(AUTH_SECONDS, KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL)
+            .setUserAuthenticationParameters(seconds, KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL)
             .setUnlockedDeviceRequired(true)
             .setIsStrongBoxBacked(strongBox)
             .build()

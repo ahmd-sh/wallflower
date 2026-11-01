@@ -24,8 +24,20 @@ internal class Terminals(private val link: Link) {
     /** Pane -> history lines it has, least recently viewed first; what this connection opened. */
     private val opened = LinkedHashMap<String, Int>()
 
+    /** Every pane stopped streaming: the user is away; terminals keep what they show until they open again. */
+    private var quiet = false
+
     /** A new connection opens panes again, from its first state. */
     fun linked() = synchronized(opened) { opened.clear() }
+
+    fun quiet(on: Boolean) {
+        val closing = synchronized(opened) {
+            quiet = on
+            if (!on) return
+            opened.keys.toList().also { opened.clear() }
+        }
+        closing.forEach { link.send(Close(it)) }
+    }
 
     /**
      * Opens a pane, or reopens it with its scrollback if it only had its
@@ -36,6 +48,7 @@ internal class Terminals(private val link: Link) {
     fun open(pane: String, viewed: Boolean, full: Boolean = viewed) {
         val history = if (full) DEFAULT_HISTORY else PREVIEW_HISTORY
         val evict = synchronized(opened) {
+            if (quiet) return
             val had = opened[pane]
             if (had == null && !full && opened.size >= MAX_OPEN) return
             if (had != null && had >= history) {

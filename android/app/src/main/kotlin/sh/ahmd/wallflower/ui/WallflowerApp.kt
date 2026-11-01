@@ -40,7 +40,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Constraints
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.protocol.Pane
@@ -51,6 +54,7 @@ import sh.ahmd.wallflower.read.activityOf
 import sh.ahmd.wallflower.session.Blocked
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Status
+import sh.ahmd.wallflower.session.activePane
 import sh.ahmd.wallflower.session.shownPane
 import sh.ahmd.wallflower.terminal.TerminalView
 import sh.ahmd.wallflower.ui.composer.Attachments
@@ -84,6 +88,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     val host by model.host.collectAsStateWithLifecycle()
     val session by model.session.collectAsStateWithLifecycle()
     val hasKey by model.hasKey.collectAsStateWithLifecycle()
+    val unlockSeconds by model.unlockSeconds.collectAsStateWithLifecycle()
     var screen by remember { mutableStateOf<Screen>(Screen.Terminal) }
     var program by remember { mutableStateOf<String?>(null) }
     val focus = LocalFocusManager.current
@@ -96,6 +101,8 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
             fingerprint = if (hasKey) model.key.fingerprint else null,
             authorizeCommand = model::authorizeCommand,
             createKey = model::createKey,
+            unlockSeconds = unlockSeconds,
+            newKey = model::newKey,
         ) {
             model.configure(it)
             screen = Screen.Terminal
@@ -186,6 +193,18 @@ private fun TerminalScreen(
     val window = windows.firstOrNull { it.id == viewing } ?: windows.firstOrNull { it.active }
     val pane = window?.shownPane(chosen)
     LaunchedEffect(pane?.command) { onProgram(pane?.command) }
+    // A notification tapped shows its pane; until then, the one shown isn't what's looked at.
+    val opening by model.opening.collectAsStateWithLifecycle()
+    val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val looking = lifecycle.isAtLeast(Lifecycle.State.STARTED) && opening == null
+    LaunchedEffect(pane?.id, looking) { if (looking) pane?.let { model.seen(it.id) } }
+    LaunchedEffect(opening, windows) {
+        val id = opening ?: return@LaunchedEffect
+        val w = windows.firstOrNull { w -> w.panes.any { it.id == id } } ?: return@LaunchedEffect
+        model.opening.value = null
+        session.view(w)
+        if (w.activePane()?.id != id) session.show(w, w.panes.first { it.id == id })
+    }
     val haptics = haptics()
     val focusManager = LocalFocusManager.current
 
@@ -259,6 +278,7 @@ private fun TerminalScreen(
             lastBlocked?.let {
                 BlockedCard(
                     blocked = it,
+                    unlockSeconds = model.unlockSeconds.value,
                     authorizeCommand = model::authorizeCommand,
                     onUnlock = { unlock { ok -> if (ok) session.retry() } },
                     onTrust = { k -> model.hostKeys.trust(k); session.retry() },

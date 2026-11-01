@@ -154,3 +154,18 @@ internal fun copy(context: Context, text: String) {
     val clipboard = context.getSystemService(ClipboardManager::class.java)
     clipboard.setPrimaryClip(ClipData.newPlainText("wallflower", text))
 }
+
+/** A choice among a few, or a key to add: on when [selected]. */
+@Composable
+internal fun Chip(label: String, selected: Boolean, font: FontFamily = Mono, onClick: () -> Unit) {
+    val haptics = haptics()
+    Pill(
+        label,
+        on = selected,
+        font = font,
+        input = Modifier.clickable {
+            if (!selected) haptics.tick()
+            onClick()
+        },
+    )
+}
