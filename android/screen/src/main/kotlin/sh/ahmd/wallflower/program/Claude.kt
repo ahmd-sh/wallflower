@@ -70,6 +70,10 @@ object Claude : Program {
 
     override fun prompt(screen: Screen): Prompt? = Prompt.read(screen)
 
+    /** Not those that go on to have the user type, as telling Claude what to change of a plan. */
+    override fun answers(prompt: Prompt): List<Prompt.Option> =
+        super.answers(prompt.copy(options = prompt.options.filterNot { it.label.startsWith("Tell Claude") }))
+
     /**
      * Claude runs in vim mode, and where it can't be seen it may be in
      * NORMAL (after an Esc), where keys are commands: A first goes back to

@@ -1,13 +1,19 @@
 package sh.ahmd.wallflower.session
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.getAndUpdate
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import sh.ahmd.wallflower.protocol.Close
 import sh.ahmd.wallflower.protocol.DEFAULT_HISTORY
 import sh.ahmd.wallflower.protocol.Open
 import sh.ahmd.wallflower.protocol.Reset
+import sh.ahmd.wallflower.screen.Screen
 import sh.ahmd.wallflower.terminal.Terminal
 
 /**
@@ -66,6 +72,43 @@ internal class Terminals(private val link: Link) {
         }
     }
 
+    /**
+     * [pane]'s screen once its output settles, opening it for the while if
+     * it isn't streaming (the user's away); null if it can't be had.
+     */
+    suspend fun peek(pane: String): Screen? {
+        val before = _terminals.value[pane]
+        val opening = synchronized(opened) { pane !in opened }
+        if (opening && !link.send(Open(pane, PREVIEW_HISTORY))) return null
+        try {
+            val term = if (!opening) {
+                before
+            } else {
+                withTimeoutOrNull(PEEK_OPEN_MS) { terminals.first { it[pane].let { t -> t != null && t !== before } }[pane] }
+            } ?: return null
+            settle(term, painted = !opening)
+            return withContext(Dispatchers.Default) { term.screen() }
+        } finally {
+            // Unless it's been opened since, as the user came back.
+            if (opening) synchronized(opened) { if (pane !in opened) link.send(Close(pane)) }
+        }
+    }
+
+    /** Until [term]'s had no output for a moment, once it has some unless it's [painted]. */
+    private suspend fun settle(term: Terminal, painted: Boolean) {
+        val changed = Channel<Unit>(Channel.CONFLATED)
+        val output = Runnable { changed.trySend(Unit) }
+        term.addListener(output)
+        try {
+            withTimeoutOrNull(PEEK_SETTLE_MAX_MS) {
+                if (!painted) changed.receive()
+                while (withTimeoutOrNull(PEEK_QUIET_MS) { changed.receive() } != null) Unit
+            }
+        } finally {
+            term.removeListener(output)
+        }
+    }
+
     /** The gateway repaints a pane from scratch, in a new terminal. */
     fun reset(m: Reset) {
         val term = Terminal(m.cols, m.rows)
@@ -87,5 +130,8 @@ internal class Terminals(private val link: Link) {
     companion object {
         const val MAX_OPEN = 64
         const val PREVIEW_HISTORY = 1
+        const val PEEK_OPEN_MS = 3_000L
+        const val PEEK_QUIET_MS = 250L
+        const val PEEK_SETTLE_MAX_MS = 2_000L
     }
 }

@@ -25,6 +25,7 @@ import sh.ahmd.wallflower.protocol.State
 import sh.ahmd.wallflower.protocol.Uploaded
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.read.Reading
+import sh.ahmd.wallflower.screen.Screen
 import sh.ahmd.wallflower.terminal.Terminal
 
 /**
@@ -160,6 +161,9 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
         reads.quiet(on)
         if (!on) workspace.reopen()
     }
+
+    /** [pane]'s screen as it settles, streamed for the while if it isn't; see [Terminals.peek]. */
+    suspend fun peek(pane: String): Screen? = panes.peek(pane)
 
     /** The pane the phone shows, if any. */
     fun shownPane(): String? {

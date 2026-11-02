@@ -15,6 +15,17 @@ interface Program {
     /** Choices the program offers on its screen, to answer by touch. */
     fun prompt(screen: Screen): Prompt? = null
 
+    /**
+     * Options of [prompt] a notification can answer it with, as buttons
+     * (Android shows [ANSWERS]): those a key picks outright, the first and
+     * the last ones if there are more. None for several questions at once.
+     */
+    fun answers(prompt: Prompt): List<Prompt.Option> {
+        if (prompt.tabs.size > 1) return emptyList()
+        val picks = prompt.options.filter { it.number != null && it.scroll == 0 && it.checked == null && !it.muted }
+        return if (picks.size <= ANSWERS) picks else picks.take(ANSWERS - 1) + picks.last()
+    }
+
     /** What empties a row of the input line; empty if nothing does, and the box adds to the line. */
     val clearKeys: List<String>
 
@@ -35,6 +46,9 @@ interface Program {
     /** What picking [option] of [prompt] does besides answering it, if wallflower needs to know. */
     fun picked(prompt: Prompt, option: Prompt.Option): Effect? = null
 }
+
+/** Buttons a notification has room for. */
+const val ANSWERS = 3
 
 /** Something picking an option did that the program won't record until later. */
 sealed interface Effect {
