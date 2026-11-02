@@ -20,9 +20,9 @@ import kotlin.math.abs
 import kotlin.math.floor
 import kotlinx.coroutines.flow.collectLatest
 
-/** Switches a pane between its terminal and its read view. */
+/** Switches a pane between its terminal and its mobile view. */
 @Composable
-internal fun ViewToggle(reading: Boolean, onClick: () -> Unit) {
+internal fun ViewToggle(mobile: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .padding(vertical = 8.dp)
@@ -30,7 +30,7 @@ internal fun ViewToggle(reading: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 9.dp, vertical = 4.dp),
     ) {
-        Crossfade(reading, animationSpec = Motion.effect(), label = "view") {
+        Crossfade(mobile, animationSpec = Motion.effect(), label = "view") {
             GlyphIcon(if (it) Glyph.Terminal else Glyph.Chat, Palette.fg, size = 14.dp)
         }
     }

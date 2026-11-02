@@ -92,7 +92,7 @@ type Kill struct {
 	Pane   string `json:"pane,omitempty"`
 }
 
-// Read starts or stops a pane's read view arriving as Entries; a pane has
+// Read starts or stops a pane's mobile view arriving as Entries; a pane has
 // one when Pane.Reader names its reader.
 type Read struct {
 	Pane string `json:"pane"`
@@ -170,7 +170,7 @@ type Pane struct {
 	Title   string `json:"title,omitempty"`
 	Path    string `json:"path,omitempty"`
 	Command string `json:"command"`
-	// Reader names what reads the pane's program for its read view
+	// Reader names what reads the pane's program for its mobile view
 	// (claude), if anything does; see Read.
 	Reader string `json:"reader,omitempty"`
 	// Activity is what the pane's program is doing, if it says
@@ -195,7 +195,7 @@ type Reset struct {
 	Rows int    `json:"rows"`
 }
 
-// Entries carries a pane's read view. With Reset, its latest entries
+// Entries carries a pane's mobile view. With Reset, its latest entries
 // replace any before (More says earlier ones weren't sent); otherwise these
 // entries are new, or replace the ones with their IDs. Error says why there
 // is nothing to read (any more). Context is how many tokens the
@@ -210,7 +210,7 @@ type Entries struct {
 	Context *int    `json:"context,omitempty"`
 }
 
-// Entry is one part of a read view: something said, or a step taken.
+// Entry is one part of a mobile view: something said, or a step taken.
 type Entry struct {
 	ID        string `json:"id"`
 	From      string `json:"from"`             // FromUser or FromProgram

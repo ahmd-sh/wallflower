@@ -168,10 +168,10 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
 
 /**
  * The session's terminals: tabs, the shown window's panes to swipe between
- * (each its terminal, or its read view), the composer, and the cards of
+ * (each its terminal, or its mobile view), the composer, and the cards of
  * every pane. What's shown is the phone's own; tmux follows. A terminal is
  * typed into straight from the keyboard, which a tap on it brings up; a
- * read view is written for in the composer's box.
+ * mobile view is written for in the composer's box.
  */
 @Composable
 private fun TerminalScreen(
@@ -211,17 +211,17 @@ private fun TerminalScreen(
     // Text the gateway never confirmed comes back into the box; it's felt, as it may not be seen.
     LaunchedEffect(session) { session.undelivered.collect { haptics.reject() } }
 
-    // Panes whose program can be read show their read view while it's on: the shown pane's, and its
+    // Panes whose program has a mobile view show it while it's on: the shown pane's, and its
     // neighbours', so a swipe brings theirs in already loaded.
     val readings by session.readings.collectAsStateWithLifecycle()
-    val readViewOn by model.settings.readView.flow.collectAsStateWithLifecycle()
+    val mobileViewOn by model.settings.mobileView.flow.collectAsStateWithLifecycle()
     val nearby = window?.panes?.sortedBy { it.index }?.let { panes ->
         val i = panes.indexOfFirst { it.id == pane?.id }
         if (i < 0) emptyList() else listOf(-1, 0, 1).map { panes[(i + it).mod(panes.size)] }.distinct()
     }.orEmpty()
-    val readViews = if (readViewOn) nearby.filter { it.reader.isNotEmpty() }.map { it.id }.toSet() else emptySet()
-    LaunchedEffect(readViews) { session.read(readViews) }
-    val readView = pane != null && pane.id in readViews
+    val mobileViews = if (mobileViewOn) nearby.filter { it.reader.isNotEmpty() }.map { it.id }.toSet() else emptySet()
+    LaunchedEffect(mobileViews) { session.read(mobileViews) }
+    val mobileView = pane != null && pane.id in mobileViews
 
     fun actionsOf(p: Pane): PaneActions {
         val program = Programs.of(p.command)
@@ -234,7 +234,7 @@ private fun TerminalScreen(
         pane?.id,
         pane?.let { terminals[it.id] },
         actions?.program ?: Programs.of(""),
-        asks = readView && activity != Activity.Working, // a prompt while the program works isn't one to answer
+        asks = mobileView && activity != Activity.Working, // a prompt while the program works isn't one to answer
         activity,
     )
 
@@ -308,7 +308,7 @@ private fun TerminalScreen(
         fun Page(p: Pane?, current: Boolean, swipe: Swipe?) = PanePage(
             actions = remember(session, p, bar) { p?.let(::actionsOf) },
             terminal = p?.let { terminals[it.id] },
-            reading = p?.takeIf { it.id in readViews }?.let { readings[it.id] ?: Reading() },
+            reading = p?.takeIf { it.id in mobileViews }?.let { readings[it.id] ?: Reading() },
             current = current,
             swipe = swipe,
             settleHeight = settleHeight,
@@ -317,7 +317,7 @@ private fun TerminalScreen(
             line = { screen.line },
             onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
             onView = { view = it },
-            onTap = if (current && p != null && p.id !in readViews) typing::start else null,
+            onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
         )
 
         // The panes take what the composer leaves; the cards cover both. While the
@@ -376,9 +376,9 @@ private fun TerminalScreen(
                                     enter = fadeIn(Motion.effect()) + expandHorizontally(Motion.spatial()),
                                     exit = fadeOut(Motion.effect()) + shrinkHorizontally(Motion.spatial()),
                                 ) {
-                                    ViewToggle(reading = readView) {
-                                        haptics.toggle(!readView)
-                                        model.settings.readView.set(!readView)
+                                    ViewToggle(mobile = mobileView) {
+                                        haptics.toggle(!mobileView)
+                                        model.settings.mobileView.set(!mobileView)
                                     }
                                 }
                                 key(window.id) {
@@ -410,15 +410,15 @@ private fun TerminalScreen(
                             ),
                             onClear = if (!actions.clears) null else {
                                 {
-                                    screen.line?.let { actions.clear(it, unseen = readView) }
+                                    screen.line?.let { actions.clear(it, unseen = mobileView) }
                                     screen.line = null // gone at once; the next read says what's there now
                                 }
                             },
                             onKey = {
-                                if (!readView) view?.scrollToBottom()
+                                if (!mobileView) view?.scrollToBottom()
                                 actions.keys(it.keys, it.bindings)
                             },
-                            typing = if (readView) null else typing,
+                            typing = if (mobileView) null else typing,
                             sendKeys = actions.sendKeys,
                             returnKeys = actions.returnKeys,
                             onType = { text ->
@@ -429,12 +429,12 @@ private fun TerminalScreen(
                             onSend = { text, enter ->
                                 // The box replaces whatever the app's line holds.
                                 val known = screen.line
-                                actions.send(text, enter, known, unseen = readView).also { sent ->
+                                actions.send(text, enter, known, unseen = mobileView).also { sent ->
                                     if (sent && '\n' !in text && known?.text.isNullOrEmpty()) view?.predict(text)
                                 }
                             },
                             onEnter = {
-                                if (readView) {
+                                if (mobileView) {
                                     actions.enter()
                                 } else {
                                     view?.scrollToBottom()

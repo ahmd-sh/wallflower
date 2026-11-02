@@ -112,7 +112,7 @@ class SessionTest {
     private fun <T> eventually(block: suspend () -> T): T = runBlocking { withTimeout(5_000) { block() } }
 
     @Test
-    fun aConnectionSaysHelloOpensThePanesAndAsksForReadViews() {
+    fun aConnectionSaysHelloOpensThePanesAndAsksForMobileViews() {
         val g = connect()
         session.start(56, 20)
         assertEquals(ClientHello(VERSION, 56, 20), g.message<ClientHello>())
@@ -147,7 +147,7 @@ class SessionTest {
     }
 
     @Test
-    fun aNewConnectionAsksForItsReadViewsAndOpensItsPanesAgain() {
+    fun aNewConnectionAsksForItsMobileViewsAndOpensItsPanesAgain() {
         val first = connect()
         session.start(56, 20)
         session.read(setOf("%1"))

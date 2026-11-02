@@ -5,16 +5,16 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/ahmd-sh/wallflower/internal/mobileview"
 	"github.com/ahmd-sh/wallflower/internal/proc"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
-	"github.com/ahmd-sh/wallflower/internal/readview"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 const stateDelay = 15 * time.Millisecond // tmux announces a change in several notifications
 
 // sendState sends the session's state if it changed, and brings open panes
-// and read views in line with it.
+// and mobile views in line with it.
 func (g *gateway) sendState() {
 	g.dirty = false
 	s, err := g.tmux.Snapshot()
@@ -24,7 +24,7 @@ func (g *gateway) sendState() {
 	}
 	g.snapshot = s
 	readers := g.readers(s)
-	g.found = map[string]readview.Found{}
+	g.found = map[string]mobileview.Found{}
 	for id, r := range readers {
 		g.found[id] = r.found
 	}

@@ -46,19 +46,19 @@ internal class PaneActions(
     /** Whether anything empties its input line. */
     val clears: Boolean get() = clearKeys.isNotEmpty()
 
-    /** Empties [line] in the pane; [unseen] while the read view covers the program. */
+    /** Empties [line] in the pane; [unseen] while the mobile view covers the program. */
     fun clear(line: InputLine, unseen: Boolean) = keys(program.clear(line, clearKeys, unseen))
 
     /** Sends composed text in place of whatever [line] held; false if it couldn't go. */
     fun send(text: String, enter: Boolean, line: InputLine?, unseen: Boolean): Boolean =
         session.submit(pane.id, text, enter, line?.let { program.clear(it, clearKeys, unseen) }.orEmpty())
 
-    /** Compacts its conversation, if its program can; it's under the read view, so unseen. */
+    /** Compacts its conversation, if its program can; it's under the mobile view, so unseen. */
     val compact: ((InputLine?) -> Unit)? = program.compact?.let { command ->
         { line -> send(command, enter = true, line, unseen = true) }
     }
 
-    /** A picture entry of the pane's read view, its bytes. */
+    /** A picture entry of the pane's mobile view, its bytes. */
     suspend fun picture(id: String): ByteArray? = session.picture(pane.id, id)
 
     /** An option picked from a prompt the pane offered. */

@@ -8,7 +8,7 @@ import (
 
 	"github.com/ahmd-sh/wallflower/internal/claude"
 	"github.com/ahmd-sh/wallflower/internal/gateway"
-	"github.com/ahmd-sh/wallflower/internal/readview"
+	"github.com/ahmd-sh/wallflower/internal/mobileview"
 )
 
 const usage = `usage: wallflower <command> [flags]
@@ -43,9 +43,9 @@ func main() {
 func gatewayFlags(fs *flag.FlagSet) func() gateway.Options {
 	socket := fs.String("L", "", "tmux socket name, or path if it contains a slash")
 	session := fs.String("t", "", "session to attach to when the client doesn't name one")
-	claudeDir := fs.String("claude", defaultClaudeDir(), "Claude Code's data, for its read views (empty: none)")
+	claudeDir := fs.String("claude", defaultClaudeDir(), "Claude Code's data, for its mobile views (empty: none)")
 	return func() gateway.Options {
-		var readers []readview.Source
+		var readers []mobileview.Source
 		if *claudeDir != "" {
 			readers = append(readers, claude.New(*claudeDir))
 		}

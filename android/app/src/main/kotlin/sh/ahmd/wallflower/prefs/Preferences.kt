@@ -33,13 +33,13 @@ class Preferences(private val prefs: SharedPreferences) {
     /** Whether closing a window (or its last pane) asks first. */
     val askClosingWindow = boolean(ASK_WINDOW, true)
 
-    /** Panes whose program can be read show their read view rather than the terminal: one switch, for every pane. */
-    val readView = boolean(READ_VIEW, prefs.getStringSet(OLD_READ_PANES, null).orEmpty().isNotEmpty())
+    /** Panes whose program has a mobile view show it rather than the terminal: one switch, for every pane. */
+    val mobileView = boolean(MOBILE_VIEW, prefs.getBoolean(OLD_READ_VIEW, false) || prefs.getStringSet(OLD_READ_PANES, null).orEmpty().isNotEmpty())
 
     init {
-        // Read views used to be switched per pane, and offered or not.
-        if (prefs.contains(OLD_READ_PANES) || prefs.contains(OLD_OFFERED)) {
-            prefs.edit().putBoolean(READ_VIEW, readView.value).remove(OLD_READ_PANES).remove(OLD_OFFERED).apply()
+        // Mobile views were read views, and before that switched per pane, and offered or not.
+        if (prefs.contains(OLD_READ_VIEW) || prefs.contains(OLD_READ_PANES) || prefs.contains(OLD_OFFERED)) {
+            prefs.edit().putBoolean(MOBILE_VIEW, mobileView.value).remove(OLD_READ_VIEW).remove(OLD_READ_PANES).remove(OLD_OFFERED).apply()
         }
     }
 
@@ -54,7 +54,8 @@ class Preferences(private val prefs: SharedPreferences) {
         const val HAPTICS = "haptics"
         const val ASK_PANE = "confirm_close_pane"
         const val ASK_WINDOW = "confirm_close_window"
-        const val READ_VIEW = "read_view"
+        const val MOBILE_VIEW = "mobile_view"
+        const val OLD_READ_VIEW = "read_view"
         const val OLD_READ_PANES = "conversation_panes"
         const val OLD_OFFERED = "conversations_offered"
     }

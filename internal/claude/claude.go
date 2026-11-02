@@ -1,4 +1,4 @@
-// Package claude reads Claude Code's panes for their read views: which
+// Package claude reads Claude Code's panes for their mobile views: which
 // conversation each running claude process is in, and what it's doing, from
 // sessions/<pid>.json, and the conversation, from
 // projects/<dir>/<session>.jsonl, both under ~/.claude. Neither format is
@@ -20,8 +20,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ahmd-sh/wallflower/internal/mobileview"
 	"github.com/ahmd-sh/wallflower/internal/proc"
-	"github.com/ahmd-sh/wallflower/internal/readview"
 )
 
 const (
@@ -52,17 +52,17 @@ func (s *Source) Name() string { return "claude" }
 
 // Find picks the panes a claude runs in, by the terminals they share, with
 // what each is doing.
-func (s *Source) Find(panes []readview.Pane) map[string]readview.Found {
+func (s *Source) Find(panes []mobileview.Pane) map[string]mobileview.Found {
 	ids := map[string]string{}
 	for _, p := range panes {
 		if p.TTY != "" {
 			ids[p.TTY] = p.ID
 		}
 	}
-	found := map[string]readview.Found{}
+	found := map[string]mobileview.Found{}
 	for pid, sess := range s.running() {
 		if id, ok := ids[s.tty(pid)]; ok {
-			found[id] = readview.Found{Activity: sess.activity, Since: sess.since}
+			found[id] = mobileview.Found{Activity: sess.activity, Since: sess.since}
 		}
 	}
 	return found
@@ -71,7 +71,7 @@ func (s *Source) Find(panes []readview.Pane) map[string]readview.Found {
 var errNone = errors.New("no conversation in this pane")
 
 // Read follows the conversation of the claude running in a pane.
-func (s *Source) Read(ctx context.Context, pane readview.Pane, send func(readview.Update)) error {
+func (s *Source) Read(ctx context.Context, pane mobileview.Pane, send func(mobileview.Update)) error {
 	pid := 0
 	for p := range s.running() {
 		if pane.TTY != "" && s.tty(p) == pane.TTY {
@@ -81,11 +81,11 @@ func (s *Source) Read(ctx context.Context, pane readview.Pane, send func(readvie
 	if pid == 0 {
 		return errNone
 	}
-	recording := func() (readview.Recording, bool) {
+	recording := func() (mobileview.Recording, bool) {
 		sess, ok := s.running()[pid]
-		return readview.Recording{Path: sess.path}, ok
+		return mobileview.Recording{Path: sess.path}, ok
 	}
-	return readview.Tail(ctx, recording, newParser, send)
+	return mobileview.Tail(ctx, recording, newParser, send)
 }
 
 func (s *Source) tty(pid int) string {
@@ -106,18 +106,18 @@ var sessionID = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 // activities are what claude says it's doing: busy on a turn, waiting on a
 // prompt or question mid-turn, or idle. Shell is idle with background tasks
 // still running, which can go on long after the turn.
-var activities = map[string]readview.Activity{
-	"busy":    readview.Working,
-	"shell":   readview.Idle,
-	"waiting": readview.Waiting,
-	"idle":    readview.Idle,
+var activities = map[string]mobileview.Activity{
+	"busy":    mobileview.Working,
+	"shell":   mobileview.Idle,
+	"waiting": mobileview.Waiting,
+	"idle":    mobileview.Idle,
 }
 
 // A session is a running claude's conversation: where it's recorded, and
 // what claude is doing, since when.
 type session struct {
 	path     string
-	activity readview.Activity
+	activity mobileview.Activity
 	since    int64
 }
 
@@ -181,15 +181,15 @@ var notAlnum = regexp.MustCompile(`[^A-Za-z0-9]`)
 
 func projectDir(cwd string) string { return notAlnum.ReplaceAllString(cwd, "-") }
 
-func newParser() readview.Parser {
-	return &parser{tools: map[string]readview.Entry{}, next: map[string][]string{}, left: map[string]bool{}}
+func newParser() mobileview.Parser {
+	return &parser{tools: map[string]mobileview.Entry{}, next: map[string][]string{}, left: map[string]bool{}}
 }
 
 type parser struct {
-	tools    map[string]readview.Entry // calls waiting for their result, by tool_use id
-	context  int                       // tokens in context as of the latest reply or compaction
-	next     map[string][]string       // record -> the records going on from it
-	left     map[string]bool           // records a rewind left behind
+	tools    map[string]mobileview.Entry // calls waiting for their result, by tool_use id
+	context  int                         // tokens in context as of the latest reply or compaction
+	next     map[string][]string         // record -> the records going on from it
+	left     map[string]bool             // records a rewind left behind
 	branches int
 }
 
@@ -260,7 +260,7 @@ func decode(raw json.RawMessage) (c content) {
 	return c
 }
 
-func (p *parser) Line(b []byte) []readview.Entry {
+func (p *parser) Line(b []byte) []mobileview.Entry {
 	var r record
 	if json.Unmarshal(b, &r) != nil || r.IsSidechain || r.UUID == "" {
 		return nil
@@ -286,11 +286,11 @@ func (p *parser) Line(b []byte) []readview.Entry {
 	}
 	if c.text != nil {
 		if e, ok := p.said(r, 0, *c.text); ok {
-			return []readview.Entry{e}
+			return []mobileview.Entry{e}
 		}
 		return nil
 	}
-	var out []readview.Entry
+	var out []mobileview.Entry
 	for i, bl := range c.blocks {
 		id := fmt.Sprintf("%s.%d", r.UUID, i)
 		switch bl.Type {
@@ -300,21 +300,21 @@ func (p *parser) Line(b []byte) []readview.Entry {
 			}
 		case "thinking":
 			if strings.TrimSpace(bl.Thinking) != "" {
-				out = append(out, readview.Entry{ID: id, From: readview.Program, Kind: readview.Thought, Text: bl.Thinking})
+				out = append(out, mobileview.Entry{ID: id, From: mobileview.Program, Kind: mobileview.Thought, Text: bl.Thinking})
 			}
 		case "tool_use":
-			e := readview.Entry{ID: id, From: readview.Program, Kind: readview.Step, Name: bl.Name, Text: brief(bl.Input), Status: readview.Running}
+			e := mobileview.Entry{ID: id, From: mobileview.Program, Kind: mobileview.Step, Name: bl.Name, Text: brief(bl.Input), Status: mobileview.Running}
 			p.tools[bl.ID] = e
 			out = append(out, e)
 			if plan := planOf(bl); plan != "" {
-				out = append(out, readview.Entry{ID: id + ".plan", From: readview.Program, Kind: readview.Said, Text: plan})
+				out = append(out, mobileview.Entry{ID: id + ".plan", From: mobileview.Program, Kind: mobileview.Said, Text: plan})
 			}
 		case "tool_result":
 			if e, ok := p.tools[bl.ToolUseID]; ok {
 				delete(p.tools, bl.ToolUseID)
-				e.Status = readview.Done
+				e.Status = mobileview.Done
 				if bl.IsError {
-					e.Status = readview.Failed
+					e.Status = mobileview.Failed
 				}
 				e.Output, e.OutputCut = result(bl.Content)
 				if len(c.blocks) == 1 { // what the record says of the result is this one's
@@ -373,11 +373,11 @@ func (c content) prompt() bool {
 
 func (p *parser) Branches() int { return p.branches }
 
-func (p *parser) Kept(entries []readview.Entry) []readview.Entry {
+func (p *parser) Kept(entries []mobileview.Entry) []mobileview.Entry {
 	if len(p.left) == 0 {
 		return entries
 	}
-	var out []readview.Entry
+	var out []mobileview.Entry
 	for _, e := range entries {
 		if uuid, _, _ := strings.Cut(e.ID, "."); !p.left[uuid] {
 			out = append(out, e)
@@ -395,28 +395,28 @@ var (
 // said is text either side wrote. claude also records slash commands and
 // their output as user text, wrapped in tags; those aren't shown. Nor is what
 // claude tells itself, like a background task finishing, but its summary is.
-func (p *parser) said(r record, i int, text string) (readview.Entry, bool) {
+func (p *parser) said(r record, i int, text string) (mobileview.Entry, bool) {
 	who := from(r.Type)
 	text = strings.TrimSpace(text)
-	if who == readview.User {
+	if who == mobileview.User {
 		if strings.HasPrefix(text, "<command-") || strings.HasPrefix(text, "<local-command-") {
-			return readview.Entry{}, false
+			return mobileview.Entry{}, false
 		}
 		if r.PromptSource == "system" {
 			m := summary.FindStringSubmatch(text)
 			if m == nil || strings.TrimSpace(m[1]) == "" {
-				return readview.Entry{}, false
+				return mobileview.Entry{}, false
 			}
-			return readview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), From: who, Kind: readview.Note, Text: strings.TrimSpace(m[1])}, true
+			return mobileview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), From: who, Kind: mobileview.Note, Text: strings.TrimSpace(m[1])}, true
 		}
 		text = strings.TrimSpace(pasted.ReplaceAllString(text, ""))
 	}
 	if text == "" {
-		return readview.Entry{}, false
+		return mobileview.Entry{}, false
 	}
-	e := readview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), From: who, Kind: readview.Said, Text: text}
-	if r.IsCompactSummary || (who == readview.User && interrupted.MatchString(text)) {
-		e.Kind = readview.Note
+	e := mobileview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), From: who, Kind: mobileview.Said, Text: text}
+	if r.IsCompactSummary || (who == mobileview.User && interrupted.MatchString(text)) {
+		e.Kind = mobileview.Note
 	}
 	return e, true
 }
@@ -461,9 +461,9 @@ func brief(input json.RawMessage) string {
 // from is who said a record of claude's type: the user, or claude.
 func from(typ string) string {
 	if typ == "user" {
-		return readview.User
+		return mobileview.User
 	}
-	return readview.Program
+	return mobileview.Program
 }
 
 var ansi = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
@@ -489,13 +489,13 @@ func result(content json.RawMessage) (string, int) {
 	return clip(strings.TrimSpace(ansi.ReplaceAllString(s, "")))
 }
 
-func image(id, who string, b block) readview.Entry {
-	e := readview.Entry{ID: id, From: who, Kind: readview.Picture}
+func image(id, who string, b block) mobileview.Entry {
+	e := mobileview.Entry{ID: id, From: who, Kind: mobileview.Picture}
 	switch {
 	case b.Source == nil || b.Source.Type != "base64":
-		e.Kind, e.Text = readview.Note, "[image]"
+		e.Kind, e.Text = mobileview.Note, "[image]"
 	case len(b.Source.Data) > maxImage:
-		e.Kind, e.Text = readview.Note, "[image too big to show]"
+		e.Kind, e.Text = mobileview.Note, "[image too big to show]"
 	default:
 		e.Mime, e.Data = b.Source.MediaType, b.Source.Data
 	}

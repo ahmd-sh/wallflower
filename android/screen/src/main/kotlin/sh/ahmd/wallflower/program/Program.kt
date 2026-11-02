@@ -21,7 +21,7 @@ interface Program {
     /**
      * Keys that empty [line], [keys] being what empties a row (the
      * program's, or the user's own): once per row it takes, and once more.
-     * [unseen]: the program can't be seen, as under its read view.
+     * [unseen]: the program can't be seen, as under its mobile view.
      */
     fun clear(line: InputLine, keys: List<String> = clearKeys, unseen: Boolean = false): List<String> =
         List(line.rows * 2 + 1) { keys }.flatten()

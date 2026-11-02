@@ -1,4 +1,4 @@
-package readview
+package mobileview
 
 import (
 	"bytes"

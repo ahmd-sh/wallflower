@@ -1,7 +1,7 @@
 package sh.ahmd.wallflower.read
 
 /**
- * A pane's read view, as its program has it. [loaded] once the gateway has
+ * A pane's mobile view, as its program has it. [loaded] once the gateway has
  * sent it; [more] if there were earlier entries than these; [problem] when
  * there's nothing to read. [context] is how many tokens it takes of the
  * program's context, 0 while that's unknown. [rewound]: the user's message

@@ -104,7 +104,7 @@ data class Rename(val window: String, val name: String) : ClientMessage
 @SerialName("kill")
 data class Kill(val window: String? = null, val pane: String? = null) : ClientMessage
 
-/** Starts or stops [pane]'s read view arriving as [Entries]; panes with one name their reader ([Pane.reader]). */
+/** Starts or stops [pane]'s mobile view arriving as [Entries]; panes with one name their reader ([Pane.reader]). */
 @Serializable
 @SerialName("read")
 data class Read(val pane: String, val on: Boolean) : ClientMessage
@@ -165,7 +165,7 @@ data class Pane(
     val title: String = "",
     val path: String = "",
     val command: String,
-    /** What reads the pane's program for its read view (claude), if anything does; see [Read]. */
+    /** What reads the pane's program for its mobile view (claude), if anything does; see [Read]. */
     val reader: String = "",
     /** What the program is doing, if it says: [WORKING], [WAITING] or [IDLE]; [since] when, in Unix milliseconds. */
     val activity: String = "",
@@ -184,7 +184,7 @@ data class Pane(
 data class Reset(val pane: String, val cols: Int, val rows: Int) : ServerMessage
 
 /**
- * A pane's read view. With [reset], its latest entries replace any before
+ * A pane's mobile view. With [reset], its latest entries replace any before
  * ([more]: earlier ones weren't sent); otherwise these entries are new, or
  * replace the ones with their ids. [error] says why there's nothing to read.
  */
@@ -200,7 +200,7 @@ data class Entries(
     val context: Int? = null,
 ) : ServerMessage
 
-/** One part of a read view: something said, or a step taken. */
+/** One part of a mobile view: something said, or a step taken. */
 @Serializable
 data class Entry(
     val id: String,

@@ -7,24 +7,24 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ahmd-sh/wallflower/internal/mobileview"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
-	"github.com/ahmd-sh/wallflower/internal/readview"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 const (
 	activityEvery = 500 * time.Millisecond // how often programs are asked what they're doing
-	picturesKept  = 32 << 20               // bytes of a read view's pictures kept for the client to ask for
+	picturesKept  = 32 << 20               // bytes of a mobile view's pictures kept for the client to ask for
 )
 
 // A reader is the source that reads a pane, and what it says the pane's
 // program is doing.
 type reader struct {
-	src   readview.Source
-	found readview.Found
+	src   mobileview.Source
+	found mobileview.Found
 }
 
-// A reading is a pane's read view the client has on, its reader feeding the
+// A reading is a pane's mobile view the client has on, its reader feeding the
 // loop updates until it's cancelled, and the pictures it read, which the
 // client asks for when it shows them.
 type reading struct {
@@ -38,16 +38,16 @@ type reading struct {
 type readUpdate struct {
 	pane string
 	gen  int
-	u    readview.Update
+	u    mobileview.Update
 	end  error // set on the last, if it stopped by itself
 }
 
 // readers maps the panes of a snapshot that some source reads to it.
 func (g *gateway) readers(s *tmux.Session) map[string]reader {
-	var panes []readview.Pane
+	var panes []mobileview.Pane
 	for _, w := range s.Windows {
 		for _, p := range w.Panes {
-			panes = append(panes, readview.Pane{ID: p.ID, TTY: p.TTY, Command: g.program(p)})
+			panes = append(panes, mobileview.Pane{ID: p.ID, TTY: p.TTY, Command: g.program(p)})
 		}
 	}
 	found := map[string]reader{}
@@ -80,21 +80,21 @@ func (g *gateway) watchActivity() {
 	}
 }
 
-// read sends a pane's read view as it changes, until unread.
+// read sends a pane's mobile view as it changes, until unread.
 func (g *gateway) read(id string) {
 	g.unread(id)
-	var p readview.Pane
+	var p mobileview.Pane
 	for _, w := range g.windows() {
 		for _, wp := range w.Panes {
 			if wp.ID == id {
-				p = readview.Pane{ID: id, TTY: wp.TTY, Command: g.program(wp)}
+				p = mobileview.Pane{ID: id, TTY: wp.TTY, Command: g.program(wp)}
 			}
 		}
 	}
-	var src readview.Source
+	var src mobileview.Source
 	if p.ID != "" {
 		for _, s := range g.sources {
-			if _, ok := s.Find([]readview.Pane{p})[id]; ok {
+			if _, ok := s.Find([]mobileview.Pane{p})[id]; ok {
 				src = s
 				break
 			}
@@ -115,7 +115,7 @@ func (g *gateway) read(id string) {
 		}
 	}
 	go func() {
-		err := src.Read(ctx, p, func(u readview.Update) { update(readUpdate{pane: id, gen: gen, u: u}) })
+		err := src.Read(ctx, p, func(u mobileview.Update) { update(readUpdate{pane: id, gen: gen, u: u}) })
 		if ctx.Err() == nil {
 			if err == nil {
 				err = errors.New("nothing more to read")
@@ -133,7 +133,7 @@ func (g *gateway) unread(id string) {
 }
 
 // readUpdate puts a reader's update on the wire, unless the client turned
-// that read view off (or on again) since.
+// that mobile view off (or on again) since.
 func (g *gateway) readUpdate(r readUpdate) {
 	cur, ok := g.reading[r.pane]
 	if !ok || cur.gen != r.gen {
@@ -158,7 +158,7 @@ func (g *gateway) picture(pane, id string) {
 
 // entriesOf is an update as the wire has it; pictures' bytes stay in
 // [pictures], for the client to ask for.
-func entriesOf(pane string, u readview.Update, pictures *album) protocol.Entries {
+func entriesOf(pane string, u mobileview.Update, pictures *album) protocol.Entries {
 	e := protocol.Entries{Pane: pane, Reset: u.Reset, More: u.More}
 	if u.Measured {
 		n := u.Context
@@ -169,10 +169,10 @@ func entriesOf(pane string, u readview.Update, pictures *album) protocol.Entries
 			ID: x.ID, From: x.From, Kind: x.Kind, Text: x.Text, Name: x.Name, Status: x.Status,
 			Output: x.Output, OutputCut: x.OutputCut, Diff: x.Diff, DiffCut: x.DiffCut,
 		}
-		if x.Kind == readview.Picture {
+		if x.Kind == mobileview.Picture {
 			data, err := base64.StdEncoding.DecodeString(x.Data)
 			if err != nil {
-				w.Kind, w.Text = readview.Note, "[an image that can't be shown]"
+				w.Kind, w.Text = mobileview.Note, "[an image that can't be shown]"
 			} else {
 				pictures.put(x.ID, data)
 				w.Mime, w.Size = x.Mime, len(data)

@@ -1,6 +1,6 @@
 package sh.ahmd.wallflower.read
 
-/** What a read view lists: something said (or shown, or noted), or the run of steps between. */
+/** What a mobile view lists: something said (or shown, or noted), or the run of steps between. */
 sealed interface Item {
     val key: String
 
@@ -15,7 +15,7 @@ sealed interface Item {
     }
 }
 
-/** [entries] as a read view lists them: runs of steps folded, and each turn's last reply marked. */
+/** [entries] as a mobile view lists them: runs of steps folded, and each turn's last reply marked. */
 fun items(entries: List<Entry>): List<Item> {
     val out = mutableListOf<Item>()
     var steps = mutableListOf<Entry>()

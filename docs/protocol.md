@@ -60,7 +60,7 @@ client never has to resync on its own.
 | `new` | | open a window, current in the client's session only |
 | `rename` | `window`, `name` | |
 | `kill` | `window` or `pane` | close it; closing a window's last pane closes the window |
-| `read` | `pane`, `on` | start or stop the pane's read view arriving as `entries`; for panes whose `reader` is set |
+| `read` | `pane`, `on` | start or stop the pane's mobile view arriving as `entries`; for panes whose `reader` is set |
 | `picture` | `pane`, `id` | a picture entry's bytes, which come in a picture frame |
 | `upload` | `id`, `name`, `size` | send a file: `size` bytes follow in upload frames with this `id`, see below |
 | `ping` | `id` | |
@@ -85,7 +85,7 @@ them at once takes it all as a paste, Enter and all.
 | `hello` | `v`, `tmux`, `uploads`? | tmux version; the directory uploads are saved in |
 | `state` | `session`, `name`, `windows` | everything in the session, see below |
 | `reset` | `pane`, `cols`, `rows` | recreate the pane's terminal at this size; the next data frame repaints it |
-| `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `context`? | a pane's read view, see below |
+| `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `context`? | a pane's mobile view, see below |
 | `error` | `message` | a message failed |
 | `pong` | `id` | |
 | `uploaded` | `id`, `path`?, `error`? | where an upload was saved, or why it wasn't |
@@ -101,12 +101,12 @@ A window is `id`, `index`, `name`, `active` and `panes`. A pane is:
 | `alt` | a full-screen app owns the pane; tmux keeps no scrollback for it |
 | `title`, `path` | |
 | `command` | the foreground program; tools that run from a versioned file (`.../claude/versions/2.1.300`) report the name they were run as |
-| `reader` | what reads the pane's program for its read view (`claude`), if anything does |
+| `reader` | what reads the pane's program for its mobile view (`claude`), if anything does |
 | `activity`, `since` | what the program is doing, if it says: `working` on a turn (through its steps, until it's finally done), `waiting` for the user to answer something mid-turn (a permission, a question), or `idle`; `since` when, in Unix milliseconds |
 
 When a window is zoomed, only its active pane is visible.
 
-## Read views
+## Mobile views
 
 Some programs can be read for what they're doing as it happens: Claude
 Code records each conversation as it goes. For a pane running one, the
@@ -127,7 +127,7 @@ going back to an earlier point (a rewind), without what it left behind.
 context, as of its latest reply, sent when it says and whenever it changes;
 0 when it no longer knows (just after a compaction, until the next reply).
 
-What the program is asking isn't in the read view: it's on the pane's
+What the program is asking isn't in the mobile view: it's on the pane's
 screen, and answers are keys, as typed.
 
 An entry is `id`, `from` (`user` or `program`), `kind` and, by kind:
@@ -137,7 +137,7 @@ An entry is `id`, `from` (`user` or `program`), `kind` and, by kind:
 | `said` | `text` | markdown |
 | `thought` | `text` | |
 | `step` | `name`, `text`, `status`, `output`?, `output_cut`?, `diff`?, `diff_cut`? | `text` is what the step was asked, in brief; `status` is `running`, `done` or `failed`; `output` is trimmed, `output_cut` characters short; `diff` is the change it made to a file, as unified diff hunks (`@@ -a,b +c,d @@`, then lines starting ` `, `-` or `+`), `diff_cut` lines short |
-| `picture` | `mime`, `size` | its bytes, `size` of them, come when asked for with `picture`; the gateway keeps a read view's recent pictures |
+| `picture` | `mime`, `size` | its bytes, `size` of them, come when asked for with `picture`; the gateway keeps a mobile view's recent pictures |
 | `note` | `text` | an event rather than something said: an interruption, a compacted conversation |
 
 A client shows an entry of a kind it doesn't know as a note of its `text`.

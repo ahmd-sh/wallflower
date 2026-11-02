@@ -4,8 +4,8 @@
 //
 // One loop owns all of it: the client's messages (dispatch.go) drive tmux
 // (input.go, windows.go), and tmux's notifications become the client's pane
-// streams (panes.go) and session state (state.go), with read views
-// (readview.go) and uploads alongside.
+// streams (panes.go) and session state (state.go), with mobile views
+// (mobileview.go) and uploads alongside.
 package gateway
 
 import (
@@ -16,16 +16,16 @@ import (
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/desktop"
+	"github.com/ahmd-sh/wallflower/internal/mobileview"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
-	"github.com/ahmd-sh/wallflower/internal/readview"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 type Options struct {
-	Socket  string            // tmux socket, see tmux.Options
-	Session string            // default session when the client doesn't ask for one
-	Readers []readview.Source // programs whose panes have read views
-	Uploads string            // where files the client sends are saved; UploadDir() if empty
+	Socket  string              // tmux socket, see tmux.Options
+	Session string              // default session when the client doesn't ask for one
+	Readers []mobileview.Source // programs whose panes have mobile views
+	Uploads string              // where files the client sends are saved; UploadDir() if empty
 }
 
 type gateway struct {
@@ -40,8 +40,8 @@ type gateway struct {
 	snapshot  *tmux.Session // the last
 	lastState []byte
 	dirty     bool
-	programs  map[string]string         // tty and versioned command -> the name it was run as
-	found     map[string]readview.Found // panes read, and what their programs are doing, as last sent
+	programs  map[string]string           // tty and versioned command -> the name it was run as
+	found     map[string]mobileview.Found // panes read, and what their programs are doing, as last sent
 
 	panes    map[string]*pane            // panes the client has open
 	scanners map[string]*desktop.Scanner // every pane's output, for notifications
@@ -51,8 +51,8 @@ type gateway struct {
 	held   []func() error   // work waiting for resume, in order: the client's frames, and the rest of what one asked
 	resume <-chan time.Time // while a pane settles; see hold
 
-	sources []readview.Source
-	reading map[string]reading // panes whose read views the client has on
+	sources []mobileview.Source
+	reading map[string]reading // panes whose mobile views the client has on
 	updates chan readUpdate
 	gen     int // readers started
 

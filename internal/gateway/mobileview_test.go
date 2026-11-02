@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ahmd-sh/wallflower/internal/mobileview"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
-	"github.com/ahmd-sh/wallflower/internal/readview"
 )
 
-func init() { readview.Poll = 50 * time.Millisecond }
+func init() { mobileview.Poll = 50 * time.Millisecond }
 
 // lines is a source reading the panes on terminals the test names, each
 // from a file of {"id","text"} lines, or {"id","png"} for a picture, with
@@ -22,31 +22,31 @@ func init() { readview.Poll = 50 * time.Millisecond }
 type lines struct {
 	mu       sync.Mutex
 	files    map[string]string // tty -> its recording
-	activity readview.Activity
+	activity mobileview.Activity
 }
 
 func (l *lines) Name() string { return "lines" }
 
-func (l *lines) Find(panes []readview.Pane) map[string]readview.Found {
+func (l *lines) Find(panes []mobileview.Pane) map[string]mobileview.Found {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	found := map[string]readview.Found{}
+	found := map[string]mobileview.Found{}
 	for _, p := range panes {
 		if _, ok := l.files[p.TTY]; ok {
-			found[p.ID] = readview.Found{Activity: l.activity, Since: 1000}
+			found[p.ID] = mobileview.Found{Activity: l.activity, Since: 1000}
 		}
 	}
 	return found
 }
 
-func (l *lines) Read(ctx context.Context, p readview.Pane, send func(readview.Update)) error {
-	recording := func() (readview.Recording, bool) {
+func (l *lines) Read(ctx context.Context, p mobileview.Pane, send func(mobileview.Update)) error {
+	recording := func() (mobileview.Recording, bool) {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		path, ok := l.files[p.TTY]
-		return readview.Recording{Path: path}, ok
+		return mobileview.Recording{Path: path}, ok
 	}
-	return readview.Tail(ctx, recording, func() readview.Parser { return linesParser{} }, send)
+	return mobileview.Tail(ctx, recording, func() mobileview.Parser { return linesParser{} }, send)
 }
 
 func (l *lines) set(tty, path string) {
@@ -55,7 +55,7 @@ func (l *lines) set(tty, path string) {
 	l.files[tty] = path
 }
 
-func (l *lines) doing(a readview.Activity) {
+func (l *lines) doing(a mobileview.Activity) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.activity = a
@@ -63,15 +63,15 @@ func (l *lines) doing(a readview.Activity) {
 
 type linesParser struct{}
 
-func (linesParser) Line(b []byte) []readview.Entry {
+func (linesParser) Line(b []byte) []mobileview.Entry {
 	var e struct{ ID, Text, PNG string }
 	if json.Unmarshal(b, &e) != nil {
 		return nil
 	}
 	if e.PNG != "" {
-		return []readview.Entry{{ID: e.ID, From: readview.User, Kind: readview.Picture, Mime: "image/png", Data: e.PNG}}
+		return []mobileview.Entry{{ID: e.ID, From: mobileview.User, Kind: mobileview.Picture, Mime: "image/png", Data: e.PNG}}
 	}
-	return []readview.Entry{{ID: e.ID, From: readview.Program, Kind: readview.Said, Text: e.Text}}
+	return []mobileview.Entry{{ID: e.ID, From: mobileview.Program, Kind: mobileview.Said, Text: e.Text}}
 }
 
 func (c *client) entries(what string, match func(protocol.Entries) bool) protocol.Entries {
@@ -96,9 +96,9 @@ func (c *client) pong(id int) {
 	})
 }
 
-func TestReadView(t *testing.T) {
+func TestMobileView(t *testing.T) {
 	src := &lines{files: map[string]string{}}
-	c := connectOpts(t, context.Background(), 56, 20, Options{Readers: []readview.Source{src}})
+	c := connectOpts(t, context.Background(), 56, 20, Options{Readers: []mobileview.Source{src}})
 	p := activePane(c.state("state", func(protocol.State) bool { return true }))
 	if p.Reader != "" {
 		t.Fatalf("a reader before there is one: %q", p.Reader)
@@ -121,7 +121,7 @@ func TestReadView(t *testing.T) {
 	c.state("pane with a reader", func(s protocol.State) bool { return activePane(s).Reader == "lines" })
 
 	// What the program is doing is in its pane's state, as it changes.
-	src.doing(readview.Working)
+	src.doing(mobileview.Working)
 	c.state("working", func(s protocol.State) bool { p := activePane(s); return p.Activity == "working" && p.Since == 1000 })
 
 	c.send(protocol.Read{Pane: p.ID, On: true})
@@ -145,7 +145,7 @@ func TestReadView(t *testing.T) {
 	c.send(protocol.Read{Pane: p.ID, On: false})
 	c.pong(9)
 	write(`{"id":"c","text":"unseen"}` + "\n")
-	time.Sleep(4 * readview.Poll)
+	time.Sleep(4 * mobileview.Poll)
 	c.pong(10)
 
 	// On again, it starts over.

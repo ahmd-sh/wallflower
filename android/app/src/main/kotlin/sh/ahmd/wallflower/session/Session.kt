@@ -30,8 +30,8 @@ import sh.ahmd.wallflower.terminal.Terminal
 /**
  * The phone's session with the Mac's tmux, over one [Link] at a time,
  * reconnecting until [stop]. tmux's state arrives pushed and is kept here
- * ([Workspace]), with the panes' terminals ([Terminals]) and read views
- * ([ReadViews]); presentation is local, and what the user does goes out as
+ * ([Workspace]), with the panes' terminals ([Terminals]) and mobile views
+ * ([MobileViews]); presentation is local, and what the user does goes out as
  * intents ([Input], uploads). While the user is [away], it stays connected
  * for what the Mac's programs notify, and otherwise out of the way.
  */
@@ -39,7 +39,7 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
     private val link: Link = Link(transport, scope, clock, Events())
     private val panes = Terminals(link)
     private val workspace = Workspace(link, panes)
-    private val reads = ReadViews(link)
+    private val reads = MobileViews(link)
     private val input = Input(link)
     private val transfer = Transfer(link)
 
@@ -51,7 +51,7 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
     val chosen: StateFlow<Map<String, PaneChoice>> get() = workspace.chosen
     /** Terminals of open panes, replaced on every reset. */
     val terminals: StateFlow<Map<String, Terminal>> get() = panes.terminals
-    /** Read views of the panes [read] asked for, as they arrive. */
+    /** Mobile views of the panes [read] asked for, as they arrive. */
     val readings: StateFlow<Map<String, Reading>> get() = reads.readings
     val undelivered: SharedFlow<Undelivered> get() = input.undelivered
 
@@ -135,7 +135,7 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
     /**
      * The user left the app ([on]) or came back. Away, the phone stays out
      * of sizing the Mac's windows at once, and after [QUIET_AFTER_MS] stops
-     * its panes and read views streaming, keeping state and notifications
+     * its panes and mobile views streaming, keeping state and notifications
      * coming. Back, they stream again, and the phone takes the window it shows.
      */
     fun away(on: Boolean) {
@@ -192,7 +192,7 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
 
     fun rename(window: Window, name: String) = workspace.rename(window, name)
 
-    /** Has the gateway send these panes' read views, and no others'. */
+    /** Has the gateway send these panes' mobile views, and no others'. */
     fun read(panes: Set<String>) = reads.read(panes)
 
     /** [pane]'s conversation was rewound to before the user's message [said] matches. */
@@ -205,7 +205,7 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
     /** See [Input.submit]. */
     fun submit(pane: String, text: String, enter: Boolean = true, clear: List<String> = emptyList()) = input.submit(pane, text, enter, clear)
 
-    /** A picture entry of [pane]'s read view, its bytes asked of the gateway; null if they're gone. */
+    /** A picture entry of [pane]'s mobile view, its bytes asked of the gateway; null if they're gone. */
     suspend fun picture(pane: String, id: String): ByteArray? = transfer.picture(pane, id)
 
     /** See [Transfer.upload]. */

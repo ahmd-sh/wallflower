@@ -15,7 +15,7 @@ enum class Activity {
 /** Who said something: the user, or the program in the pane. */
 enum class Party { User, Program }
 
-/** One part of a pane's read view: something said, or a step taken. */
+/** One part of a pane's mobile view: something said, or a step taken. */
 sealed interface Entry {
     val id: String
 

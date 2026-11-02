@@ -1,9 +1,9 @@
-// Package readview is what a pane's read view is made of, whatever program
+// Package mobileview is what a pane's mobile view is made of, whatever program
 // it's for: entries a client renders natively in place of the terminal,
 // which keeps running underneath, and what the program is doing. A Source
 // knows one kind of program: which panes run it, and how to read them (see
 // internal/claude). The gateway puts what sources read on the wire.
-package readview
+package mobileview
 
 import "context"
 
@@ -32,7 +32,7 @@ const (
 	Failed  = "failed"
 )
 
-// An Entry is one part of a read view: something said, or a step taken.
+// An Entry is one part of a mobile view: something said, or a step taken.
 type Entry struct {
 	ID        string
 	From      string // User or Program
@@ -48,7 +48,7 @@ type Entry struct {
 	Data      string // picture, base64
 }
 
-// An Update changes a pane's read view. With Reset, its Entries replace any
+// An Update changes a pane's mobile view. With Reset, its Entries replace any
 // before (More says there were earlier ones); otherwise they're new, or
 // replace those with their IDs. Context, how many tokens the conversation
 // takes of the program's context (0 for unknown), comes when it changes, if

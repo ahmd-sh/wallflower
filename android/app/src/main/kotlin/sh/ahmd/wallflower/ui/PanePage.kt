@@ -19,7 +19,7 @@ import sh.ahmd.wallflower.terminal.Terminal
 import sh.ahmd.wallflower.terminal.TerminalView
 
 /**
- * A pane's page: its terminal, and its read view over it while that's on
+ * A pane's page: its terminal, and its mobile view over it while that's on
  * ([reading]), which pauses the terminal underneath, as the cards covering
  * it do. With no pane ([actions] null), an empty terminal that measures the
  * grid until there are panes. [current]: the page on screen, which gets the
@@ -60,7 +60,7 @@ internal fun PanePage(
     if (actions == null) return@Box
     AnimatedVisibility(reading != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
         val compact = actions.compact
-        ReadView(
+        MobileView(
             shown,
             activity = activityOf(actions.pane),
             since = actions.pane.since,

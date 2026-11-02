@@ -8,7 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Pictures in read views, decoded off the main thread at about the size they
+ * Pictures in mobile views, decoded off the main thread at about the size they
  * show, rather than the size they were sent at, and kept a while by entry,
  * so scrolling back to one doesn't decode it again.
  */

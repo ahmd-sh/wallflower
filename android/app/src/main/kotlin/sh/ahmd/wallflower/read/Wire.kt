@@ -3,7 +3,7 @@ package sh.ahmd.wallflower.read
 import sh.ahmd.wallflower.protocol.Entries
 import sh.ahmd.wallflower.protocol.Pane
 
-// The read view as the wire has it, into the read model.
+// The mobile view as the wire has it, into the read model.
 
 /** With [m] applied: a reset replaces everything; otherwise its entries come in, and the context it says replaces what was. */
 fun Reading.apply(m: Entries): Reading {

@@ -99,10 +99,10 @@ fun SettingsScreen(
         Toggle("ask before closing a pane", askPanes) { settings.askClosingPane.set(it) }
         Toggle("ask before closing a tab (or its last pane)", askWindows) { settings.askClosingWindow.set(it) }
 
-        Section("read view")
-        val reading by settings.readView.flow.collectAsStateWithLifecycle()
-        Toggle("show panes as read views where they can be read", reading) { settings.readView.set(it) }
-        Body("Claude Code reads as its conversation: replies as markdown, steps folded. The button by a pane's dots switches every pane; the terminal keeps running underneath.")
+        Section("mobile view")
+        val mobile by settings.mobileView.flow.collectAsStateWithLifecycle()
+        Toggle("show panes in mobile view where there is one", mobile) { settings.mobileView.set(it) }
+        Body("Claude Code shows as its conversation: replies as markdown, steps folded. The button by a pane's dots switches every pane; the terminal keeps running underneath.")
 
         Section("key bar")
         Body(
@@ -232,7 +232,7 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
         }
 
         Section("stop")
-        Body("What the send button sends when the read view's box is empty.")
+        Body("What the send button sends when the mobile view's box is empty.")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (keys in stops) Chip(KeyBar.labelOf(keys), profile.stop == keys) { save(profile.copy(stop = keys)) }
         }

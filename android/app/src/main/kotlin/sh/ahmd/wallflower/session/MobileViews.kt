@@ -9,8 +9,8 @@ import sh.ahmd.wallflower.protocol.Read
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.apply
 
-/** The read views of the panes the phone shows them for, as the gateway sends them. */
-internal class ReadViews(private val link: Link) {
+/** The mobile views of the panes the phone shows them for, as the gateway sends them. */
+internal class MobileViews(private val link: Link) {
     private val _readings = MutableStateFlow<Map<String, Reading>>(emptyMap())
     val readings: StateFlow<Map<String, Reading>> = _readings.asStateFlow()
 
@@ -23,7 +23,7 @@ internal class ReadViews(private val link: Link) {
     /** A new connection is asked for them all again. */
     fun up() = ask()
 
-    /** Has the gateway send these panes' read views, and no others'. */
+    /** Has the gateway send these panes' mobile views, and no others'. */
     fun read(panes: Set<String>) {
         wanted = panes
         ask()

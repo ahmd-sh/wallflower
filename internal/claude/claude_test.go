@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ahmd-sh/wallflower/internal/readview"
+	"github.com/ahmd-sh/wallflower/internal/mobileview"
 )
 
 // Lines shaped like Claude Code's transcripts, trimmed to the fields read.
@@ -33,11 +33,11 @@ var conversation = []string{
 
 func TestParse(t *testing.T) {
 	p := newParser()
-	var got []readview.Entry
+	var got []mobileview.Entry
 	for _, l := range conversation {
 		got = append(got, p.Line([]byte(l))...)
 	}
-	want := []readview.Entry{
+	want := []mobileview.Entry{
 		{ID: "u1.0", From: "user", Kind: "said", Text: "fix the tests"},
 		{ID: "a2.0", From: "program", Kind: "step", Name: "Bash", Text: "go test ./...", Status: "running"},
 		{ID: "a2.0", From: "program", Kind: "step", Name: "Bash", Text: "go test ./...", Status: "failed", Output: "FAIL x_test.go"},
@@ -70,8 +70,8 @@ func TestBigImagesAndOutputs(t *testing.T) {
 }
 
 func TestContext(t *testing.T) {
-	p := newParser().(readview.Measure)
-	line := func(s string) { p.(readview.Parser).Line([]byte(s)) }
+	p := newParser().(mobileview.Measure)
+	line := func(s string) { p.(mobileview.Parser).Line([]byte(s)) }
 	if p.Context() != 0 {
 		t.Errorf("before any reply: %d", p.Context())
 	}
@@ -113,7 +113,7 @@ var rewound = []string{
 
 func TestRewound(t *testing.T) {
 	p := newParser()
-	var got []readview.Entry
+	var got []mobileview.Entry
 	at := map[string]int{}
 	for _, l := range rewound {
 		for _, e := range p.Line([]byte(l)) {
@@ -125,7 +125,7 @@ func TestRewound(t *testing.T) {
 			}
 		}
 	}
-	got = p.(readview.Brancher).Kept(got)
+	got = p.(mobileview.Brancher).Kept(got)
 	var ids []string
 	for _, e := range got {
 		ids = append(ids, e.ID+"="+e.Text)
@@ -133,13 +133,13 @@ func TestRewound(t *testing.T) {
 	if want := "u1.0=say just: one a1.0=one u2.0=two, with two tools a2.0=/a a3.0=/b a4.0=two u4.0=say just: edited a7.0=edited"; strings.Join(ids, " ") != want {
 		t.Errorf("got  %s\nwant %s", strings.Join(ids, " "), want)
 	}
-	if got[3].Status != readview.Done || got[4].Status != readview.Done {
+	if got[3].Status != mobileview.Done || got[4].Status != mobileview.Done {
 		t.Errorf("parallel results: %+v %+v", got[3], got[4])
 	}
-	if b := p.(readview.Brancher).Branches(); b != 1 {
+	if b := p.(mobileview.Brancher).Branches(); b != 1 {
 		t.Errorf("branches: %d", b)
 	}
-	if c := p.(readview.Measure).Context(); c != 250 {
+	if c := p.(mobileview.Measure).Context(); c != 250 {
 		t.Errorf("context: %d", c)
 	}
 
@@ -148,7 +148,7 @@ func TestRewound(t *testing.T) {
 	for _, l := range rewound[:14] {
 		p.Line([]byte(l))
 	}
-	if c := p.(readview.Measure).Context(); c != 0 {
+	if c := p.(mobileview.Measure).Context(); c != 0 {
 		t.Errorf("context after going back: %d", c)
 	}
 }
@@ -168,7 +168,7 @@ func TestDiffs(t *testing.T) {
 	var diffs []string
 	for _, l := range lines {
 		for _, e := range p.Line([]byte(l)) {
-			if e.Status != readview.Running {
+			if e.Status != mobileview.Running {
 				diffs = append(diffs, e.Diff)
 			}
 		}
@@ -225,8 +225,8 @@ func TestRunning(t *testing.T) {
 
 	got := New(dir).running()
 	want := map[int]session{
-		me:     {path: filepath.Join(dir, "projects/-Users-me-dev-x-moved/aaaa-1.jsonl"), activity: readview.Waiting, since: 1792209270006}, // where it is
-		parent: {path: filepath.Join(dir, "projects/-Users-me-my-dir/bbbb-2.jsonl"), activity: readview.Idle, since: 1792209271000},         // where it will be; done, with a background task left running
+		me:     {path: filepath.Join(dir, "projects/-Users-me-dev-x-moved/aaaa-1.jsonl"), activity: mobileview.Waiting, since: 1792209270006}, // where it is
+		parent: {path: filepath.Join(dir, "projects/-Users-me-my-dir/bbbb-2.jsonl"), activity: mobileview.Idle, since: 1792209271000},         // where it will be; done, with a background task left running
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v\nwant %v", got, want)

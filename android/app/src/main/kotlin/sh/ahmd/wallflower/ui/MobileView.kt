@@ -94,7 +94,7 @@ import sh.ahmd.wallflower.read.trace
 import sh.ahmd.wallflower.screen.Prompt
 
 /**
- * A pane's read view in place of its terminal: what each side said, with
+ * A pane's mobile view in place of its terminal: what each side said, with
  * each run of steps and thinking folded into one line, to open when
  * wanted. The newest is at the bottom, which stays in view as entries come.
  * Below it, while the program works, a line says so; when its screen offers
@@ -103,7 +103,7 @@ import sh.ahmd.wallflower.screen.Prompt
  * drags go to [swipe], to move between panes as on the terminal.
  */
 @Composable
-fun ReadView(
+fun MobileView(
     reading: Reading,
     /** What the program is doing, if it says, and since when (Unix milliseconds). */
     activity: Activity?,
@@ -170,7 +170,7 @@ fun ReadView(
             items.isEmpty() -> Phase.Empty
             else -> Phase.Shown
         }
-        Crossfade(phase, animationSpec = Motion.effect(), label = "read view") { p ->
+        Crossfade(phase, animationSpec = Motion.effect(), label = "mobile view") { p ->
             when (p) {
                 Phase.Reading -> Hint("reading…")
                 Phase.Empty -> Hint(reading.problem ?: "nothing said yet")

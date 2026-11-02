@@ -33,7 +33,7 @@ internal class PaneScreen {
 /**
  * Reads [terminal]'s screen whenever its output changes, at most every
  * [EVERY_MS], as [program] reads it: its input line, and, while [asks]
- * (it can be answered: in the read view, the program not working), a
+ * (it can be answered: in the mobile view, the program not working), a
  * prompt. Changes in what the program is doing ([activity]) reread it: it
  * can start asking with its screen already drawn.
  */
