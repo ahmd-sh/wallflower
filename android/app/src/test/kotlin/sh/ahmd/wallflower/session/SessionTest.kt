@@ -7,9 +7,12 @@ import java.io.PipedOutputStream
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -27,11 +30,11 @@ import sh.ahmd.wallflower.protocol.Open
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Ping
 import sh.ahmd.wallflower.protocol.Pong
+import sh.ahmd.wallflower.protocol.Read
 import sh.ahmd.wallflower.protocol.ServerHello
 import sh.ahmd.wallflower.protocol.ServerMessage
 import sh.ahmd.wallflower.protocol.State
 import sh.ahmd.wallflower.protocol.Submit
-import sh.ahmd.wallflower.protocol.Read
 import sh.ahmd.wallflower.protocol.VERSION
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.protocol.WireJson
@@ -140,8 +143,13 @@ class SessionTest {
         assertTrue(session.submit("%1", "never confirmed"))
         g.message<Ping>()
 
-        g.close() // dropped before its pong
-        val back = eventually { session.undelivered.first() }
+        val back = eventually {
+            coroutineScope {
+                val first = async(start = CoroutineStart.UNDISPATCHED) { session.undelivered.first() } // listening before it's said
+                g.close() // dropped before its pong
+                first.await()
+            }
+        }
         assertEquals(Undelivered("%1", "never confirmed"), back)
         assertFalse(session.submit("%1", "while disconnected"))
     }
