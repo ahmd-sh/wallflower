@@ -91,15 +91,14 @@ class Connection(private val context: Context, private val scope: CoroutineScope
     }
 
     /**
-     * Shows [n] as its pane's program has it said, given whether the pane's
-     * screen asks something as it came; nothing it says takes away what it
-     * said before. Unless a newer one came, or the pane's been seen.
+     * Shows [n] as its pane's program has it said, from the pane's screen if
+     * the program reads it; nothing it says takes away what it said before.
+     * Unless a newer one came, or the pane's been seen.
      */
     private suspend fun notify(session: Session, n: Notification) {
-        val screen = session.peek(n.pane)
-        val program = program(session, n.pane) // after: tmux may only just have told of it
-        val asking = screen?.let { withContext(Dispatchers.Default) { program.prompt(it) != null } }
-        val notice = program.notice(n.title, n.body, asking)
+        val program = program(session, n.pane)
+        val screen = if (program.readsScreenToNotify) session.peek(n.pane) else null
+        val notice = withContext(Dispatchers.Default) { program.notice(n.title, n.body, screen) }
         if (!latest.remove(n.pane, n)) return
         if (notice != null) notices.show(n.pane, notice, session.state.value) else notices.cancel(n.pane)
     }

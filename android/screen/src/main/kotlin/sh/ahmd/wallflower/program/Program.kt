@@ -17,10 +17,13 @@ interface Program {
 
     /**
      * What a desktop notification the program sent ([title], [body]) says on
-     * the phone, [asking] whether its screen asks something as it came (a
-     * [prompt] on it; null if the screen couldn't be read); null: nothing.
+     * the phone, given its [screen] as it came if the program [readsScreenToNotify]
+     * (null if it couldn't be read); null: nothing.
      */
-    fun notice(title: String?, body: String, asking: Boolean?): Notice? = Notice(title, body)
+    fun notice(title: String?, body: String, screen: Screen?): Notice? = Notice(title, body)
+
+    /** Whether [notice] needs the program's screen, which takes opening its pane a moment. */
+    val readsScreenToNotify: Boolean get() = false
 
     /** What empties a row of the input line; empty if nothing does, and the box adds to the line. */
     val clearKeys: List<String>
