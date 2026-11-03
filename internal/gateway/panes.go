@@ -47,7 +47,7 @@ func (g *gateway) scan(n tmux.Notification) {
 		g.scanners[n.Pane] = s
 	}
 	for _, d := range s.Scan(n.Data) {
-		g.send(protocol.Notification{Pane: n.Pane, Title: d.Title, Body: d.Body})
+		g.send(protocol.Notification{Pane: n.Pane, Title: d.Title, Body: d.Body, Bell: d.Bell})
 	}
 }
 

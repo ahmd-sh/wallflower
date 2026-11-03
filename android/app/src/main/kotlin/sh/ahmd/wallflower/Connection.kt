@@ -98,7 +98,7 @@ class Connection(private val context: Context, private val scope: CoroutineScope
     private suspend fun notify(session: Session, n: Notification) {
         val program = program(session, n.pane)
         val screen = if (program.readsScreenToNotify) session.peek(n.pane) else null
-        val notice = withContext(Dispatchers.Default) { program.notice(n.title, n.body, screen) }
+        val notice = withContext(Dispatchers.Default) { program.notice(n.title, n.body.takeUnless { n.bell }, screen) }
         if (!latest.remove(n.pane, n)) return
         if (notice != null) notices.show(n.pane, notice, session.state.value) else notices.cancel(n.pane)
     }

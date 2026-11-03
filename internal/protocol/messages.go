@@ -262,11 +262,13 @@ type Bye struct {
 }
 
 // Notification is a desktop notification a pane's program sent through its
-// terminal (OSC 9, 777 or 99), from any pane in the session.
+// terminal (OSC 9, 777 or 99), or its bell (Bell, with no body), from any
+// pane in the session.
 type Notification struct {
 	Pane  string `json:"pane"`
 	Title string `json:"title,omitempty"`
 	Body  string `json:"body"`
+	Bell  bool   `json:"bell,omitempty"`
 }
 
 func (ServerHello) Type() string  { return "hello" }

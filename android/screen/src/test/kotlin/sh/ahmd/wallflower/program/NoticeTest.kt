@@ -29,13 +29,14 @@ class NoticeTest {
         )
         for ((capture, cols) in asking) {
             assertEquals(capture, input, Claude.notice("Claude Code", "Claude needs your permission", captured(capture, cols)))
+            assertEquals("$capture, by the bell", input, Claude.notice(null, null, captured(capture, cols)))
         }
     }
 
     @Test
     fun claudeWithItsPromptBoxUpIsNone() {
         val idle = plain("● Done.", rule, "❯ ", rule, "  -- INSERT --")
-        for (body in listOf("Claude is waiting for your input", "Explore agent finished", "the build passed")) {
+        for (body in listOf("Claude is waiting for your input", "Explore agent finished", "the build passed", null)) {
             assertNull(body, Claude.notice("Claude Code", body, idle))
         }
     }
@@ -46,10 +47,11 @@ class NoticeTest {
     }
 
     @Test
-    fun onlyClaudeReadsItsScreenAndOthersShowAsTheyAre() {
+    fun onlyClaudeReadsItsScreenAndOthersShowAsTheyAreButForTheBell() {
         val zsh = Programs.of("zsh")
         assertTrue(Claude.readsScreenToNotify)
         assertFalse(zsh.readsScreenToNotify)
         assertEquals(Notice("Tests", "all 41 pass"), zsh.notice("Tests", "all 41 pass", null))
+        assertNull(zsh.notice(null, null, null))
     }
 }

@@ -30,10 +30,12 @@ func TestEachKind(t *testing.T) {
 		{"osc 99 base64", "\x1b]99;e=1;SGVsbG8=\x1b\\", []Notification{{Body: "Hello"}}},
 		{"tmux passthrough", "\x1bPtmux;\x1b\x1b]777;notify;Claude Code;waiting\x07\x1b\\",
 			[]Notification{{Title: "Claude Code", Body: "waiting"}}},
+		{"bell", "done\x07", []Notification{{Bell: true}}},
+		{"bell in passthrough", "\x1bPtmux;\x07\x1b\\", []Notification{{Bell: true}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := scan(tc.out); !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("got %q, want %q", got, tc.want)
+				t.Errorf("got %+v, want %+v", got, tc.want)
 			}
 		})
 	}
@@ -41,7 +43,6 @@ func TestEachKind(t *testing.T) {
 
 func TestOthersArentNotifications(t *testing.T) {
 	for name, out := range map[string]string{
-		"bell":           "\x07",
 		"title":          "\x1b]0;~/dev\x07",
 		"hyperlink":      "\x1b]8;;https://example.com\x1b\\link\x1b]8;;\x1b\\",
 		"progress":       "\x1b]9;4;1;50\x07",
@@ -51,9 +52,10 @@ func TestOthersArentNotifications(t *testing.T) {
 		"sgr":            "\x1b[1;31mred\x1b[0m",
 		"empty":          "\x1b]9;\x07",
 		"cut by another": "\x1b]9;half\x1b[0m",
+		"apc":            "\x1b_Gf=100;\x07\x1b\\",
 	} {
 		if got := scan(out); len(got) != 0 {
-			t.Errorf("%s: got %q", name, got)
+			t.Errorf("%s: got %+v", name, got)
 		}
 	}
 }
@@ -63,7 +65,7 @@ func TestSplitAcrossReads(t *testing.T) {
 	for i := 1; i < len(out); i++ {
 		got := scan(out[:i], out[i:])
 		if want := []Notification{{Body: "tests pass"}}; !reflect.DeepEqual(got, want) {
-			t.Fatalf("split at %d: got %q", i, got)
+			t.Fatalf("split at %d: got %+v", i, got)
 		}
 	}
 }
@@ -72,7 +74,7 @@ func TestShownAsText(t *testing.T) {
 	got := scan("\x1b]777;notify;Title;line one\nline\ttwo \xff\x07")
 	want := []Notification{{Title: "Title", Body: "line one\nline two"}}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %q, want %q", got, want)
+		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
 
@@ -86,5 +88,23 @@ func TestLongOnesAreDropped(t *testing.T) {
 	}
 	if got := scan("\x1b]9;" + string(long[:300]) + "\x07"); len([]rune(got[0].Body)) != 300 {
 		t.Errorf("a 300-character body came out as %d", len([]rune(got[0].Body)))
+	}
+}
+
+func TestABellWithANotificationIsPartOfIt(t *testing.T) {
+	notified := "\x1bPtmux;\x1b\x1b]9;Claude needs your permission\x07\x1b\\"
+	want := []Notification{{Body: "Claude needs your permission"}}
+	if got := scan(notified + "\x1b[?25l\x1b(B\x07"); !reflect.DeepEqual(got, want) {
+		t.Errorf("rung with it: got %+v", got)
+	}
+	if got := scan(notified, "\x07\x07"); !reflect.DeepEqual(got, want) {
+		t.Errorf("rung in the next read: got %+v", got)
+	}
+	want = append(want, Notification{Bell: true})
+	if got := scan(notified + "\r\nnext\x07"); !reflect.DeepEqual(got, want) {
+		t.Errorf("rung after printing: got %+v", got)
+	}
+	if got := scan("\x07\x1b]9;tests pass\x07"); !reflect.DeepEqual(got, []Notification{{Bell: true}, {Body: "tests pass"}}) {
+		t.Errorf("rung before: got %+v", got)
 	}
 }

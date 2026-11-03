@@ -76,12 +76,12 @@ object Claude : Program {
      * Claude notifies of whatever it asks (a permission, a question, a plan,
      * a server's form) once it's gone a few seconds unanswered, and of more
      * besides (done and waiting, an agent finished, a push), each its own
-     * way. What it asks always takes its prompt box's place: so one notice
-     * while the box is gone, or the screen couldn't be read; none while
-     * it's there.
+     * way, or with only the bell, as it's set to. What it asks always takes
+     * its prompt box's place: so one notice while the box is gone, or the
+     * screen couldn't be read; none while it's there.
      */
-    override fun notice(title: String?, body: String, screen: Screen?): Notice? =
-        if (screen == null || line(screen) == null) Notice(title, "Claude needs your input") else null
+    override fun notice(title: String?, body: String?, screen: Screen?): Notice? =
+        if (screen == null || line(screen) == null) Notice("Claude Code", "Claude needs your input") else null
 
     /**
      * Claude runs in vim mode, and where it can't be seen it may be in

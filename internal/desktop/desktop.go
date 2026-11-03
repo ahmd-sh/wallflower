@@ -1,8 +1,9 @@
 // Package desktop finds the desktop notifications programs send through
 // their terminal, in a pane's output as tmux reads it: OSC 9 (iTerm2's),
 // OSC 777 (rxvt's notify) and OSC 99 (kitty's), also wrapped in tmux's
-// passthrough. tmux itself drops the plain ones, and passes the wrapped
-// ones on only from a pane on screen; its control mode has them all.
+// passthrough, and the bell. tmux itself drops the plain ones, and passes
+// the wrapped ones on only from a pane on screen; its control mode has them
+// all.
 package desktop
 
 import (
@@ -14,10 +15,11 @@ import (
 )
 
 // Notification is one a program sent: its title, if it gave one, and what
-// it says.
+// it says; or its terminal's bell, which says nothing.
 type Notification struct {
 	Title string
 	Body  string
+	Bell  bool
 }
 
 const (
@@ -32,6 +34,8 @@ type state int
 const (
 	ground state = iota
 	escape
+	escapeMore // an escape's intermediate bytes, to its final one
+	csi
 	osc
 	oscEscape
 	dcs
@@ -49,16 +53,24 @@ type Scanner struct {
 	keep    bool                     // buf may be a notification
 	inner   *Scanner                 // what tmux's passthrough wraps
 	pending map[string]*Notification // kitty's, until their last part
+	said    bool                     // notified, and printed nothing since
 }
 
 // Scan reads the next of the pane's output, returning the notifications it
-// finishes.
+// finishes. A bell rung with a notification, nothing printed between, is
+// part of it.
 func (s *Scanner) Scan(b []byte) []Notification {
 	var found []Notification
 	for _, c := range b {
-		if n, ok := s.step(c); ok {
-			found = append(found, n)
+		if s.state == ground && c >= 0x20 {
+			s.said = false
 		}
+		n, ok := s.step(c)
+		if !ok || n.Bell && s.said {
+			continue
+		}
+		found = append(found, n)
+		s.said = true
 	}
 	return found
 }
@@ -66,8 +78,11 @@ func (s *Scanner) Scan(b []byte) []Notification {
 func (s *Scanner) step(c byte) (Notification, bool) {
 	switch s.state {
 	case ground:
-		if c == 0x1b {
+		switch c {
+		case 0x1b:
 			s.state = escape
+		case 0x07:
+			return Notification{Bell: true}, true
 		}
 	case escape:
 		s.state = ground
@@ -76,8 +91,24 @@ func (s *Scanner) step(c byte) (Notification, bool) {
 			s.state, s.buf, s.keep = osc, s.buf[:0], true
 		case 'P':
 			s.state, s.buf = dcs, s.buf[:0]
+		case '_', '^', 'X': // APC, PM, SOS: strings a bell can't be in
+			s.state = skip
+		case '[':
+			s.state = csi
 		case 0x1b:
 			s.state = escape
+		default:
+			if c >= 0x20 && c <= 0x2f {
+				s.state = escapeMore
+			}
+		}
+	case escapeMore:
+		if c < 0x20 || c > 0x2f {
+			s.state = ground
+		}
+	case csi:
+		if c >= 0x40 && c <= 0x7e {
+			s.state = ground
 		}
 	case osc:
 		switch c {

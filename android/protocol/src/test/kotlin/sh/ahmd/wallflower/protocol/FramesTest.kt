@@ -101,6 +101,7 @@ class FramesTest {
         assertEquals(Entries("%2", reset = true, error = "the conversation ended"), message())
         assertEquals(Notification("%2", "Claude Code", "Claude needs your permission to use Bash ✓"), message())
         assertEquals(Notification("%3", body = "build done"), message())
+        assertEquals(Notification("%4", bell = true), message())
         val picture = assertIs<Frame.Picture>(r.next())
         assertEquals("u2.0", picture.id)
         assertEquals(listOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte()), picture.bytes.copyOfRange(picture.offset, picture.offset + picture.length).toList())

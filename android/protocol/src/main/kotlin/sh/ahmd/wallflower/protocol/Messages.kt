@@ -240,7 +240,7 @@ data class Bye(val reason: String = "") : ServerMessage
 @SerialName("uploaded")
 data class Uploaded(val id: String, val path: String? = null, val error: String? = null) : ServerMessage
 
-/** A desktop notification [pane]'s program sent through its terminal (OSC 9, 777 or 99). */
+/** A desktop notification [pane]'s program sent through its terminal (OSC 9, 777 or 99), or its [bell], with no body. */
 @Serializable
 @SerialName("notification")
-data class Notification(val pane: String, val title: String? = null, val body: String) : ServerMessage
+data class Notification(val pane: String, val title: String? = null, val body: String = "", val bell: Boolean = false) : ServerMessage

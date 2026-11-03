@@ -663,16 +663,16 @@ func TestNotificationsFromEveryPane(t *testing.T) {
 	c := connect(t, 60, 20)
 	c.state("first", func(s protocol.State) bool { return len(s.Windows) == 1 })
 	// A window the phone hasn't opened, behind the current one.
-	c.tmux("new-window", "-d", "-t", "t:", `printf '\033]777;notify;Tests;all pass\007\033Ptmux;\033\033]9;wrapped\007\033\134'; sleep 30`)
+	c.tmux("new-window", "-d", "-t", "t:", `printf '\033]777;notify;Tests;all pass\007\033Ptmux;\033\033]9;wrapped\007\033\134 and \007'; sleep 30`)
 	var got []protocol.Notification
-	c.expect("two notifications", func(_ protocol.Frame, m protocol.Message) bool {
+	c.expect("three notifications", func(_ protocol.Frame, m protocol.Message) bool {
 		if n, ok := m.(*protocol.Notification); ok {
 			got = append(got, *n)
 		}
-		return len(got) == 2
+		return len(got) == 3
 	})
 	back := c.tmux("display", "-p", "-t", "t:1", "#{pane_id}")
-	want := []protocol.Notification{{Pane: back, Title: "Tests", Body: "all pass"}, {Pane: back, Body: "wrapped"}}
+	want := []protocol.Notification{{Pane: back, Title: "Tests", Body: "all pass"}, {Pane: back, Body: "wrapped"}, {Pane: back, Bell: true}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}

@@ -81,6 +81,7 @@ func goldenServer(t *testing.T) []byte {
 	b = mustJSON(t, b, Entries{Pane: "%2", Reset: true, Error: "the conversation ended"})
 	b = mustJSON(t, b, Notification{Pane: "%2", Title: "Claude Code", Body: "Claude needs your permission to use Bash ✓"})
 	b = mustJSON(t, b, Notification{Pane: "%3", Body: "build done"})
+	b = mustJSON(t, b, Notification{Pane: "%4", Bell: true})
 	b = AppendPicture(b, "u2.0", []byte{0x89, 'P', 'N'})
 	b = AppendPicture(b, "gone", nil)
 	b = mustJSON(t, b, Uploaded{ID: "u1", Path: "/Users/me/Library/Caches/wallflower/uploads/PXL-1.jpg"})

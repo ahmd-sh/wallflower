@@ -16,11 +16,14 @@ interface Program {
     fun prompt(screen: Screen): Prompt? = null
 
     /**
-     * What a desktop notification the program sent ([title], [body]) says on
-     * the phone, given its [screen] as it came if the program [readsScreenToNotify]
-     * (null if it couldn't be read); null: nothing.
+     * What the program's notification says on the phone: a desktop
+     * notification ([title], [body]), or its terminal's bell (no [body]),
+     * given its [screen] as it came if the program [readsScreenToNotify]
+     * (null if it couldn't be read); null: nothing. A bell says nothing
+     * unless the program has it say something: shells and editors ring it
+     * at a mistyped key.
      */
-    fun notice(title: String?, body: String, screen: Screen?): Notice? = Notice(title, body)
+    fun notice(title: String?, body: String?, screen: Screen?): Notice? = body?.let { Notice(title, it) }
 
     /** Whether [notice] needs the program's screen, which takes opening its pane a moment. */
     val readsScreenToNotify: Boolean get() = false

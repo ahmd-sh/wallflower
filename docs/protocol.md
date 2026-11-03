@@ -175,8 +175,10 @@ these, and passes them on to its terminal only from a pane on screen when a
 program wraps them in its passthrough. The gateway reads them from every
 pane's output, open or not, wrapped or not, and sends each as a
 `notification`: `body` is what it says, `title` what it's about if the
-program gave one. A client shows them however it likes, typically while the
-user is away.
+program gave one. A program's bell comes as one too, with `bell` and an
+empty `body`; a bell rung with a notification, nothing printed between, is
+part of it. A client shows them however it likes, typically while the user
+is away, and makes of a bell what the program would mean by it.
 
 ## Uploads
 
