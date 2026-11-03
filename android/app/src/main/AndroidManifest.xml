@@ -32,9 +32,6 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps the user's SSH connection to their own computer while they're away, to show what its programs notify" />
         </service>
-        <receiver
-            android:name=".notify.AnswerReceiver"
-            android:exported="false" />
     </application>
 
 </manifest>

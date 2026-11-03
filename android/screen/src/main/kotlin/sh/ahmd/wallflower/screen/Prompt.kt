@@ -48,10 +48,6 @@ data class Prompt(
     /** A question's chip, with its mark (☐ ☒ ✔) as shown. */
     data class Tab(val label: String, val current: Boolean)
 
-    /** Whether [other] asks the same as this, wherever its cursor is. */
-    fun same(other: Prompt): Boolean =
-        lines == other.lines && quote == other.quote && options.map { it.label } == other.options.map { it.label } && tabs.map { it.label } == other.tabs.map { it.label }
-
     /**
      * Keys that pick [option]: its number, which these menus take at once
      * (a multiple choice's toggles) unless [previewed], or the cursor moved

@@ -15,6 +15,8 @@ object Claude : Program {
 
     override val compact = "/compact"
 
+    private val idle = Regex("waiting for your input", RegexOption.IGNORE_CASE)
+
     /**
      * The prompt box: between two rules, a first row starting `❯ ` (or `! `
      * in shell mode) and rows indented to match. Claude wraps long lines
@@ -70,9 +72,14 @@ object Claude : Program {
 
     override fun prompt(screen: Screen): Prompt? = Prompt.read(screen)
 
-    /** Not those that go on to have the user type, as telling Claude what to change of a plan. */
-    override fun answers(prompt: Prompt): List<Prompt.Option> =
-        super.answers(prompt.copy(options = prompt.options.filterNot { it.label.startsWith("Tell Claude") }))
+    /**
+     * One notice for whatever Claude asks (permission, a question, a plan),
+     * as it says so many ways; none when it's only done and waiting for the
+     * next prompt, as it says after a minute idle, unless its screen asks
+     * something after all.
+     */
+    override fun notice(title: String?, body: String, asking: Boolean?): Notice? =
+        if (asking != true && idle.containsMatchIn(body)) null else Notice(title, "Claude needs your input")
 
     /**
      * Claude runs in vim mode, and where it can't be seen it may be in

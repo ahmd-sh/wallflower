@@ -16,15 +16,11 @@ interface Program {
     fun prompt(screen: Screen): Prompt? = null
 
     /**
-     * Options of [prompt] a notification can answer it with, as buttons
-     * (Android shows [ANSWERS]): those a key picks outright, the first and
-     * the last ones if there are more. None for several questions at once.
+     * What a desktop notification the program sent ([title], [body]) says on
+     * the phone, [asking] whether its screen asks something as it came (a
+     * [prompt] on it; null if the screen couldn't be read); null: nothing.
      */
-    fun answers(prompt: Prompt): List<Prompt.Option> {
-        if (prompt.tabs.size > 1) return emptyList()
-        val picks = prompt.options.filter { it.number != null && it.scroll == 0 && it.checked == null && !it.muted }
-        return if (picks.size <= ANSWERS) picks else picks.take(ANSWERS - 1) + picks.last()
-    }
+    fun notice(title: String?, body: String, asking: Boolean?): Notice? = Notice(title, body)
 
     /** What empties a row of the input line; empty if nothing does, and the box adds to the line. */
     val clearKeys: List<String>
@@ -47,8 +43,8 @@ interface Program {
     fun picked(prompt: Prompt, option: Prompt.Option): Effect? = null
 }
 
-/** Buttons a notification has room for. */
-const val ANSWERS = 3
+/** A notification as the phone shows it. */
+data class Notice(val title: String?, val body: String)
 
 /** Something picking an option did that the program won't record until later. */
 sealed interface Effect {
