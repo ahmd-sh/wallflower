@@ -136,7 +136,7 @@ type Pane struct {
 	Alt        bool // a full-screen program owns it
 	Title      string
 	Path       string
-	Command    string // its foreground program
+	Command    string // its foreground program: its executable's name, or the name it was run as
 	TTY        string // the terminal its programs run on, if the multiplexer knows
 }
 

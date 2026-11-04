@@ -53,10 +53,13 @@ and the repaint format. What only some multiplexers can do is a capability
 offers only what the multiplexer can. Keys through the multiplexer's own
 bindings are one.
 
-The gateway's tests are the contract, and run against tmux. Rex's adapter
-has tests of its own against a throwaway Rex server (`internal/rextest`).
-Folding both into one suite that runs the contract against every adapter is
-next.
+The gateway's tests are the contract, and run against every adapter, each
+on a throwaway server of its own (`internal/tmuxtest`, `internal/rextest`).
+A test acts as the phone through the protocol, and as someone at the Mac
+through the multiplexer's own tools (a `desk`), so an adapter can't agree
+with itself and pass. Where multiplexers differ, the test says what both
+promise, and tests of what only one does run against it alone. Adding a
+multiplexer is an adapter and a desk.
 
 Where the multiplexers differ, the adapter decides, and the doc comment
 says how. Rex sizes each terminal for the client that owns it, so the
@@ -66,7 +69,11 @@ which has the screen on show only: under a full-screen program, the shell's
 screen behind it isn't repainted. Rex starts a stream with a snapshot in
 Ghostty's binary format, which would fix that and line up exactly, but the
 format isn't stable yet. Output that arrives while a pane is being read can
-show twice; none is lost.
+show twice; none is lost. A terminal's output reaches the gateway from when
+it first sees the terminal, so what a program writes the moment it starts
+in a new window can be missed. And Rex sizes a terminal for the phone when
+the phone first focuses it or types into it, where tmux sizes the current
+window as soon as the phone attaches.
 
 ## The core client
 

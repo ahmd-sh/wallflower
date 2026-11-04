@@ -103,13 +103,13 @@ func TestRepaintKeepsHistoryAsked(t *testing.T) {
 // client attaches to a fresh server's session at cols x rows.
 func client(t *testing.T, cols, rows int) (*attached, func(args ...string) string, string) {
 	t.Helper()
-	socket, _, block, run := rextest.Server(t)
-	c, err := Server{Endpoint: socket}.Attach(mux.Attach{Cols: cols, Rows: rows})
+	s := rextest.Start(t)
+	c, err := Server{Endpoint: s.Socket}.Attach(mux.Attach{Cols: cols, Rows: rows})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { c.Close() })
-	return c.(*attached), run, block
+	return c.(*attached), s.Run, s.Block
 }
 
 // until reads events until ok says what came is enough.

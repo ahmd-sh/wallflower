@@ -96,12 +96,17 @@ func (c *client) pong(id int) {
 }
 
 func TestMobileView(t *testing.T) {
+	each(t, testMobileView)
+}
+
+func testMobileView(t *testing.T, b backend) {
 	src := &lines{files: map[string]string{}}
-	c := connectOpts(t, context.Background(), 56, 20, Options{Programs: []program.Program{
+	c := b.connectOpts(t, context.Background(), 56, 20, Options{Programs: []program.Program{
 		{ID: "lines", View: src},
 		{ID: "shell", Commands: []string{"sh", "bash"}}, // macOS's /bin/sh is bash
 	}})
-	p := activePane(c.state("state", func(protocol.State) bool { return true }))
+	s := c.state("state", anyState)
+	p := activePane(s)
 	if p.Program != "shell" || p.View {
 		t.Fatalf("the shell's pane runs %q, view %v", p.Program, p.View)
 	}
@@ -118,8 +123,8 @@ func TestMobileView(t *testing.T) {
 	}
 	png := []byte{0x89, 'P', 'N', 'G'}
 	write(`{"id":"a","text":"hello"}` + "\n" + `{"id":"p","png":"` + base64.StdEncoding.EncodeToString(png) + `"}` + "\n")
-	src.set(c.tmux("display", "-p", "-t", p.ID, "#{pane_tty}"), path)
-	c.tmux("rename-window", "-t", "t", "chat") // state is re-sent on changes
+	src.set(c.desk.tty(p.ID), path)
+	c.send(protocol.Rename{Window: activeWindow(s).ID, Name: "chat"}) // state is re-sent on changes
 	c.state("pane with a mobile view", func(s protocol.State) bool { p := activePane(s); return p.Program == "lines" && p.View })
 
 	// What the program is doing is in its pane's state, as it changes.
@@ -155,7 +160,8 @@ func TestMobileView(t *testing.T) {
 	c.entries("all of it again", func(e protocol.Entries) bool { return e.Pane == p.ID && e.Reset && len(e.Entries) == 4 })
 
 	// A pane without one says so.
-	other := c.tmux("split-window", "-P", "-F", "#{pane_id}", "-t", p.ID)
+	other := c.desk.split(p.ID)
+	c.state("its split", func(s protocol.State) bool { return paneOf(s, other).ID != "" })
 	c.send(protocol.Read{Pane: other, On: true})
 	c.entries("nothing to read", func(e protocol.Entries) bool { return e.Pane == other && e.Error != "" })
 }

@@ -107,6 +107,7 @@ type attached struct {
 	cols, rows int
 	away       bool
 	owned      map[string][2]int // terminals the client owns, at the size it gave them
+	front      string            // the terminal it took last, in front of its user
 	last       view
 
 	mu     sync.Mutex
@@ -439,20 +440,28 @@ func (t *attached) Screen(pane string, history int) (*mux.Screen, error) {
 	}
 	t.mu.Lock()
 	b := t.blocks[pane]
+	var cols, rows int
+	if b != nil {
+		cols, rows = b.cols, b.rows
+	}
 	t.mu.Unlock()
 	if b == nil {
 		return nil, errors.New("rex: no terminal " + pane)
 	}
-	return &mux.Screen{Cols: b.cols, Rows: b.rows, Repaint: repaint(head, lines, b.rows, history), Seq: seq}, nil
+	return &mux.Screen{Cols: cols, Rows: rows, Repaint: repaint(head, lines, rows, history), Seq: seq}, nil
 }
 
-// Resize sizes the terminals the client owns.
+// Resize sizes the terminals the client owns, and takes back the one in
+// front of its user if the desktop took it since: they're using the phone.
 func (t *attached) Resize(cols, rows int) error {
 	t.cols, t.rows = cols, rows
 	t.mu.Lock()
-	owned := make([]string, 0, len(t.owned))
+	owned := make([]string, 0, len(t.owned)+1)
 	for id := range t.owned {
 		owned = append(owned, id)
+	}
+	if _, ok := t.owned[t.front]; !ok && t.blocks[t.front] != nil {
+		owned = append(owned, t.front)
 	}
 	t.mu.Unlock()
 	for _, id := range owned {
@@ -491,6 +500,7 @@ func (t *attached) claim(pane string) error {
 	size := [2]int{t.cols, t.rows}
 	t.mu.Lock()
 	had, ok := t.owned[pane]
+	t.front = pane
 	t.mu.Unlock()
 	if ok && had == size {
 		return nil

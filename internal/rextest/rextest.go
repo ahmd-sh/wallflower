@@ -21,11 +21,19 @@ func Binary() string {
 	return "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex"
 }
 
-// Server starts a Rex server of its own, with no config and nothing saved,
-// holding one session "t" whose terminal runs /bin/sh. It returns the
-// server's socket, the session's id and its terminal's, and a function
-// that runs the rex CLI against it.
-func Server(t *testing.T) (socket, session, block string, run func(args ...string) string) {
+// A Server is a Rex server of a test's own.
+type Server struct {
+	Socket  string
+	Session string // the session "t"
+	Block   string // its terminal
+	t       *testing.T
+	bin     string
+	cmd     *exec.Cmd
+}
+
+// Start starts a server with no config and nothing saved, holding one
+// session "t" whose terminal runs /bin/sh, owned by no client.
+func Start(t *testing.T) *Server {
 	t.Helper()
 	bin := Binary()
 	if _, err := os.Stat(bin); err != nil {
@@ -39,27 +47,16 @@ func Server(t *testing.T) (socket, session, block string, run func(args ...strin
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	config := filepath.Join(dir, "init.lua")
 	os.WriteFile(config, nil, 0o600)
-	socket = filepath.Join(dir, "s")
-	server := exec.Command(bin, "server", "run", "--listen", socket, "--state-dir", filepath.Join(dir, "state"),
+	s := &Server{Socket: filepath.Join(dir, "s"), t: t, bin: bin}
+	s.cmd = exec.Command(bin, "server", "run", "--listen", s.Socket, "--state-dir", filepath.Join(dir, "state"),
 		"--restore=false", "--config", config, "--autostart=false")
-	server.Env = append(os.Environ(), "SHELL=/bin/sh", "PS1=$ ", "ENV=")
-	if err := server.Start(); err != nil {
+	s.cmd.Env = append(os.Environ(), "SHELL=/bin/sh", "PS1=$ ", "ENV=")
+	if err := s.cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		server.Process.Kill()
-		server.Wait()
-	})
-	run = func(args ...string) string {
-		t.Helper()
-		out, err := exec.Command(bin, append([]string{"-S", socket, "--autostart=false"}, args...)...).CombinedOutput()
-		if err != nil {
-			t.Fatalf("rex %v: %v: %s", args, err, out)
-		}
-		return string(out)
-	}
+	t.Cleanup(s.Kill)
 	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(50 * time.Millisecond) {
-		if _, err := os.Stat(socket); err == nil {
+		if _, err := os.Stat(s.Socket); err == nil {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -72,8 +69,29 @@ func Server(t *testing.T) (socket, session, block string, run func(args ...strin
 			Blocks []string `json:"block_ids"`
 		} `json:"initial_windows"`
 	}
-	if err := json.Unmarshal([]byte(run("new", "t", "--json", "--shell=none", "--", "/bin/sh")), &created); err != nil {
+	if err := json.Unmarshal([]byte(s.Run("new", "t", "--json", "--shell=none", "--", "/bin/sh")), &created); err != nil {
 		t.Fatal(err)
 	}
-	return socket, created.Session, created.Windows[0].Blocks[0], run
+	s.Session, s.Block = created.Session, created.Windows[0].Blocks[0]
+	// The CLI that made it keeps it, gone or not.
+	s.Run("api", "call", "-s", s.Session, "session.disown_block", "{}")
+	return s
+}
+
+// Run runs the rex CLI against the server, and says what it printed.
+func (s *Server) Run(args ...string) string {
+	s.t.Helper()
+	out, err := exec.Command(s.bin, append([]string{"-S", s.Socket, "--autostart=false"}, args...)...).CombinedOutput()
+	if err != nil {
+		s.t.Fatalf("rex %v: %v: %s", args, err, out)
+	}
+	return string(out)
+}
+
+// Kill stops the server at once.
+func (s *Server) Kill() {
+	if s.cmd.ProcessState == nil {
+		s.cmd.Process.Kill()
+		s.cmd.Wait()
+	}
 }
