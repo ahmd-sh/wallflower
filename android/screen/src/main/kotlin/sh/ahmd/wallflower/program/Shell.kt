@@ -11,7 +11,7 @@ import sh.ahmd.wallflower.screen.Screen.Companion.PROMPT
  * what's typed after the last prompt. [clearKeys] empty a row of it, if
  * anything does.
  */
-class Shell(override val clearKeys: List<String> = emptyList()) : Program {
+class Shell(override val clearKeys: List<String> = emptyList(), override val keyBar: KeyDefaults? = null) : Program {
     /**
      * The input cells after the last prompt, without autosuggestion ghost
      * text after the cursor. None while a command runs: its output, not a

@@ -19,17 +19,17 @@ import (
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/desktop"
-	"github.com/ahmd-sh/wallflower/internal/mobileview"
 	"github.com/ahmd-sh/wallflower/internal/mux"
+	"github.com/ahmd-sh/wallflower/internal/program"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 )
 
 type Options struct {
-	Muxes   map[string]mux.Mux  // the multiplexers a client can ask for, by name
-	Mux     string              // the one when it doesn't ask
-	Session string              // default session when the client doesn't ask for one
-	Readers []mobileview.Source // programs whose panes have mobile views
-	Uploads string              // where files the client sends are saved; UploadDir() if empty
+	Muxes    map[string]mux.Mux // the multiplexers a client can ask for, by name
+	Mux      string             // the one when it doesn't ask
+	Session  string             // default session when the client doesn't ask for one
+	Programs []program.Program  // the programs it knows, by the panes that run them; first match wins
+	Uploads  string             // where files the client sends are saved; UploadDir() if empty
 }
 
 type gateway struct {
@@ -41,8 +41,8 @@ type gateway struct {
 	snapshot  *mux.Session // the last
 	lastState []byte
 	dirty     bool
-	programs  map[string]string           // tty and versioned command -> the name it was run as
-	found     map[string]mobileview.Found // panes read, and what their programs are doing, as last sent
+	names     map[string]string // tty and versioned command -> the name it was run as
+	found     map[string]match  // panes whose programs it knows, as last sent
 
 	panes    map[string]*pane            // panes the client has open
 	scanners map[string]*desktop.Scanner // every pane's output, for notifications
@@ -51,10 +51,10 @@ type gateway struct {
 	held   []func() error   // work waiting for resume, in order: the client's frames, and the rest of what one asked
 	resume <-chan time.Time // while a pane settles; see hold
 
-	sources []mobileview.Source
-	reading map[string]reading // panes whose mobile views the client has on
-	updates chan readUpdate
-	gen     int // readers started
+	programs []program.Program
+	reading  map[string]reading // panes whose mobile views the client has on
+	updates  chan readUpdate
+	gen      int // readers started
 
 	uploads uploads
 }
@@ -65,9 +65,9 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	g := &gateway{
-		ctx: ctx, out: newOutbox(out), programs: map[string]string{},
+		ctx: ctx, out: newOutbox(out), names: map[string]string{},
 		panes: map[string]*pane{}, scanners: map[string]*desktop.Scanner{},
-		sources: opts.Readers, reading: map[string]reading{}, updates: make(chan readUpdate, 16),
+		programs: opts.Programs, reading: map[string]reading{}, updates: make(chan readUpdate, 16),
 		uploads: uploads{dir: opts.Uploads, open: map[string]*upload{}},
 	}
 	if g.uploads.dir == "" {

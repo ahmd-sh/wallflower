@@ -97,8 +97,8 @@ type Kill struct {
 	Pane   string `json:"pane,omitempty"`
 }
 
-// Read starts or stops a pane's mobile view arriving as Entries; a pane has
-// one when Pane.Reader names its reader.
+// Read starts or stops a pane's mobile view arriving as Entries, for a pane
+// with one (Pane.View).
 type Read struct {
 	Pane string `json:"pane"`
 	On   bool   `json:"on"`
@@ -187,11 +187,14 @@ type Pane struct {
 	Title   string `json:"title,omitempty"`
 	Path    string `json:"path,omitempty"`
 	Command string `json:"command"`
-	// Reader names what reads the pane's program for its mobile view
-	// (claude), if anything does; see Read.
-	Reader string `json:"reader,omitempty"`
-	// Activity is what the pane's program is doing, if it says
-	// (ActivityWorking...), and Since when it began, in Unix milliseconds.
+	// Program names the program the pane runs (claude, zsh, shell), if the
+	// gateway knows it: a client knows it by the same name. View says it has
+	// a mobile view of the pane; see Read.
+	Program string `json:"program,omitempty"`
+	View    bool   `json:"view,omitempty"`
+	// Activity is what the program is doing, for one with a mobile view, if
+	// it says (ActivityWorking...), and Since when it began, in Unix
+	// milliseconds.
 	Activity string `json:"activity,omitempty"`
 	Since    int64  `json:"since,omitempty"`
 }

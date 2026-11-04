@@ -75,10 +75,9 @@ type Found struct {
 	Since    int64
 }
 
-// A Source reads the panes running one kind of program.
+// A Source reads the panes running one kind of program: its mobile view,
+// for a program.Program.
 type Source interface {
-	// Name is how clients know it.
-	Name() string
 	// Find says which of these panes it reads, by ID. It's asked whenever
 	// the session changes, and every moment or so for what programs are
 	// doing, so it should be quick.

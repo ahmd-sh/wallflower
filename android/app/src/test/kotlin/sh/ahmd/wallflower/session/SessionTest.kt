@@ -112,7 +112,7 @@ class SessionTest {
 
     private val state = State(
         "\$1", "o",
-        listOf(Window("@1", 0, "zsh", active = true, panes = listOf(Pane("%1", 0, true, 56, 20, command = "claude", reader = "claude")))),
+        listOf(Window("@1", 0, "zsh", active = true, panes = listOf(Pane("%1", 0, true, 56, 20, command = "claude", program = "claude", view = true)))),
     )
 
     private fun <T> eventually(block: suspend () -> T): T = runBlocking { withTimeout(5_000) { block() } }

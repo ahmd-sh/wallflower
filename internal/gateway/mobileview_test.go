@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/mobileview"
+	"github.com/ahmd-sh/wallflower/internal/program"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 )
 
@@ -24,8 +25,6 @@ type lines struct {
 	files    map[string]string // tty -> its recording
 	activity mobileview.Activity
 }
-
-func (l *lines) Name() string { return "lines" }
 
 func (l *lines) Find(panes []mobileview.Pane) map[string]mobileview.Found {
 	l.mu.Lock()
@@ -98,10 +97,13 @@ func (c *client) pong(id int) {
 
 func TestMobileView(t *testing.T) {
 	src := &lines{files: map[string]string{}}
-	c := connectOpts(t, context.Background(), 56, 20, Options{Readers: []mobileview.Source{src}})
+	c := connectOpts(t, context.Background(), 56, 20, Options{Programs: []program.Program{
+		{ID: "lines", View: src},
+		{ID: "shell", Commands: []string{"sh", "bash"}}, // macOS's /bin/sh is bash
+	}})
 	p := activePane(c.state("state", func(protocol.State) bool { return true }))
-	if p.Reader != "" {
-		t.Fatalf("a reader before there is one: %q", p.Reader)
+	if p.Program != "shell" || p.View {
+		t.Fatalf("the shell's pane runs %q, view %v", p.Program, p.View)
 	}
 
 	// The pane's shell stands in for a program writing what's said.
@@ -118,7 +120,7 @@ func TestMobileView(t *testing.T) {
 	write(`{"id":"a","text":"hello"}` + "\n" + `{"id":"p","png":"` + base64.StdEncoding.EncodeToString(png) + `"}` + "\n")
 	src.set(c.tmux("display", "-p", "-t", p.ID, "#{pane_tty}"), path)
 	c.tmux("rename-window", "-t", "t", "chat") // state is re-sent on changes
-	c.state("pane with a reader", func(s protocol.State) bool { return activePane(s).Reader == "lines" })
+	c.state("pane with a mobile view", func(s protocol.State) bool { p := activePane(s); return p.Program == "lines" && p.View })
 
 	// What the program is doing is in its pane's state, as it changes.
 	src.doing(mobileview.Working)

@@ -104,7 +104,7 @@ class Connection(private val context: Context, private val scope: CoroutineScope
     }
 
     private fun program(session: Session, pane: String): Program =
-        Programs.of(session.state.value?.windows?.firstNotNullOfOrNull { w -> w.panes.firstOrNull { it.id == pane } }?.command.orEmpty())
+        Programs.of(session.state.value?.windows?.firstNotNullOfOrNull { w -> w.panes.firstOrNull { it.id == pane } }?.program)
 
     /** Ends the session, and the service keeping it. */
     fun disconnect() {

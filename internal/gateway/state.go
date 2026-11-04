@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/ahmd-sh/wallflower/internal/mobileview"
 	"github.com/ahmd-sh/wallflower/internal/mux"
 	"github.com/ahmd-sh/wallflower/internal/proc"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
@@ -23,12 +22,8 @@ func (g *gateway) sendState() {
 		return
 	}
 	g.snapshot = s
-	readers := g.readers(s)
-	g.found = map[string]mobileview.Found{}
-	for id, r := range readers {
-		g.found[id] = r.found
-	}
-	st := stateOf(s, g.program, readers)
+	g.found = g.matches(s)
+	st := stateOf(s, g.program, g.found)
 	if b, _ := protocol.AppendJSON(nil, st); !bytes.Equal(b, g.lastState) {
 		g.out.push(b)
 		g.lastState = b
@@ -53,7 +48,7 @@ func (g *gateway) sendState() {
 	g.resized(sizes)
 }
 
-func stateOf(s *mux.Session, program func(mux.Pane) string, readers map[string]reader) protocol.State {
+func stateOf(s *mux.Session, program func(mux.Pane) string, matches map[string]match) protocol.State {
 	st := protocol.State{Session: s.ID, Name: s.Name, Windows: []protocol.Window{}}
 	for _, w := range s.Windows {
 		pw := protocol.Window{ID: w.ID, Index: w.Index, Name: w.Name, Active: w.Active, Panes: []protocol.Pane{}}
@@ -62,8 +57,11 @@ func stateOf(s *mux.Session, program func(mux.Pane) string, readers map[string]r
 				ID: p.ID, Index: p.Index, Active: p.Active, Cols: p.Cols, Rows: p.Rows, Alt: p.Alt,
 				Title: p.Title, Path: p.Path, Command: program(p),
 			}
-			if r, ok := readers[p.ID]; ok {
-				pp.Reader, pp.Activity, pp.Since = r.src.Name(), string(r.found.Activity), r.found.Since
+			if m, ok := matches[p.ID]; ok {
+				pp.Program = m.program.ID
+				if m.view {
+					pp.View, pp.Activity, pp.Since = true, string(m.found.Activity), m.found.Since
+				}
 			}
 			pw.Panes = append(pw.Panes, pp)
 		}
@@ -85,12 +83,12 @@ func (g *gateway) program(p mux.Pane) string {
 		return p.Command
 	}
 	key := p.TTY + " " + p.Command
-	name, ok := g.programs[key]
+	name, ok := g.names[key]
 	if !ok {
 		if name = proc.Foreground(p.TTY); name == "" {
 			name = p.Command
 		}
-		g.programs[key] = name
+		g.names[key] = name
 	}
 	return name
 }

@@ -81,26 +81,28 @@ intents go out.
 A program, such as Claude Code or a shell, can have a plugin. A plugin has
 two halves, each optional:
 
-- **Server half**, a `mobileview.Source` (`internal/claude`). It finds the
-  panes running its program and reads them for their mobile view: entries
-  the phone renders natively (said, step, thought, picture, note), and what
-  the program is doing. Those kinds are generic, so the phone renders any
-  plugin's view the same way.
+- **Server half**, a `program.Program` (`internal/program`): its id, the
+  commands its panes report, and its mobile view if it has one, a
+  `mobileview.Source` (`internal/claude`). The view finds the panes it can
+  read and reads them: entries the phone renders natively (said, step,
+  thought, picture, note), and what the program is doing. Those kinds are
+  generic, so the phone renders any plugin's view the same way.
 - **Client half**, a `Program` (`android/screen/.../program`). It reads its
   program's screen, such as the input line and the choices it offers. It
-  says what its notifications mean, and how to clear a line, start a new one
-  and compact.
+  says what its notifications mean, how to clear a line, start a new one
+  and compact, and which key bar its panes get until the user sets one.
+
+The halves go by one id. The gateway says which program each pane runs
+(`program` in `state`), and whether it has a view (`view`); the phone looks
+its half up by that id. Which panes run a program is decided only on the
+Mac. A key bar the user makes still follows panes by their command, or by
+a program's id.
 
 The core asks a plugin and does what it says. It never checks which
 program it is. Notifications show the split: the gateway reads them by
 standards from any program, and the program's client half decides what
 each one means (Claude Code's is a question exactly when its prompt box is
 gone).
-
-For now each half matches its program by the pane's command on its own
-side. Claude Code's key bar defaults still sit in the core client. Next,
-each plugin gets one id across both halves, which the gateway names for
-each pane in `state`, and its defaults move into it.
 
 ## Plugins users provide
 
@@ -110,8 +112,9 @@ plugins from outside later, without changes to the core:
 - A server half can be an external program that speaks the
   `mobileview.Source` calls as JSON lines on stdin and stdout, as language
   servers do. It can be written in any language and needs no rebuild.
-- A client half can be data the gateway sends: key bar defaults, add-menu
-  items, notification rules. The phone can't load code. Built-in plugins
+- A client half can be data the gateway sends with the program's id: key
+  bar defaults (already data, `KeyDefaults`), add-menu items,
+  notification rules. The phone can't load code. Built-in plugins
   keep their native code for what data can't say, such as reading a
   screen.
 

@@ -5,8 +5,9 @@ import sh.ahmd.wallflower.screen.Prompt
 import sh.ahmd.wallflower.screen.Screen
 
 /**
- * What wallflower knows of a kind of program running in a pane: what it can
- * read off the program's screen, and how to drive it beyond typing.
+ * The phone's half of a program's plugin: what wallflower can read off the
+ * program's screen, and how to drive it beyond typing. The Mac's half says
+ * which panes run it, and names it by the same id (see [Programs]).
  */
 interface Program {
     /** The program's input line, if wallflower can see one on its screen. */
@@ -47,7 +48,16 @@ interface Program {
 
     /** What picking [option] of [prompt] does besides answering it, if wallflower needs to know. */
     fun picked(prompt: Prompt, option: Prompt.Option): Effect? = null
+
+    /** The key bar its panes get until the user sets them one; programs with the same one share it. */
+    val keyBar: KeyDefaults? get() = null
 }
+
+/**
+ * A key bar a program ships: its [name], its [keys] by wallflower's names,
+ * and what the send button presses when there's nothing to send ([stop]).
+ */
+data class KeyDefaults(val name: String, val keys: List<String>, val stop: List<String> = listOf("C-c"))
 
 /** A notification as the phone shows it. */
 data class Notice(val title: String?, val body: String)
@@ -58,14 +68,17 @@ sealed interface Effect {
     class Rewound(val said: (String) -> Boolean) : Effect
 }
 
-/** The programs wallflower knows, by the command a pane reports. */
+/** The programs wallflower ships, by the id the gateway names a pane's program by. */
 object Programs {
-    private val zsh = Shell(listOf("C-x", "C-u")) // kill-buffer, as the dotfiles' zshrc binds it
+    private val shells = KeyDefaults("shell", listOf("Tab", "Up", "Down", "Left", "Right", "C-r", "C-c", "C-d", "Escape"))
     private val other = Shell()
 
-    fun of(command: String): Program = when (command.lowercase()) {
-        "claude" -> Claude
-        "zsh" -> zsh
-        else -> other
-    }
+    val builtin: Map<String, Program> = linkedMapOf(
+        "claude" to Claude,
+        "zsh" to Shell(listOf("C-x", "C-u"), shells), // kill-buffer, as the dotfiles' zshrc binds it
+        "shell" to Shell(keyBar = shells),
+    )
+
+    /** A pane's program, by its id; one wallflower doesn't ship (or none) is a plain terminal's. */
+    fun of(id: String?): Program = builtin[id?.lowercase()] ?: other
 }

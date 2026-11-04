@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import sh.ahmd.wallflower.program.Program
+import sh.ahmd.wallflower.program.Programs
 
 /**
  * A key on the bar: what it shows, and the keys it sends by wallflower's
@@ -43,7 +44,7 @@ data class BarKey(
 @Serializable
 data class KeyProfile(
     val name: String,
-    /** As panes report them: claude, zsh, hntui. */
+    /** As panes report them (claude, zsh, hntui), or as the gateway names their program (shell). */
     val programs: List<String> = emptyList(),
     val keys: List<BarKey>,
     /** What the send button sends when the box is empty. */
@@ -57,6 +58,10 @@ data class KeyProfile(
 ) {
     fun sendKeys(): List<String> = send ?: ENTER
 
+    /** Whether it's the bar for a pane running [command], or the program the gateway named [program]. */
+    fun matches(command: String?, program: String? = null): Boolean =
+        programs.any { it.equals(command, ignoreCase = true) || it.equals(program, ignoreCase = true) }
+
     /** A new line, in a program that takes several (Program.newlineKeys); else Enter. */
     fun returnKeys(program: Program): List<String> = returnKey ?: program.newlineKeys ?: ENTER
 }
@@ -65,15 +70,16 @@ private val ENTER = listOf("Enter")
 
 /**
  * Which keys sit next to the composer. The focused pane's program picks the
- * profile, first match wins, else [default].
+ * profile, first match wins, else [default]. The programs wallflower ships
+ * bring their own ([Program.keyBar]) until the user changes them.
  */
 @Serializable
 data class KeyBar(
     val profiles: List<KeyProfile>,
     val default: KeyProfile,
 ) {
-    fun profileFor(program: String): KeyProfile =
-        profiles.firstOrNull { p -> p.programs.any { it.equals(program, ignoreCase = true) } } ?: default
+    fun profileFor(command: String, program: String? = null): KeyProfile =
+        profiles.firstOrNull { it.matches(command, program) } ?: default
 
     companion object {
         /** Keys offered when editing a bar. */
@@ -117,11 +123,13 @@ data class KeyBar(
 
         private fun keys(vararg labels: String) = labels.map { l -> common.first { it.label == l } }
 
+        /** A key by name, as the bar shows it. */
+        private fun key(name: String) = common.firstOrNull { !it.sticky && it.keys == listOf(name) } ?: BarKey(labelOf(listOf(name)), listOf(name))
+
         val defaults = KeyBar(
-            profiles = listOf(
-                KeyProfile("claude code", listOf("claude"), keys("esc", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"), stop = listOf("Escape")),
-                KeyProfile("shell", listOf("zsh", "bash", "fish", "sh"), keys("tab", "↑", "↓", "←", "→", "^r", "^c", "^d", "esc")),
-            ),
+            profiles = Programs.builtin.entries.filter { it.value.keyBar != null }
+                .groupBy({ it.value.keyBar!! }, { it.key })
+                .map { (d, ids) -> KeyProfile(d.name, ids, d.keys.map(::key), stop = d.stop) },
             default = KeyProfile("default", keys = keys("esc", "tab", "⇧tab", "^c", "↑", "↓", "←", "→", "⏎")),
         )
     }

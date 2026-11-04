@@ -9,7 +9,7 @@ import kotlinx.serialization.json.Json
 // The wire format is defined in docs/protocol.md. Field order matches the Go
 // structs so both sides encode identical bytes (checked by the golden tests).
 
-const val VERSION = 3
+const val VERSION = 4
 const val DEFAULT_HISTORY = 1000
 
 val WireJson = Json {
@@ -106,7 +106,7 @@ data class Rename(val window: String, val name: String) : ClientMessage
 @SerialName("kill")
 data class Kill(val window: String? = null, val pane: String? = null) : ClientMessage
 
-/** Starts or stops [pane]'s mobile view arriving as [Entries]; panes with one name their reader ([Pane.reader]). */
+/** Starts or stops [pane]'s mobile view arriving as [Entries], for a pane with one ([Pane.view]). */
 @Serializable
 @SerialName("read")
 data class Read(val pane: String, val on: Boolean) : ClientMessage
@@ -171,14 +171,16 @@ data class Pane(
     val active: Boolean,
     val cols: Int,
     val rows: Int,
-    /** A full-screen app owns the pane; tmux keeps no scrollback for it. */
+    /** A full-screen app owns the pane; no scrollback is kept for it. */
     val alt: Boolean = false,
     val title: String = "",
     val path: String = "",
     val command: String,
-    /** What reads the pane's program for its mobile view (claude), if anything does; see [Read]. */
-    val reader: String = "",
-    /** What the program is doing, if it says: [WORKING], [WAITING] or [IDLE]; [since] when, in Unix milliseconds. */
+    /** The program the pane runs (claude, zsh, shell), if the gateway knows it: the app's half of it goes by the same name (Programs). */
+    val program: String? = null,
+    /** The program has a mobile view of the pane; see [Read]. */
+    val view: Boolean = false,
+    /** What a program with a mobile view is doing, if it says: [WORKING], [WAITING] or [IDLE]; [since] when, in Unix milliseconds. */
     val activity: String = "",
     val since: Long = 0,
 ) {

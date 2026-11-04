@@ -6,10 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ahmd-sh/wallflower/internal/claude"
 	"github.com/ahmd-sh/wallflower/internal/gateway"
-	"github.com/ahmd-sh/wallflower/internal/mobileview"
 	"github.com/ahmd-sh/wallflower/internal/mux"
+	"github.com/ahmd-sh/wallflower/internal/program"
 	"github.com/ahmd-sh/wallflower/internal/rex"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
@@ -54,11 +53,7 @@ func gatewayFlags(fs *flag.FlagSet) func() (gateway.Options, error) {
 		if muxes[*multiplexer] == nil {
 			return gateway.Options{}, fmt.Errorf("no multiplexer %q: tmux or rex", *multiplexer)
 		}
-		var readers []mobileview.Source
-		if *claudeDir != "" {
-			readers = append(readers, claude.New(*claudeDir))
-		}
-		return gateway.Options{Muxes: muxes, Mux: *multiplexer, Session: *session, Readers: readers}, nil
+		return gateway.Options{Muxes: muxes, Mux: *multiplexer, Session: *session, Programs: program.Builtin(*claudeDir)}, nil
 	}
 }
 

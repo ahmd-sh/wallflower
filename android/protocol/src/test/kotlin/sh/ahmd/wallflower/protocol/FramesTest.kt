@@ -64,15 +64,16 @@ class FramesTest {
         assertEquals(ServerHello(VERSION, Mux("tmux", "3.8", listOf(Mux.BINDINGS)), uploads = "/Users/me/Library/Caches/wallflower/uploads"), message())
         val state = assertIs<State>(message())
         assertEquals("o", state.name)
-        val (claude, shell) = state.windows.single().panes
+        val (claude, shell, other) = state.windows.single().panes
         assertEquals(
             Pane(
                 "%2", 0, false, 28, 20, alt = true, title = "✳ Fix tests", path = "/Users/ahmedshaikh/dev/wallflower",
-                command = "claude", reader = "claude", activity = Pane.WAITING, since = 1792209270006,
+                command = "claude", program = "claude", view = true, activity = Pane.WAITING, since = 1792209270006,
             ),
             claude,
         )
-        assertEquals(Pane("%3", 1, true, 28, 20, command = "zsh"), shell)
+        assertEquals(Pane("%3", 1, true, 28, 20, command = "zsh", program = "zsh"), shell)
+        assertEquals(Pane("%4", 2, false, 28, 20, command = "htop"), other)
         assertEquals(Reset("%2", 28, 20), message())
 
         val data = assertIs<Frame.Data>(r.next())

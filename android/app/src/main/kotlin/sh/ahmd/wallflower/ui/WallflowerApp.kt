@@ -91,7 +91,8 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     val hasKey by model.hasKey.collectAsStateWithLifecycle()
     val unlockSeconds by model.unlockSeconds.collectAsStateWithLifecycle()
     var screen by remember { mutableStateOf<Screen>(Screen.Terminal) }
-    var program by remember { mutableStateOf<String?>(null) }
+    var program by remember { mutableStateOf<String?>(null) } // the focused pane's command
+    var programId by remember { mutableStateOf<String?>(null) } // and the program the gateway named
     val focus = LocalFocusManager.current
     LaunchedEffect(screen) { if (screen != Screen.Terminal) focus.clearFocus() } // the composer's keyboard goes away
     val current = session
@@ -121,9 +122,9 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                 current,
                 model,
                 unlock,
-                onProgram = { program = it },
+                onProgram = { command, id -> program = command; programId = id },
                 onSettings = { screen = Screen.Settings },
-                onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program), Screen.Terminal) },
+                onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
                 onExit = onExit,
             )
         }
@@ -151,6 +152,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     store = model.keyBar,
                     settings = model.settings,
                     program = program,
+                    programId = programId,
                     onBack = { screen = Screen.Terminal },
                     onEditHost = { screen = Screen.Setup },
                     onOpen = { screen = Screen.Profile(it, Screen.Settings) },
@@ -160,6 +162,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     store = model.keyBar,
                     ref = s.ref,
                     program = program,
+                    programId = programId,
                     mux = mux,
                     onBack = { screen = s.back },
                     onOpen = { screen = s.copy(ref = it) },
@@ -181,7 +184,7 @@ private fun TerminalScreen(
     session: Session,
     model: AppModel,
     unlock: (onDone: (Boolean) -> Unit) -> Unit,
-    onProgram: (String?) -> Unit,
+    onProgram: (command: String?, program: String?) -> Unit,
     onSettings: () -> Unit,
     onEditKeys: () -> Unit,
     onExit: () -> Unit,
@@ -195,7 +198,7 @@ private fun TerminalScreen(
     val windows = state?.windows.orEmpty()
     val window = windows.firstOrNull { it.id == viewing } ?: windows.firstOrNull { it.active }
     val pane = window?.shownPane(chosen)
-    LaunchedEffect(pane?.command) { onProgram(pane?.command) }
+    LaunchedEffect(pane?.command, pane?.program) { onProgram(pane?.command, pane?.program) }
     // A notification tapped shows its pane; until then, the one shown isn't what's looked at.
     val opening by model.opening.collectAsStateWithLifecycle()
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
@@ -222,13 +225,13 @@ private fun TerminalScreen(
         val i = panes.indexOfFirst { it.id == pane?.id }
         if (i < 0) emptyList() else listOf(-1, 0, 1).map { panes[(i + it).mod(panes.size)] }.distinct()
     }.orEmpty()
-    val mobileViews = if (mobileViewOn) nearby.filter { it.reader.isNotEmpty() }.map { it.id }.toSet() else emptySet()
+    val mobileViews = if (mobileViewOn) nearby.filter { it.view }.map { it.id }.toSet() else emptySet()
     LaunchedEffect(mobileViews) { session.read(mobileViews) }
     val mobileView = pane != null && pane.id in mobileViews
 
     fun actionsOf(p: Pane): PaneActions {
-        val program = Programs.of(p.command)
-        val profile = bar.profileFor(p.command)
+        val program = Programs.of(p.program)
+        val profile = bar.profileFor(p.command, p.program)
         return PaneActions(session, p, program, profile.clear ?: program.clearKeys, profile.stop, profile.sendKeys(), profile.returnKeys(program))
     }
     val actions = remember(session, pane, bar) { pane?.let(::actionsOf) }
@@ -236,7 +239,7 @@ private fun TerminalScreen(
     val screen = rememberPaneScreen(
         pane?.id,
         pane?.let { terminals[it.id] },
-        actions?.program ?: Programs.of(""),
+        actions?.program ?: Programs.of(null),
         asks = mobileView && activity != Activity.Working, // a prompt while the program works isn't one to answer
         activity,
     )
@@ -375,7 +378,7 @@ private fun TerminalScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 AnimatedVisibility(
-                                    pane.reader.isNotEmpty(),
+                                    pane.view,
                                     enter = fadeIn(Motion.effect()) + expandHorizontally(Motion.spatial()),
                                     exit = fadeOut(Motion.effect()) + shrinkHorizontally(Motion.spatial()),
                                 ) {
@@ -401,7 +404,7 @@ private fun TerminalScreen(
                         Composer(
                             state = model.drafts.of(pane.id),
                             program = pane.command,
-                            keys = bar.profileFor(pane.command).keys,
+                            keys = bar.profileFor(pane.command, pane.program).keys,
                             connected = status is Status.Connected,
                             line = screen.line,
                             attachments = Attachments(

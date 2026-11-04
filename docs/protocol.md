@@ -1,4 +1,4 @@
-# wallflower protocol, version 3
+# wallflower protocol, version 4
 
 The client runs `wallflower serve` over ssh and talks to it on stdin/stdout. One
 connection is one client session; the gateway exits when the client
@@ -52,7 +52,7 @@ client never has to resync on its own.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `cols`, `rows`, `mux`?, `session`?, `away`? | first message; `v` is 3 |
+| `hello` | `v`, `cols`, `rows`, `mux`?, `session`?, `away`? | first message; `v` is 4 |
 | `resize` | `cols`, `rows` | the client's terminal area changed |
 | `open` | `pane`, `history`? | repaint and stream a pane; `history` lines of scrollback (default 1000) |
 | `close` | `pane` | stop streaming a pane |
@@ -64,7 +64,7 @@ client never has to resync on its own.
 | `new` | | open a window, current in the client's session only |
 | `rename` | `window`, `name` | |
 | `kill` | `window` or `pane` | close it; closing a window's last pane closes the window |
-| `read` | `pane`, `on` | start or stop the pane's mobile view arriving as `entries`; for panes whose `reader` is set |
+| `read` | `pane`, `on` | start or stop the pane's mobile view arriving as `entries`; for panes with `view` |
 | `picture` | `pane`, `id` | a picture entry's bytes, which come in a picture frame |
 | `upload` | `id`, `name`, `size` | send a file: `size` bytes follow in upload frames with this `id`, see below |
 | `ping` | `id` | |
@@ -110,8 +110,9 @@ A window is `id`, `index`, `name`, `active` and `panes`. A pane is:
 | `alt` | a full-screen app owns the pane; no scrollback is kept for it |
 | `title`, `path` | |
 | `command` | the foreground program; tools that run from a versioned file (`.../claude/versions/2.1.300`) report the name they were run as |
-| `reader` | what reads the pane's program for its mobile view (`claude`), if anything does |
-| `activity`, `since` | what the program is doing, if it says: `working` on a turn (through its steps, until it's finally done), `waiting` for the user to answer something mid-turn (a permission, a question), or `idle`; `since` when, in Unix milliseconds |
+| `program` | the program the pane runs, if the gateway knows it (`claude`, `zsh`, `shell`): a client knows its own half of the program by this name |
+| `view` | the program has a mobile view of the pane, see below |
+| `activity`, `since` | what a program with a mobile view is doing, if it says: `working` on a turn (through its steps, until it's finally done), `waiting` for the user to answer something mid-turn (a permission, a question), or `idle`; `since` when, in Unix milliseconds |
 
 When a window is zoomed, only its active pane is visible.
 

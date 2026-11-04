@@ -15,6 +15,12 @@ object Claude : Program {
 
     override val compact = "/compact"
 
+    override val keyBar = KeyDefaults(
+        "claude code",
+        listOf("Escape", "BTab", "Up", "Down", "Enter", "1", "2", "3", "C-o", "C-c"),
+        stop = listOf("Escape"), // Claude stops what it's doing at Esc
+    )
+
     /**
      * The prompt box: between two rules, a first row starting `❯ ` (or `! `
      * in shell mode) and rows indented to match. Claude wraps long lines

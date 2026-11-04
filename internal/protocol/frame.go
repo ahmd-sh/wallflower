@@ -12,7 +12,7 @@ import (
 	"io"
 )
 
-const Version = 3
+const Version = 4
 
 const (
 	FrameJSON    byte = 1

@@ -48,8 +48,6 @@ func New(dir string) *Source {
 	return &Source{dir: dir, paths: map[string]found{}, ttys: map[int]string{}}
 }
 
-func (s *Source) Name() string { return "claude" }
-
 // Find picks the panes a claude runs in, by the terminals they share, with
 // what each is doing.
 func (s *Source) Find(panes []mobileview.Pane) map[string]mobileview.Found {

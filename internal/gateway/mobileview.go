@@ -5,10 +5,13 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/mobileview"
 	"github.com/ahmd-sh/wallflower/internal/mux"
+	"github.com/ahmd-sh/wallflower/internal/program"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 )
 
@@ -17,11 +20,12 @@ const (
 	picturesKept  = 32 << 20               // bytes of a mobile view's pictures kept for the client to ask for
 )
 
-// A reader is the source that reads a pane, and what it says the pane's
-// program is doing.
-type reader struct {
-	src   mobileview.Source
-	found mobileview.Found
+// A match is the program a pane runs, as one of the programs the gateway
+// knows says, and, if it has a mobile view of the pane, what it's doing.
+type match struct {
+	program *program.Program
+	view    bool
+	found   mobileview.Found
 }
 
 // A reading is a pane's mobile view the client has on, its reader feeding the
@@ -42,19 +46,33 @@ type readUpdate struct {
 	end  error // set on the last, if it stopped by itself
 }
 
-// readers maps the panes of a snapshot that some source reads to it.
-func (g *gateway) readers(s *mux.Session) map[string]reader {
+// matches maps the panes of a snapshot to the programs they run: those a
+// program has a mobile view of first, then by their command.
+func (g *gateway) matches(s *mux.Session) map[string]match {
 	var panes []mobileview.Pane
 	for _, w := range s.Windows {
 		for _, p := range w.Panes {
 			panes = append(panes, mobileview.Pane{ID: p.ID, TTY: p.TTY, Command: g.program(p)})
 		}
 	}
-	found := map[string]reader{}
-	for _, src := range g.sources {
-		for id, f := range src.Find(panes) {
-			if _, ok := found[id]; !ok {
-				found[id] = reader{src, f}
+	found := map[string]match{}
+	for i := range g.programs {
+		if v := g.programs[i].View; v != nil {
+			for id, f := range v.Find(panes) {
+				if _, ok := found[id]; !ok {
+					found[id] = match{&g.programs[i], true, f}
+				}
+			}
+		}
+	}
+	for _, p := range panes {
+		if _, ok := found[p.ID]; ok {
+			continue
+		}
+		for i := range g.programs {
+			if g.programs[i].Runs(p.Command) {
+				found[p.ID] = match{program: &g.programs[i]}
+				break
 			}
 		}
 	}
@@ -64,19 +82,11 @@ func (g *gateway) readers(s *mux.Session) map[string]reader {
 // watchActivity has state resent when what a program is doing changed,
 // which no event from the multiplexer says.
 func (g *gateway) watchActivity() {
-	if g.snapshot == nil || len(g.sources) == 0 {
+	if g.snapshot == nil || !slices.ContainsFunc(g.programs, func(p program.Program) bool { return p.View != nil }) {
 		return
 	}
-	now := g.readers(g.snapshot)
-	if len(now) != len(g.found) {
+	if !maps.Equal(g.matches(g.snapshot), g.found) {
 		g.dirty = true
-		return
-	}
-	for id, r := range now {
-		if g.found[id] != r.found {
-			g.dirty = true
-			return
-		}
 	}
 }
 
@@ -93,9 +103,12 @@ func (g *gateway) read(id string) {
 	}
 	var src mobileview.Source
 	if p.ID != "" {
-		for _, s := range g.sources {
-			if _, ok := s.Find([]mobileview.Pane{p})[id]; ok {
-				src = s
+		for _, pr := range g.programs {
+			if pr.View == nil {
+				continue
+			}
+			if _, ok := pr.View.Find([]mobileview.Pane{p})[id]; ok {
+				src = pr.View
 				break
 			}
 		}

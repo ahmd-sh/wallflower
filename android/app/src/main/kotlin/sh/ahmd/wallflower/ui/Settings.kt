@@ -54,9 +54,9 @@ sealed interface ProfileRef {
     data class At(val index: Int) : ProfileRef
 }
 
-/** The profile a program's bar comes from. */
-fun KeyBar.refFor(program: String?): ProfileRef {
-    val i = profiles.indexOfFirst { p -> p.programs.any { it.equals(program, ignoreCase = true) } }
+/** The profile the bar of a pane running [command] (the gateway's [program]) comes from. */
+fun KeyBar.refFor(command: String?, program: String? = null): ProfileRef {
+    val i = profiles.indexOfFirst { it.matches(command, program) }
     return if (i >= 0) ProfileRef.At(i) else ProfileRef.Default
 }
 
@@ -66,12 +66,13 @@ fun SettingsScreen(
     store: KeyBarStore,
     settings: Preferences,
     program: String?,
+    programId: String?,
     onBack: () -> Unit,
     onEditHost: () -> Unit,
     onOpen: (ProfileRef) -> Unit,
 ) {
     val bar by store.bar.collectAsStateWithLifecycle()
-    val focused = bar.refFor(program)
+    val focused = bar.refFor(program, programId)
     Page("settings", onBack) {
         Section("look")
         val look by settings.look.flow.collectAsStateWithLifecycle()
@@ -162,7 +163,7 @@ private fun ProfileRow(profile: KeyProfile, programs: String, focused: Boolean, 
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, mux: Mux?, onBack: () -> Unit, onOpen: (ProfileRef) -> Unit) {
+fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, programId: String?, mux: Mux?, onBack: () -> Unit, onOpen: (ProfileRef) -> Unit) {
     val bar by store.bar.collectAsStateWithLifecycle()
     val profile = when (ref) {
         ProfileRef.Default -> bar.default
@@ -196,13 +197,13 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, mux: Mu
                     save(profile.copy(programs = it.split(' ', ',').filter(String::isNotBlank)))
                 }
                 Body(
-                    "Space-separated, as panes report them." +
+                    "Space-separated, as panes report them, or as wallflower names their program (shell)." +
                         (program?.takeIf { it.isNotEmpty() }?.let { " The focused pane runs $it." } ?: ""),
                 )
             }
             ProfileRef.Default -> {
                 Body("For programs without a profile of their own.")
-                if (!program.isNullOrEmpty() && bar.refFor(program) == ProfileRef.Default) {
+                if (!program.isNullOrEmpty() && bar.refFor(program, programId) == ProfileRef.Default) {
                     Button("make a profile for $program", primary = true) {
                         val index = bar.profiles.size
                         store.update { it.copy(profiles = it.profiles + KeyProfile(program, listOf(program), profile.keys, profile.stop)) }

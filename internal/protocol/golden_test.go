@@ -59,8 +59,9 @@ func goldenServer(t *testing.T) []byte {
 		ID: "@1", Index: 1, Name: "base", Active: true,
 		Panes: []Pane{
 			{ID: "%2", Index: 0, Active: false, Cols: 28, Rows: 20, Alt: true, Title: "✳ Fix tests", Path: "/Users/ahmedshaikh/dev/wallflower",
-				Command: "claude", Reader: "claude", Activity: ActivityWaiting, Since: 1792209270006},
-			{ID: "%3", Index: 1, Active: true, Cols: 28, Rows: 20, Command: "zsh"},
+				Command: "claude", Program: "claude", View: true, Activity: ActivityWaiting, Since: 1792209270006},
+			{ID: "%3", Index: 1, Active: true, Cols: 28, Rows: 20, Command: "zsh", Program: "zsh"},
+			{ID: "%4", Index: 2, Active: false, Cols: 28, Rows: 20, Command: "htop"},
 		},
 	}}})
 	b = mustJSON(t, b, Reset{Pane: "%2", Cols: 28, Rows: 20})

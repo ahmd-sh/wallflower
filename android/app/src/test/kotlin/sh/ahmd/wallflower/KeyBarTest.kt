@@ -10,10 +10,22 @@ class KeyBarTest {
 
     @Test
     fun theProgramPicksTheProfile() {
-        assertEquals("claude code", bar.profileFor("claude").name)
+        assertEquals("claude code", bar.profileFor("claude", "claude").name)
         assertEquals("shell", bar.profileFor("ZSH").name)
+        assertEquals("shell", bar.profileFor("bash", "shell").name)
         assertEquals("default", bar.profileFor("hntui").name)
         assertEquals("default", bar.profileFor("").name)
+    }
+
+    @Test
+    fun theProgramsShippedBringTheirBars() {
+        val claude = bar.profileFor("claude", "claude")
+        assertEquals(listOf("esc", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"), claude.keys.map { it.label })
+        assertEquals(listOf("claude"), claude.programs)
+        assertEquals(listOf("zsh", "shell"), bar.profileFor("zsh").programs)
+        // A profile saved by command still matches the pane by its command.
+        val saved = bar.copy(profiles = listOf(KeyProfile("mine", listOf("bash"), emptyList())))
+        assertEquals("mine", saved.profileFor("bash", "shell").name)
     }
 
     @Test
