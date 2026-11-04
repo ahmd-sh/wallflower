@@ -33,9 +33,11 @@ the multiplexer's own (tmux's `%3`, `@1`, `$0`); don't parse them.
 ## Session
 
 1. Client sends `hello`. The gateway attaches to the session it asked for in
-   the Mac's multiplexer (default: the one the multiplexer would pick), as
-   any other client of it does: a window switched to on the client is
-   switched to on the others too.
+   the multiplexer it asked for (`mux`: `tmux` or `rex`; by default the
+   gateway's, and the session the multiplexer would pick), as any other
+   client of it does: a window switched to on the client is switched to on
+   the others too. A multiplexer the gateway doesn't have, or that isn't
+   running, gets a `bye` saying so.
 2. Gateway sends `hello`, then `state`.
 3. Client sends `open` for the panes it wants to show. For each, the gateway
    sends `reset` and one data frame that repaints the pane, then streams its
@@ -50,7 +52,7 @@ client never has to resync on its own.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `cols`, `rows`, `session`?, `away`? | first message; `v` is 3 |
+| `hello` | `v`, `cols`, `rows`, `mux`?, `session`?, `away`? | first message; `v` is 3 |
 | `resize` | `cols`, `rows` | the client's terminal area changed |
 | `open` | `pane`, `history`? | repaint and stream a pane; `history` lines of scrollback (default 1000) |
 | `close` | `pane` | stop streaming a pane |

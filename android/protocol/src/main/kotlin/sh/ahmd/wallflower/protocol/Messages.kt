@@ -22,7 +22,7 @@ val WireJson = Json {
 @Serializable
 sealed interface ClientMessage
 
-/** The first message; [away] as in [Away]. */
+/** The first message: [mux] names the multiplexer the session is in (tmux, rex; null: the gateway's default), [away] as in [Away]. */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @SerialName("hello")
@@ -30,6 +30,7 @@ data class ClientHello(
     val v: Int = VERSION,
     val cols: Int,
     val rows: Int,
+    val mux: String? = null,
     val session: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val away: Boolean = false,
 ) : ClientMessage

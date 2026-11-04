@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ahmd-sh/wallflower/internal/mux"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 	"github.com/ahmd-sh/wallflower/internal/tmuxtest"
@@ -53,7 +54,7 @@ func connectOpts(t *testing.T, ctx context.Context, cols, rows int, opts Options
 	outR, outW := io.Pipe()
 	c := &client{t: t, w: inW, frames: make(chan protocol.Frame, 1024), done: make(chan error, 1), socket: socket, tmux: tmuxRun}
 	go func() {
-		opts.Mux, opts.Session = tmux.Server{Socket: socket}, "t"
+		opts.Muxes, opts.Mux, opts.Session = map[string]mux.Mux{"tmux": tmux.Server{Socket: socket}}, "tmux", "t"
 		c.done <- Serve(ctx, inR, outW, opts)
 		outW.Close()
 	}()
@@ -553,13 +554,48 @@ func TestBadHello(t *testing.T) {
 	b, _ := protocol.AppendJSON(nil, protocol.ClientHello{V: 99, Cols: 80, Rows: 24})
 	in.Write(b)
 	var out bytes.Buffer
-	if err := Serve(context.Background(), &in, &out, Options{Mux: tmux.Server{Socket: socket}}); err == nil {
+	if err := Serve(context.Background(), &in, &out, Options{Muxes: map[string]mux.Mux{"tmux": tmux.Server{Socket: socket}}, Mux: "tmux"}); err == nil {
 		t.Fatal("accepted protocol version 99")
 	}
 	f, err := protocol.NewReader(&out).Next()
 	if err != nil || !bytes.Contains(f.Data, []byte(`"t":"bye"`)) {
 		t.Errorf("want bye, got %s, %v", f.Data, err)
 	}
+}
+
+// The client names the multiplexer, or gets the default; one the gateway
+// doesn't have is refused.
+func TestHelloPicksTheMux(t *testing.T) {
+	socket, _ := tmuxtest.Server(t, 80, 24)
+	opts := Options{Muxes: map[string]mux.Mux{"tmux": tmux.Server{Socket: socket}}, Mux: "tmux", Session: "t"}
+	for _, ask := range []string{"tmux", "rex"} {
+		var in, out bytes.Buffer
+		b, _ := protocol.AppendJSON(nil, protocol.ClientHello{V: protocol.Version, Cols: 80, Rows: 24, Mux: ask})
+		in.Write(b)
+		err := Serve(context.Background(), &in, &out, opts)
+		m, _ := protocol.DecodeServer(firstJSON(t, &out))
+		switch h := m.(type) {
+		case *protocol.ServerHello:
+			if ask != "tmux" || h.Mux.Name != "tmux" {
+				t.Errorf("asked for %s, got hello %+v", ask, h)
+			}
+		case *protocol.Bye:
+			if ask != "rex" || err == nil || !strings.Contains(h.Reason, `no multiplexer "rex" here (tmux)`) {
+				t.Errorf("asked for %s, got bye %q (%v)", ask, h.Reason, err)
+			}
+		default:
+			t.Errorf("asked for %s, got %+v", ask, m)
+		}
+	}
+}
+
+func firstJSON(t *testing.T, r io.Reader) []byte {
+	t.Helper()
+	f, err := protocol.NewReader(r).Next()
+	if err != nil || f.Type != protocol.FrameJSON {
+		t.Fatalf("first frame %+v, %v", f, err)
+	}
+	return f.Data
 }
 
 func TestTmuxExit(t *testing.T) {

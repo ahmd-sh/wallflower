@@ -96,7 +96,7 @@ class SessionTest {
 
     private val gateways = LinkedBlockingQueue<Gateway>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val session = Session({ gateways.poll(5, TimeUnit.SECONDS)?.connection ?: error("no gateway") }, scope, System::currentTimeMillis)
+    private val session = Session({ gateways.poll(5, TimeUnit.SECONDS)?.connection ?: error("no gateway") }, scope, clock = System::currentTimeMillis)
 
     @After
     fun stop() {

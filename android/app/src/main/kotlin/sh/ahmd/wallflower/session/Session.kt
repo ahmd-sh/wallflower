@@ -37,7 +37,13 @@ import sh.ahmd.wallflower.terminal.Terminal
  * intents ([Input], uploads). While the user is [away], it stays connected
  * for what the Mac's programs notify, and otherwise out of the way.
  */
-class Session(transport: Transport, private val scope: CoroutineScope, clock: () -> Long = SystemClock::elapsedRealtime) {
+class Session(
+    transport: Transport,
+    private val scope: CoroutineScope,
+    /** The multiplexer to ask the gateway for, by name; null for its default. */
+    private val asking: String? = null,
+    clock: () -> Long = SystemClock::elapsedRealtime,
+) {
     private val link: Link = Link(transport, scope, clock, Events())
     private val panes = Terminals(link)
     private val workspace = Workspace(link, panes)
@@ -76,7 +82,7 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
     private var quieting: Job? = null
 
     private inner class Events : Link.Events {
-        override fun hello() = ClientHello(cols = grid.first, rows = grid.second, away = away)
+        override fun hello() = ClientHello(cols = grid.first, rows = grid.second, mux = asking, away = away)
 
         override fun linked() {
             panes.linked()

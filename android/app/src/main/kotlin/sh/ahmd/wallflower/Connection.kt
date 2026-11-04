@@ -64,7 +64,7 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         _session.value?.stop()
         watching?.cancel()
         val transport = if (host.dev) TcpTransport() else SshTransport(host, key, hostKeys)
-        val session = Session(transport, scope)
+        val session = Session(transport, scope, host.mux)
         session.away(away)
         watching = scope.launch {
             launch {

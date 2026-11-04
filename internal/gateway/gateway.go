@@ -14,6 +14,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/desktop"
@@ -23,7 +25,8 @@ import (
 )
 
 type Options struct {
-	Mux     mux.Mux             // the multiplexer the sessions are in
+	Muxes   map[string]mux.Mux  // the multiplexers a client can ask for, by name
+	Mux     string              // the one when it doesn't ask
 	Session string              // default session when the client doesn't ask for one
 	Readers []mobileview.Source // programs whose panes have mobile views
 	Uploads string              // where files the client sends are saved; UploadDir() if empty
@@ -83,7 +86,10 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	if session == "" {
 		session = opts.Session
 	}
-	g.mux, err = opts.Mux.Attach(mux.Attach{Session: session, Cols: hello.Cols, Rows: hello.Rows, Away: hello.Away})
+	m, err := opts.pick(hello.Mux)
+	if err == nil {
+		g.mux, err = m.Attach(mux.Attach{Session: session, Cols: hello.Cols, Rows: hello.Rows, Away: hello.Away})
+	}
 	if err != nil {
 		g.send(protocol.Bye{Reason: err.Error()})
 		return err
@@ -114,6 +120,22 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 		}
 	}()
 	return g.loop(ctx, frames, readErr)
+}
+
+// pick is the multiplexer named, or the default for none.
+func (o Options) pick(name string) (mux.Mux, error) {
+	if name == "" {
+		name = o.Mux
+	}
+	if m, ok := o.Muxes[name]; ok {
+		return m, nil
+	}
+	names := make([]string, 0, len(o.Muxes))
+	for n := range o.Muxes {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return nil, fmt.Errorf("no multiplexer %q here (%s)", name, strings.Join(names, ", "))
 }
 
 func readHello(r *protocol.Reader) (*protocol.ClientHello, error) {

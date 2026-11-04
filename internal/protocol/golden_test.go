@@ -20,6 +20,7 @@ func goldenClient(t *testing.T) []byte {
 		ClientHello{V: Version, Cols: 56, Rows: 20},
 		ClientHello{V: Version, Cols: 56, Rows: 20, Session: "o"},
 		ClientHello{V: Version, Cols: 56, Rows: 20, Away: true},
+		ClientHello{V: Version, Cols: 56, Rows: 20, Mux: "rex", Session: "work"},
 		Resize{Cols: 70, Rows: 25},
 		Open{Pane: "%1"},
 		Open{Pane: "%1", History: 500},

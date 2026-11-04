@@ -22,6 +22,7 @@ class FramesTest {
             ClientHello(cols = 56, rows = 20),
             ClientHello(cols = 56, rows = 20, session = "o"),
             ClientHello(cols = 56, rows = 20, away = true),
+            ClientHello(cols = 56, rows = 20, mux = "rex", session = "work"),
             Resize(70, 25),
             Open("%1"),
             Open("%1", history = 500),

@@ -12,9 +12,12 @@ type Message interface{ Type() string }
 // Client to gateway.
 
 type ClientHello struct {
-	V       int    `json:"v"`
-	Cols    int    `json:"cols"`
-	Rows    int    `json:"rows"`
+	V    int `json:"v"`
+	Cols int `json:"cols"`
+	Rows int `json:"rows"`
+	// Mux names the multiplexer the session is in (tmux, rex); empty is the
+	// gateway's default.
+	Mux     string `json:"mux,omitempty"`
 	Session string `json:"session,omitempty"`
 	Away    bool   `json:"away,omitempty"` // see Away
 }

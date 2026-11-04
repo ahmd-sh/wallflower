@@ -50,6 +50,7 @@ fun SetupScreen(
     var address by remember { mutableStateOf(initial.address) }
     var user by remember { mutableStateOf(initial.user) }
     var port by remember { mutableStateOf(initial.port.toString()) }
+    var mux by remember { mutableStateOf(initial.mux) }
     var dev by remember { mutableStateOf(initial.dev) }
     var keyError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
@@ -71,6 +72,10 @@ fun SetupScreen(
         Field("host", address) { address = it }
         Field("user", user) { user = it }
         Field("port", port, KeyboardType.Number) { port = it.filter(Char::isDigit) }
+        Text("sessions in", color = Palette.fg, style = Type.label)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (m in MUXES) Chip(m, mux == m) { mux = m }
+        }
         if (BuildConfig.DEBUG) {
             Toggle("development transport (adb reverse, no ssh)", dev) { dev = it }
         }
@@ -107,12 +112,15 @@ fun SetupScreen(
 
         Spacer(Modifier.height(4.dp))
         Button("connect", primary = true) {
-            onConnect(Host(address = address.trim(), user = user.trim(), port = port.toIntOrNull() ?: 22, command = initial.command, dev = dev))
+            onConnect(Host(address = address.trim(), user = user.trim(), port = port.toIntOrNull() ?: 22, command = initial.command, mux = mux, dev = dev))
         }
     }
 }
 
 private val UNLOCKS = listOf(5 * 60, 30 * 60, 2 * 3600, 8 * 3600)
+
+/** The multiplexers the gateway can serve a session of. */
+private val MUXES = listOf("tmux", "rex")
 
 private fun unlockLabel(seconds: Int) = if (seconds < 3600) "${seconds / 60} min" else "${seconds / 3600} h"
 
