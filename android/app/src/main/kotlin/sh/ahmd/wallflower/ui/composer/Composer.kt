@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.OutputTransformation
+import androidx.compose.foundation.text.input.TextFieldBuffer
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
@@ -34,18 +36,22 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.BarKey
 import sh.ahmd.wallflower.KeyBar
+import sh.ahmd.wallflower.program.Command
 import sh.ahmd.wallflower.screen.InputLine
 import sh.ahmd.wallflower.session.uploadPaths
 import sh.ahmd.wallflower.ui.Mono
 import sh.ahmd.wallflower.ui.Motion
 import sh.ahmd.wallflower.ui.Palette
+import sh.ahmd.wallflower.ui.haptics
 
 /**
  * A plain text field, so the keyboard's autocorrect, swipe and voice input
@@ -58,7 +64,9 @@ import sh.ahmd.wallflower.ui.Palette
  * wallflower can read it). While the box is empty it shows that line dimmed,
  * with × to clear it in the app ([onClear]), or else what the app suggests
  * typing; a swipe right brings either into the box to edit (a tap is just
- * the box's, to type something else). What's in the box replaces the line
+ * the box's, to type something else). A suggestion cut short to fit the
+ * screen ("…") comes in whole: the program takes it into its line
+ * ([onAcceptSuggestion]), and it comes from there. What's in the box replaces the line
  * when sent, so the box is exactly what runs. The button sends (held: types
  * it in without Enter), enters the app's line when only that has text, or
  * stops.
@@ -66,6 +74,8 @@ import sh.ahmd.wallflower.ui.Palette
  * + sends photos or files to the Mac ([attachments]); each shows above the
  * box on its way, then its path goes in at the cursor, shown as its name.
  * What the draft holds shows above it too, each with × to take it out.
+ * + also offers the program's [commands], which start the draft; one it
+ * starts with is marked.
  *
  * With [typing], the keyboard types straight into the pane instead, as a
  * terminal's does ([onType], other keys to [onKey] by name, its return key
@@ -91,6 +101,8 @@ internal fun Composer(
     onEnter: () -> Unit,
     onStop: () -> Unit,
     onEditKeys: () -> Unit,
+    commands: List<Command> = emptyList(),
+    onAcceptSuggestion: (() -> Unit)? = null,
 ) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -112,7 +124,36 @@ internal fun Composer(
     val ghost = pending.ifEmpty { line?.suggestion.orEmpty() }
     val sticky = rememberStickyKeys(onKey)
     val paths = remember(attachments.dir) { attachments.dir?.let(::uploadPaths) }
-    val named = remember(paths) { paths?.let(::UploadNames) }
+    val slash = commands.isNotEmpty()
+    val named = remember(paths, slash) {
+        listOfNotNull(CommandMark.takeIf { slash }, paths?.let(::UploadNames)).reduceOrNull<OutputTransformation, OutputTransformation> { a, b -> Both(a, b) }
+    }
+    // A suggestion asked for whole: the program's line has it once it's taken it in.
+    val haptics = haptics()
+    var accepting by remember { mutableStateOf<String?>(null) }
+    fun take(text: String) {
+        state.edit {
+            replace(0, length, text)
+            placeCursorAtEnd()
+        }
+        focus.requestFocus()
+        keyboard?.show()
+    }
+    LaunchedEffect(accepting, pending) {
+        if (accepting != null && pending.isNotEmpty()) {
+            accepting = null
+            take(pending)
+        }
+    }
+    LaunchedEffect(accepting) {
+        val cut = accepting ?: return@LaunchedEffect
+        delay(ACCEPT_WAIT_MS)
+        if (accepting == cut) { // it didn't: what was seen of it, to finish
+            accepting = null
+            haptics.reject()
+            take(cut.removeSuffix("…"))
+        }
+    }
     val whole = remember(paths) { paths?.let(::WholeUploads) }
     val empty by remember(state) { derivedStateOf { state.text.isEmpty() } } // not every keystroke
     // From a pane written for to one typed into, or back, the keyboard stays up for the next.
@@ -171,11 +212,12 @@ internal fun Composer(
                         keyboard?.show()
                     }
                     GhostLine(ghost, suggested = pending.isEmpty(), onClear = onClear, onTap = { type() }) {
-                        state.edit {
-                            replace(0, length, ghost)
-                            placeCursorAtEnd()
+                        if (pending.isEmpty() && ghost.endsWith('…') && onAcceptSuggestion != null) {
+                            accepting = ghost
+                            onAcceptSuggestion()
+                        } else {
+                            take(ghost)
                         }
-                        type()
                     }
                 }
             }
@@ -184,7 +226,19 @@ internal fun Composer(
             Modifier.fillMaxWidth().padding(top = if (typing == null) 10.dp else 0.dp, start = 8.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (typing == null) AttachButton(enabled = connected, typing = { imeVisible }, onAttach = attachments.onAttach, onBack = { refocus = true })
+            if (typing == null) {
+                AttachButton(
+                    enabled = connected,
+                    typing = { imeVisible },
+                    onAttach = attachments.onAttach,
+                    onBack = { refocus = true },
+                    commands = commands,
+                    onCommand = { c ->
+                        val rest = state.text.toString().replace(leadingCommand, "").trimStart()
+                        take(if (rest.isEmpty()) c.text + " " else c.text + " " + rest)
+                    },
+                )
+            }
             KeyRow(keys, sticky.armed, sticky::press, onEditKeys, Modifier.weight(1f))
             SendButton(
                 action = when {
@@ -200,5 +254,27 @@ internal fun Composer(
                 onStop = onStop,
             )
         }
+    }
+}
+
+/** How long a suggestion asked for whole has to come in before what was seen of it does. */
+private const val ACCEPT_WAIT_MS = 1_500L
+
+/** A command a draft starts with. */
+private val leadingCommand = Regex("^/[^\\s]+\\s*")
+
+/** A command the draft starts with, marked. */
+private object CommandMark : OutputTransformation {
+    override fun TextFieldBuffer.transformOutput() {
+        val m = leadingCommand.find(asCharSequence()) ?: return
+        addStyle(SpanStyle(color = Palette.purple), 0, m.value.trimEnd().length)
+    }
+}
+
+/** Two transformations, one after the other. */
+private class Both(private val first: OutputTransformation, private val then: OutputTransformation) : OutputTransformation {
+    override fun TextFieldBuffer.transformOutput() {
+        with(first) { transformOutput() }
+        with(then) { transformOutput() }
     }
 }

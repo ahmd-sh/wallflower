@@ -433,6 +433,8 @@ private fun TerminalScreen(
                             typing = if (mobileView) null else typing,
                             sendKeys = actions.sendKeys,
                             returnKeys = actions.returnKeys,
+                            commands = actions.program.commands,
+                            onAcceptSuggestion = actions.acceptSuggestion,
                             onType = { text ->
                                 view?.scrollToBottom()
                                 if (screen.line != null) view?.predict(text) // at a prompt, which echoes

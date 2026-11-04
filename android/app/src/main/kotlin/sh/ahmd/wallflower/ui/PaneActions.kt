@@ -58,6 +58,9 @@ internal class PaneActions(
         { line -> send(command, enter = true, line, unseen = true) }
     }
 
+    /** Has the program take the suggestion in its input line into the line, whole, if it can. */
+    val acceptSuggestion: (() -> Unit)? = program.acceptSuggestion?.let { keys -> { keys(keys) } }
+
     /** A picture entry of the pane's mobile view, its bytes. */
     suspend fun picture(id: String): ByteArray? = session.picture(pane.id, id)
 

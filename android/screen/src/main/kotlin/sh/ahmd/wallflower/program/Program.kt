@@ -46,6 +46,16 @@ interface Program {
     /** What the program is sent to compact its conversation, if it can. */
     val compact: String? get() = null
 
+    /**
+     * What takes the suggestion in the program's empty input line into the
+     * line, whole, if it shows suggestions: cut short to fit the screen
+     * ("…"), what the screen says isn't all of one.
+     */
+    val acceptSuggestion: List<String>? get() = null
+
+    /** Commands the composer's + offers for the program's panes, which start what's sent. */
+    val commands: List<Command> get() = emptyList()
+
     /** What picking [option] of [prompt] does besides answering it, if wallflower needs to know. */
     fun picked(prompt: Prompt, option: Prompt.Option): Effect? = null
 
@@ -58,6 +68,9 @@ interface Program {
  * and what the send button presses when there's nothing to send ([stop]).
  */
 data class KeyDefaults(val name: String, val keys: List<String>, val stop: List<String> = listOf("C-c"))
+
+/** A command a program takes, as the + offers it: its [text], and what it's [about]. */
+data class Command(val text: String, val about: String)
 
 /** A notification as the phone shows it. */
 data class Notice(val title: String?, val body: String)

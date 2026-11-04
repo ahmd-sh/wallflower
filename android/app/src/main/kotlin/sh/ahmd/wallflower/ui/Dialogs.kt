@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -126,8 +127,14 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
     }
 }
 
-/** A menu's choice: what it says, in what color, and what it does. */
-class MenuAction(val label: String, val color: Color = Palette.fg, val onClick: () -> Unit)
+/** A menu's choice: what it says, in what color and [font], what it's about beneath, and what it does. */
+class MenuAction(
+    val label: String,
+    val color: Color = Palette.fg,
+    val font: FontFamily? = null,
+    val detail: String? = null,
+    val onClick: () -> Unit,
+)
 
 /**
  * A menu dropping from what opened it, rounded and compact, its choices
@@ -165,11 +172,8 @@ fun PopupMenu(
             }
             actions.forEachIndexed { i, action ->
                 if (i > 0) Rule(Modifier.padding(horizontal = 12.dp))
-                Text(
-                    action.label,
-                    color = action.color,
-                    style = Type.body,
-                    modifier = Modifier
+                Column(
+                    Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
                         .clickable {
@@ -177,7 +181,10 @@ fun PopupMenu(
                             action.onClick()
                         }
                         .padding(horizontal = 12.dp, vertical = 9.dp),
-                )
+                ) {
+                    Text(action.label, color = action.color, style = Type.body, fontFamily = action.font)
+                    action.detail?.let { Text(it, color = Palette.grey, style = Type.label) }
+                }
             }
         }
     }

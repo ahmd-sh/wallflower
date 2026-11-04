@@ -51,6 +51,7 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import sh.ahmd.wallflower.Uploads
+import sh.ahmd.wallflower.program.Command
 import sh.ahmd.wallflower.ui.Glyph
 import sh.ahmd.wallflower.ui.GlyphIcon
 import sh.ahmd.wallflower.ui.MenuAction
@@ -114,7 +115,14 @@ internal fun AttachmentsRow(state: TextFieldState, paths: Regex?, attachments: A
 
 /** + : photos, through the system's picker, or any file. The keyboard stays up for it, and comes back after ([onBack]). */
 @Composable
-internal fun AttachButton(enabled: Boolean, typing: () -> Boolean, onAttach: (List<Uri>) -> Unit, onBack: () -> Unit) {
+internal fun AttachButton(
+    enabled: Boolean,
+    typing: () -> Boolean,
+    onAttach: (List<Uri>) -> Unit,
+    onBack: () -> Unit,
+    commands: List<Command> = emptyList(),
+    onCommand: (Command) -> Unit = {},
+) {
     var open by remember { mutableStateOf(false) }
     var wasTyping by remember { mutableStateOf(false) }
     val picked: (List<Uri>) -> Unit = {
@@ -149,7 +157,12 @@ internal fun AttachButton(enabled: Boolean, typing: () -> Boolean, onAttach: (Li
                     open = false
                     files.launch(arrayOf("*/*"))
                 },
-            ),
+            ) + commands.map { c ->
+                MenuAction(c.text, Palette.purple, font = Mono, detail = c.about) {
+                    open = false
+                    onCommand(c)
+                }
+            },
         )
     }
 }

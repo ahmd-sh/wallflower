@@ -15,6 +15,15 @@ object Claude : Program {
 
     override val compact = "/compact"
 
+    override val acceptSuggestion = listOf("Tab")
+
+    override val commands = listOf(
+        Command("/compact", "summarize the conversation, freeing context"),
+        Command("/rewind", "go back to an earlier message"),
+        Command("/clear", "start a new conversation"),
+        Command("/model", "switch model"),
+    )
+
     override val keyBar = KeyDefaults(
         "claude code",
         listOf("Escape", "BTab", "Up", "Down", "Enter", "1", "2", "3", "C-o", "C-c"),
@@ -24,10 +33,13 @@ object Claude : Program {
     /**
      * The prompt box: between two rules, a first row starting `❯ ` (or `! `
      * in shell mode) and rows indented to match. Claude wraps long lines
-     * itself, at words, so a row that couldn't fit the next one's first word
-     * was wrapped rather than ended. Faint text is the placeholder or a
-     * suggestion, not input: in an empty box, it's the suggestion (the
-     * placeholder's `Try "…"` suggests what's quoted).
+     * itself, at words, two columns short of the screen's edge (and a
+     * column shorter for the cursor after the last word), so a row that
+     * couldn't fit the next one's first word was wrapped rather than ended;
+     * a word too long for a row is broken at its end.
+     * Faint text is the placeholder or a suggestion, not input: in an empty
+     * box, it's the suggestion (the placeholder's `Try "…"` suggests what's
+     * quoted), cut short with … if it's wider than the box.
      */
     override fun line(screen: Screen): InputLine? {
         val s = screen
@@ -35,7 +47,7 @@ object Claude : Program {
             val mark = s.text(0, y)
             if ((mark != "❯" && mark != "!") || s.text(1, y).isNotBlank() || !rule(s, y - 1)) continue
             val end = (y + 1 until s.rows).firstOrNull { rule(s, it) } ?: continue
-            val width = s.cols - 2
+            val width = s.cols - 4
             val out = StringBuilder(if (mark == "!") "!" else "")
             val ghost = StringBuilder()
             var previous: String? = null
@@ -56,10 +68,12 @@ object Claude : Program {
                 val line = row.trimEnd().toString()
                 if (previous != null) {
                     val word = line.substringBefore(' ').length
+                    val cursor = if (r == end - 1 && word == line.length) 1 else 0
                     out.append(
                         when {
-                            previous.length >= width -> ""
-                            line.isNotEmpty() && previous.length + 1 + word > width -> " "
+                            // A word too long for any row (a path, say) is broken where the row ends.
+                            previous.length >= width && previous.substringAfterLast(' ').length + word > width -> ""
+                            line.isNotEmpty() && previous.length + 1 + word + cursor > width -> " "
                             else -> "\n"
                         },
                     )

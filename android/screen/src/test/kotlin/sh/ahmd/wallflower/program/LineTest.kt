@@ -125,18 +125,61 @@ class LineTest {
 
     @Test
     fun claudeBoxJoinsItsOwnWrapsAndKeepsNewlines() {
-        // 24 columns: 22 for text after the two-column margin.
+        // 24 columns: 20 for text, between the two-column margin and two more at the right.
         val s = screen(
             listOf(
                 rule,
                 "❯ make a profile for",
-                "  hntui with j k",
+                "  hntui with j",
                 "  second line",
                 rule,
             ),
-            cursor = 15 to 3,
+            cursor = 13 to 3,
         )
-        assertEquals(InputLine("make a profile for hntui with j k\nsecond line", 3), Claude.line(s))
+        assertEquals(InputLine("make a profile for hntui with j\nsecond line", 3), Claude.line(s))
+    }
+
+    // Claude Code 2.1.318 at 30 columns, as captured: a suggestion too wide
+    // for the box is cut short, and Tab takes it into the box whole, wrapped
+    // where its next word wouldn't fit beside the cursor.
+    private val rule30 = "─".repeat(30)
+
+    @Test
+    fun claudeBoxSaysASuggestionIsCutShort() {
+        val s = screen(
+            listOf(rule30, "❯ Show me a minimal tmux.conf…", rule30, "  -- INSERT --"),
+            listOf("", "  " + "f".repeat(28)),
+            cursor = 2 to 1,
+        )
+        assertEquals(InputLine("", 1, "Show me a minimal tmux.conf…"), Claude.line(s))
+    }
+
+    @Test
+    fun claudeBoxHoldsASuggestionWholeOnceTaken() {
+        val s = screen(
+            listOf(rule30, "❯ Show me a minimal", "  tmux.conf to start with", rule30, "  -- INSERT --"),
+            cursor = 25 to 2,
+        )
+        assertEquals(InputLine("Show me a minimal tmux.conf to start with", 2), Claude.line(s))
+        assertEquals(listOf("Tab"), Claude.acceptSuggestion)
+    }
+
+    @Test
+    fun claudeBoxWrapsAWordThatLeavesNoRoomForTheCursor() {
+        val s = screen(
+            listOf(rule30, "❯ aa bb cc dd ee ff gg hh ii", "  jj kk ll mm nn oo pp qq", "  rr", rule30),
+            cursor = 4 to 3,
+        )
+        assertEquals(InputLine("aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp qq rr", 3), Claude.line(s))
+    }
+
+    @Test
+    fun claudeBoxBreaksAWordTooLongForARowWhereTheRowEnds() {
+        val s = screen(
+            listOf(rule30, "❯ see /Users/ahmedshaikh/dev", "  /wallflower/internal/gatew", "  ay/sessions.go now", rule30),
+            cursor = 20 to 3,
+        )
+        assertEquals(InputLine("see /Users/ahmedshaikh/dev/wallflower/internal/gateway/sessions.go now", 3), Claude.line(s))
     }
 
     @Test

@@ -95,7 +95,11 @@ two halves, each optional:
 - **Client half**, a `Program` (`android/screen/.../program`). It reads its
   program's screen, such as the input line and the choices it offers. It
   says what its notifications mean, how to clear a line, start a new one
-  and compact, and which key bar its panes get until the user sets one.
+  and compact, and which key bar its panes get until the user sets one. It
+  names the commands the composer's + offers (Claude Code's `/compact`,
+  `/rewind`…), and the key that takes the program's suggestion into its
+  line whole (Claude Code's Tab), since one cut short to fit the screen
+  can't be read off it.
 
 The halves go by one id. The gateway says which program each pane runs
 (`program` in `state`), and whether it has a view (`view`); the phone looks
@@ -118,8 +122,8 @@ plugins from outside later, without changes to the core:
   `mobileview.Source` calls as JSON lines on stdin and stdout, as language
   servers do. It can be written in any language and needs no rebuild.
 - A client half can be data the gateway sends with the program's id: key
-  bar defaults (already data, `KeyDefaults`), add-menu items,
-  notification rules. The phone can't load code. Built-in plugins
+  bar defaults and the + menu's commands (already data, `KeyDefaults` and
+  `Command`), notification rules. The phone can't load code. Built-in plugins
   keep their native code for what data can't say, such as reading a
   screen.
 
