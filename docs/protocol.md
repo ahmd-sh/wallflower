@@ -2,7 +2,8 @@
 
 The client runs `wallflower serve` over ssh and talks to it on stdin/stdout. One
 connection is one client session; the gateway exits when the client
-disconnects, and has nothing to clean up beyond undoing the client's zooms.
+disconnects, and has nothing to clean up beyond what the client changed for
+itself (tmux's zooms, Rex's terminals).
 
 ## Frames
 
@@ -56,7 +57,7 @@ client never has to resync on its own.
 | `keys` | `pane`, `keys`, `bindings`? | keys by name (see Keys), encoded for the pane's modes. With `bindings`, as if typed on a keyboard attached to the multiplexer, so its key bindings apply (`prefix` stands for its prefix key), if it `can` |
 | `submit` | `pane`, `text`, `enter`?, `clear`? | composed text in place of what the program's input line holds, see below |
 | `select` | `window` or `pane` | make it current in the client's session (sizes it for the client) |
-| `focus` | `pane` | make it the window's active pane, zoomed if the window has others (undone on disconnect) |
+| `focus` | `pane` | make it the window's active pane, with the client's whole size (tmux zooms it if the window has others, undone on disconnect) |
 | `split` | `pane` | open a pane beside it, in its directory, and focus it like `focus` |
 | `new` | | open a window, current in the client's session only |
 | `rename` | `window`, `name` | |
@@ -177,10 +178,13 @@ The client's size applies to the windows it shows and types into, however
 the multiplexer shares a window among clients of different sizes. tmux
 sizes a window for the client that last resized or selected it, and
 doesn't count typing through control mode, so the gateway selects the
-window again when the client types into it and it has another size.
+window again when the client types into it and it has another size. Rex
+sizes each terminal for the client that owns it, so the gateway takes the
+terminals the client shows and types into.
 
 While the client says it's `away` (in `hello`, or since), it doesn't size
-windows at all, as if it weren't attached: a client left in the background
+windows at all, as if it weren't attached (Rex's terminals go back to whoever
+had them): a client left in the background
 keeps a connection without the desktop's windows taking its size. Back, it
 selects the window it shows to take it again.
 

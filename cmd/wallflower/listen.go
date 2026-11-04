@@ -22,7 +22,10 @@ func listen(args []string) error {
 	addr := fs.String("addr", "127.0.0.1:41777", "loopback address to listen on")
 	options := gatewayFlags(fs)
 	fs.Parse(args)
-	opts := options()
+	opts, err := options()
+	if err != nil {
+		return err
+	}
 
 	host, _, err := net.SplitHostPort(*addr)
 	if err != nil {

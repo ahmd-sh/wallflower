@@ -16,8 +16,12 @@ func serve(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	options := gatewayFlags(fs)
 	fs.Parse(args)
+	opts, err := options()
+	if err != nil {
+		return err
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
-	return gateway.Serve(ctx, os.Stdin, os.Stdout, options())
+	return gateway.Serve(ctx, os.Stdin, os.Stdout, opts)
 }

@@ -2,7 +2,7 @@
 // session it serves: the session's windows and panes, each pane's output as
 // it comes and its screen on demand, and the input and changes the client
 // asks for. Each multiplexer is an adapter (tmux.Server), and the gateway
-// knows only this.
+// knows only this. Another is rex.Server.
 //
 // Keys go by wallflower's names, which are tmux's whatever the multiplexer:
 // Enter, Escape, Tab, BTab (shift-tab), BSpace, Space, Up, Down, Left,
@@ -56,7 +56,7 @@ type Client interface {
 	// by Close.
 	Err() error
 	// Close detaches, putting back what the client changed only for its
-	// own sake: the windows Focus zoomed.
+	// own sake (tmux's zooms), and giving up what it took (Rex's terminals).
 	Close() error
 
 	// Snapshot is the session as it is now.
@@ -88,8 +88,8 @@ type Client interface {
 	SelectWindow(window string) error
 	// SelectPane makes a pane its window's active one.
 	SelectPane(pane string) error
-	// Focus makes a pane its window's active one, zoomed to fill the window
-	// if the window has others.
+	// Focus makes a pane its window's active one, with the whole of the
+	// client's size: tmux zooms it if the window has others.
 	Focus(pane string) error
 	// Split opens a pane beside one, in its directory, and says its id.
 	Split(pane string) (string, error)

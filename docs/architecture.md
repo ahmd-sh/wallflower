@@ -42,16 +42,31 @@ from the multiplexer, so a connection can drop at any time.
 - changes: select, focus (zoomed), split, new window, rename, kill
 - sizing: the client's size, and away, when it sizes nothing
 
-An adapter (`tmux.Server`, driving tmux's control mode) translates these
-into its multiplexer's own terms. Those terms stay inside it: ids, key
+An adapter translates these into its multiplexer's own terms.
+`tmux.Server` drives tmux's control mode. `rex.Server` speaks Rex's server
+API: a control WebSocket for methods and events, and a data WebSocket
+streaming each terminal's output (`internal/ws` is the small client both
+use, so wallflower keeps no dependencies). Those terms stay inside it: ids, key
 names, how windows are sized among clients, the zooms it undoes on detach,
 and the repaint format. What only some multiplexers can do is a capability
 (`About.Can`). It reaches the client as `can` in `hello`, so the phone
 offers only what the multiplexer can. Keys through the multiplexer's own
 bindings are one.
 
-The gateway's tests are the contract. They run against tmux today. A new
-adapter implements `mux.Mux` and runs them too.
+The gateway's tests are the contract, and run against tmux. Rex's adapter
+has tests of its own against a throwaway Rex server (`internal/rextest`).
+Folding both into one suite that runs the contract against every adapter is
+next.
+
+Where the multiplexers differ, the adapter decides, and the doc comment
+says how. Rex sizes each terminal for the client that owns it, so the
+client takes the terminals it shows and types into, and gives them back
+while away. A Rex repaint is the terminal as VT, from its own formatter,
+which has the screen on show only: under a full-screen program, the shell's
+screen behind it isn't repainted. Rex starts a stream with a snapshot in
+Ghostty's binary format, which would fix that and line up exactly, but the
+format isn't stable yet. Output that arrives while a pane is being read can
+show twice; none is lost.
 
 ## The core client
 

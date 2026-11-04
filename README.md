@@ -27,7 +27,8 @@ bin/wallflower debug -- ssh mac "~/go/bin/wallflower serve"   # through ssh
 bin/wallflower watch -output=false                            # raw control-mode events
 ```
 
-Requires tmux 3.8 (JSON layouts, floating panes).
+Requires tmux 3.8 (JSON layouts, floating panes), or Rex (`serve -mux rex`,
+which finds Rex.app's server, or `-rex` names a socket).
 
 ```sh
 scripts/build-libghostty.sh          # once, and after bumping GHOSTTY_COMMIT
