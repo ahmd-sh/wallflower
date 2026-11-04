@@ -26,6 +26,7 @@ import sh.ahmd.wallflower.protocol.ClientHello
 import sh.ahmd.wallflower.protocol.ClientMessage
 import sh.ahmd.wallflower.protocol.FRAME_DATA
 import sh.ahmd.wallflower.protocol.FRAME_JSON
+import sh.ahmd.wallflower.protocol.Mux
 import sh.ahmd.wallflower.protocol.Open
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Ping
@@ -38,6 +39,8 @@ import sh.ahmd.wallflower.protocol.Submit
 import sh.ahmd.wallflower.protocol.VERSION
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.protocol.WireJson
+
+private val TMUX = Mux("tmux", "3.8")
 
 /** A session against gateways the test plays, one per connection, over pipes. */
 class SessionTest {
@@ -121,7 +124,7 @@ class SessionTest {
         assertEquals(ClientHello(VERSION, 56, 20), g.message<ClientHello>())
         session.read(setOf("%1"))
         assertEquals(Read("%1", on = true), g.message<Read>())
-        g.send(ServerHello(VERSION, "3.8", uploads = "/up"))
+        g.send(ServerHello(VERSION, TMUX, uploads = "/up"))
         g.send(state)
         assertEquals("%1", g.message<Open>().pane)
         eventually { session.status.first { it is Status.Connected } }
@@ -133,7 +136,7 @@ class SessionTest {
     fun textTheGatewayConfirmedStaysSentAndWhatItDidntComesBack() {
         val g = connect()
         session.start(56, 20)
-        g.send(ServerHello(VERSION, "3.8"))
+        g.send(ServerHello(VERSION, TMUX))
         eventually { session.status.first { it is Status.Connected } }
 
         assertTrue(session.submit("%1", "say just: ok", clear = listOf("C-u")))
@@ -159,14 +162,14 @@ class SessionTest {
         val first = connect()
         session.start(56, 20)
         session.read(setOf("%1"))
-        first.send(ServerHello(VERSION, "3.8"))
+        first.send(ServerHello(VERSION, TMUX))
         first.send(state)
         first.message<Open>()
 
         val second = connect()
         first.close()
         assertEquals(Read("%1", on = true), second.message<Read>())
-        second.send(ServerHello(VERSION, "3.8"))
+        second.send(ServerHello(VERSION, TMUX))
         second.send(state)
         assertEquals("%1", second.message<Open>().pane)
     }

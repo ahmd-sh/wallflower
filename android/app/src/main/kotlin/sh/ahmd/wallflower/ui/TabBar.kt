@@ -50,8 +50,8 @@ import sh.ahmd.wallflower.read.activityOf
 import sh.ahmd.wallflower.session.Status
 
 /**
- * The tabs (tmux windows), with new tab first and the connection last. It's
- * local: it scrolls natively and a tap switches immediately, tmux learns
+ * The tabs (the session's windows), with new tab first and the connection last. It's
+ * local: it scrolls natively and a tap switches immediately, the Mac learns
  * afterwards. The highlight glides to the tab chosen. Holding a tab offers
  * rename and close.
  */
@@ -185,7 +185,7 @@ private fun BarButton(glyph: Glyph, color: Color, modifier: Modifier = Modifier,
 @Composable
 private fun PowerButton(status: Status, onSettings: () -> Unit, onExit: () -> Unit) {
     val (target, what) = when (status) {
-        is Status.Connected -> Palette.green to "connected · tmux ${status.tmux}"
+        is Status.Connected -> Palette.green to "connected · ${status.mux.name} ${status.mux.version}"
         Status.Connecting -> Palette.yellow to "connecting…"
         is Status.Disconnected -> Palette.red to "reconnecting: ${status.reason}"
         is Status.NeedsUser -> Palette.orange to "waiting for you"

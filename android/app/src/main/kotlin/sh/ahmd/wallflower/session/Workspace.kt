@@ -14,12 +14,12 @@ import sh.ahmd.wallflower.protocol.Split
 import sh.ahmd.wallflower.protocol.State
 import sh.ahmd.wallflower.protocol.Window
 
-/** A pane shown instead of its window's active one, until tmux's active pane is no longer [active]. */
+/** A pane shown instead of its window's active one, until the session's active pane is no longer [active]. */
 data class PaneChoice(val pane: String, val active: String?)
 
 fun Window.activePane(): Pane? = panes.firstOrNull { it.active }
 
-/** The pane the phone shows for a window: one picked on the phone, until tmux moves on. */
+/** The pane the phone shows for a window: one picked on the phone, until the Mac moves on. */
 fun Window.shownPane(chosen: Map<String, PaneChoice>): Pane? {
     val active = activePane()
     val choice = chosen[id]?.takeIf { it.active == active?.id }
@@ -27,9 +27,9 @@ fun Window.shownPane(chosen: Map<String, PaneChoice>): Pane? {
 }
 
 /**
- * The tmux session as the phone has it: its state, pushed by the gateway,
+ * The session as the phone has it: its state, pushed by the gateway,
  * and which window and panes the phone shows, which are the phone's own and
- * change the moment they're picked; tmux is told in the background.
+ * change the moment they're picked; the Mac is told in the background.
  */
 internal class Workspace(private val link: Link, private val terminals: Terminals) {
     private val _state = MutableStateFlow<State?>(null)
@@ -56,7 +56,7 @@ internal class Workspace(private val link: Link, private val terminals: Terminal
 
     fun state(m: State) {
         _state.value = m
-        // A pane picked on the phone gives way once tmux's active pane moves on (to it, or elsewhere).
+        // A pane picked on the phone gives way once the session's active pane moves on (to it, or elsewhere).
         _chosen.update { chosen -> chosen.filter { (w, c) -> m.windows.firstOrNull { it.id == w }?.activePane()?.id == c.active } }
         _viewing.update { v -> if (m.windows.none { it.id == v }) m.windows.firstOrNull { it.active }?.id else v }
         awaitingWindow?.let { known ->
@@ -86,14 +86,14 @@ internal class Workspace(private val link: Link, private val terminals: Terminal
         for (w in m.windows) for (p in w.panes.sortedBy { it.index }) terminals.open(p.id, viewed = false)
     }
 
-    /** Shows a window now; tmux follows in the background (it sizes the window for the phone). */
+    /** Shows a window now; the Mac follows in the background (it sizes the window for the phone). */
     fun view(window: Window) {
         _viewing.value = window.id
         window.activePane()?.let { terminals.open(it.id, viewed = true) }
         link.send(Select(window = window.id))
     }
 
-    /** Shows a pane of a window now, and has tmux focus it in the background, zoomed so it gets the whole screen. */
+    /** Shows a pane of a window now, and has the Mac focus it in the background, zoomed so it gets the whole screen. */
     fun show(window: Window, pane: Pane) {
         _chosen.update { it + (window.id to PaneChoice(pane.id, window.activePane()?.id)) }
         terminals.open(pane.id, viewed = true)
@@ -111,7 +111,7 @@ internal class Workspace(private val link: Link, private val terminals: Terminal
         link.send(New)
     }
 
-    /** Opens a pane beside [pane], which tmux focuses. */
+    /** Opens a pane beside [pane], which the Mac focuses. */
     fun split(pane: String) = link.send(Split(pane))
 
     fun kill(window: Window) = link.send(Kill(window = window.id))

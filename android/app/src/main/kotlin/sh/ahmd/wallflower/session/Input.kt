@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import sh.ahmd.wallflower.protocol.Keys
 import sh.ahmd.wallflower.protocol.Submit
 
-/** Composed text the gateway never confirmed, so it may not have reached tmux. */
+/** Composed text the gateway never confirmed, so it may not have reached the pane. */
 data class Undelivered(val pane: String, val text: String)
 
 /** Upload paths: under [dir], names of the characters the gateway keeps, which never end in . or -. */
@@ -24,7 +24,7 @@ internal class Input(private val link: Link) {
 
     private val pending = ArrayList<Submitted>() // guarded by the link's lock
 
-    /** tmux key names; with [bindings], through tmux's key bindings. */
+    /** Keys by wallflower's names (Enter, C-c); with [bindings], through the multiplexer's key bindings. */
     fun keys(pane: String, keys: List<String>, bindings: Boolean = false) = link.send(Keys(pane, keys, bindings))
 
     /** Bytes typed as they are, as a mouse wheel's. */

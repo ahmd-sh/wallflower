@@ -60,7 +60,7 @@ class FramesTest {
         val r = FrameReader(ByteArrayInputStream(golden("server.bin")))
         fun message() = assertIs<Frame.Message>(r.next()).message
 
-        assertEquals(ServerHello(VERSION, "3.8", uploads = "/Users/me/Library/Caches/wallflower/uploads"), message())
+        assertEquals(ServerHello(VERSION, Mux("tmux", "3.8", listOf(Mux.BINDINGS)), uploads = "/Users/me/Library/Caches/wallflower/uploads"), message())
         val state = assertIs<State>(message())
         assertEquals("o", state.name)
         val (claude, shell) = state.windows.single().panes

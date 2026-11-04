@@ -45,6 +45,7 @@ import sh.ahmd.wallflower.KeyProfile
 import sh.ahmd.wallflower.prefs.Look
 import sh.ahmd.wallflower.prefs.Preferences
 import sh.ahmd.wallflower.program.Programs
+import sh.ahmd.wallflower.protocol.Mux
 import sh.ahmd.wallflower.session.Host
 
 /** A profile of the key bar, by where it sits. */
@@ -161,7 +162,7 @@ private fun ProfileRow(profile: KeyProfile, programs: String, focused: Boolean, 
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack: () -> Unit, onOpen: (ProfileRef) -> Unit) {
+fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, mux: Mux?, onBack: () -> Unit, onOpen: (ProfileRef) -> Unit) {
     val bar by store.bar.collectAsStateWithLifecycle()
     val profile = when (ref) {
         ProfileRef.Default -> bar.default
@@ -171,6 +172,8 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
         LaunchedEffect(Unit) { onBack() }
         return
     }
+    // What a multiplexer that can't take keys through its bindings doesn't offer; unknown until connected.
+    val bindings = mux?.let { Mux.BINDINGS in it.can } ?: true
     fun save(p: KeyProfile) = store.update { b ->
         when (ref) {
             ProfileRef.Default -> b.copy(default = p)
@@ -253,19 +256,19 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
         Section("clear")
         Body("What empties the app's line, so what's in the box replaces it (sent once per row of the line). Empty: the box adds to the line.")
         var clear by remember(ref) { mutableStateOf((profile.clear ?: Programs.of(profile.programs.firstOrNull().orEmpty()).clearKeys).joinToString(" ")) }
-        Field("tmux keys", clear) {
+        Field("keys", clear) {
             clear = it
             save(profile.copy(clear = it.split(' ').filter(String::isNotEmpty)))
         }
 
         Section("add")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (k in KeyBar.common) Chip(k.label, false) { save(profile.copy(keys = profile.keys + k)) }
+            for (k in KeyBar.common.filter { bindings || !it.bindings }) Chip(k.label, false) { save(profile.copy(keys = profile.keys + k)) }
         }
 
         Section("custom")
         Body(
-            "tmux key names, space-separated; anything else is typed as is (Escape :w Enter). C- is ctrl, M- alt (⌥) and S- shift, " +
+            "Key names, space-separated; anything else is typed as is (Escape :w Enter). C- is ctrl, M- alt (⌥) and S- shift, " +
                 "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is ⇧tab, BSpace ⌫, DC delete, IC insert; F1 to F12 work too. Tap one to add it.",
         )
         var label by remember(ref) { mutableStateOf("") }
@@ -282,10 +285,10 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
             }
         }
         Field(if (label.isBlank() && keys.isNotEmpty()) "label (blank: ${KeyBar.labelOf(keys)})" else "label", label) { label = it }
-        Toggle("through tmux's key bindings (C-j to change pane; prefix is your prefix)", bound) { bound = it }
+        if (bindings) Toggle("through ${mux?.name ?: "the multiplexer"}'s key bindings (C-j to change pane; prefix is your prefix)", bound) { bound = it }
         Button("add key") {
             if (keys.isNotEmpty()) {
-                save(profile.copy(keys = profile.keys + BarKey(label.ifBlank { KeyBar.labelOf(keys) }, keys, bindings = bound)))
+                save(profile.copy(keys = profile.keys + BarKey(label.ifBlank { KeyBar.labelOf(keys) }, keys, bindings = bound && bindings)))
                 label = ""
                 sends = ""
             }
@@ -304,7 +307,7 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, onBack:
 private val stops = listOf("C-c", "Escape", "C-d", "q").map { listOf(it) }
 private val presses = listOf("Enter", "C-j", "M-Enter").map { listOf(it) }
 
-/** tmux's names for what a custom key sends, beyond text. */
+/** wallflower's names (tmux's) for what a custom key sends, beyond text. */
 private val names = listOf(
     "C-", "M-", "S-", "Enter", "Escape", "Tab", "BTab", "BSpace", "Space",
     "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "DC", "IC",

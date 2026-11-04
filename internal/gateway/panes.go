@@ -4,8 +4,8 @@ import (
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/desktop"
+	"github.com/ahmd-sh/wallflower/internal/mux"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
-	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 const (
@@ -29,40 +29,40 @@ func (g *gateway) open(id string, history int) error {
 		history = protocol.DefaultHistory
 	}
 	history = min(history, maxHistory)
-	c, err := g.tmux.Capture(id, history)
+	s, err := g.mux.Screen(id, history)
 	if err != nil {
 		return err
 	}
-	g.panes[id] = &pane{openAt: c.Seq, history: history, cols: c.Cols, rows: c.Rows}
-	g.send(protocol.Reset{Pane: id, Cols: c.Cols, Rows: c.Rows})
-	g.out.push(protocol.AppendData(nil, id, repaint(c)))
+	g.panes[id] = &pane{openAt: s.Seq, history: history, cols: s.Cols, rows: s.Rows}
+	g.send(protocol.Reset{Pane: id, Cols: s.Cols, Rows: s.Rows})
+	g.out.push(protocol.AppendData(nil, id, s.Repaint))
 	return nil
 }
 
 // scan passes on the notifications in a pane's output, open or not.
-func (g *gateway) scan(n tmux.Notification) {
-	s := g.scanners[n.Pane]
+func (g *gateway) scan(e mux.Event) {
+	s := g.scanners[e.Pane]
 	if s == nil {
 		s = &desktop.Scanner{}
-		g.scanners[n.Pane] = s
+		g.scanners[e.Pane] = s
 	}
-	for _, d := range s.Scan(n.Data) {
-		g.send(protocol.Notification{Pane: n.Pane, Title: d.Title, Body: d.Body, Bell: d.Bell})
+	for _, d := range s.Scan(e.Data) {
+		g.send(protocol.Notification{Pane: e.Pane, Title: d.Title, Body: d.Body, Bell: d.Bell})
 	}
 }
 
 // output forwards a pane's output, unless the client is too far behind to
 // take it; the pane is repainted once it catches up.
-func (g *gateway) output(n tmux.Notification) {
-	p := g.panes[n.Pane]
-	if p == nil || p.stale || n.Seq <= p.openAt {
+func (g *gateway) output(e mux.Event) {
+	p := g.panes[e.Pane]
+	if p == nil || p.stale || e.Seq <= p.openAt {
 		return
 	}
 	if g.out.buffered() > highWater {
 		p.stale, g.stale = true, true
 		return
 	}
-	g.out.push(protocol.AppendData(nil, n.Pane, n.Data))
+	g.out.push(protocol.AppendData(nil, e.Pane, e.Data))
 }
 
 // repaintStale repaints stale panes while the backlog stays low, so a
@@ -85,7 +85,7 @@ func (g *gateway) repaintStale() {
 }
 
 // resized repaints open panes whose size changed, since the client's
-// terminal would reflow differently from tmux's, and forgets those that
+// terminal would reflow differently from the multiplexer's, and forgets those that
 // closed.
 func (g *gateway) resized(sizes map[string][2]int) {
 	for id, p := range g.panes {

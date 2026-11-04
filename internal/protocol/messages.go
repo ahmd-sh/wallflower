@@ -41,14 +41,16 @@ type Close struct {
 	Pane string `json:"pane"`
 }
 
-// Keys sends tmux key names (Enter, Escape, Up, C-c, M-Enter, BTab, ...),
-// encoded for the pane's current modes. Bytes go in data frames, composed
-// text in Submit.
+// Keys presses keys by wallflower's names (Enter, Escape, Up, C-c, M-Enter,
+// BTab, ...; see package mux), encoded for the pane's current modes;
+// anything else is typed as it is. Bytes go in data frames, composed text
+// in Submit.
 type Keys struct {
 	Pane string   `json:"pane"`
 	Keys []string `json:"keys"`
-	// Bindings sends the keys as if typed on a keyboard attached to tmux, so
-	// key bindings apply; "prefix" stands for the prefix key.
+	// Bindings presses the keys as if typed on a keyboard attached to the
+	// multiplexer, so its key bindings apply, if it can (CanBindings);
+	// "prefix" stands for its prefix key.
 	Bindings bool `json:"bindings,omitempty"`
 }
 
@@ -139,12 +141,24 @@ func (Away) Type() string        { return "away" }
 // Gateway to client.
 
 type ServerHello struct {
-	V    int    `json:"v"`
-	Tmux string `json:"tmux"`
+	V   int `json:"v"`
+	Mux Mux `json:"mux"`
 	// Uploads is the directory uploads are saved in, so a client can tell
 	// their paths from others in what it sends.
 	Uploads string `json:"uploads,omitempty"`
 }
+
+// Mux is the multiplexer the session is in (tmux), its version, and what
+// it can do beyond what every one does (CanBindings).
+type Mux struct {
+	Name    string   `json:"name"`
+	Version string   `json:"version"`
+	Can     []string `json:"can,omitempty"`
+}
+
+// CanBindings: Keys can press keys through the multiplexer's own key
+// bindings.
+const CanBindings = "bindings"
 
 type State struct {
 	Session string   `json:"session"`

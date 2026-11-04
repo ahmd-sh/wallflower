@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/mobileview"
+	"github.com/ahmd-sh/wallflower/internal/mux"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
-	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 const (
@@ -43,7 +43,7 @@ type readUpdate struct {
 }
 
 // readers maps the panes of a snapshot that some source reads to it.
-func (g *gateway) readers(s *tmux.Session) map[string]reader {
+func (g *gateway) readers(s *mux.Session) map[string]reader {
 	var panes []mobileview.Pane
 	for _, w := range s.Windows {
 		for _, p := range w.Panes {
@@ -62,7 +62,7 @@ func (g *gateway) readers(s *tmux.Session) map[string]reader {
 }
 
 // watchActivity has state resent when what a program is doing changed,
-// which no tmux notification says.
+// which no event from the multiplexer says.
 func (g *gateway) watchActivity() {
 	if g.snapshot == nil || len(g.sources) == 0 {
 		return

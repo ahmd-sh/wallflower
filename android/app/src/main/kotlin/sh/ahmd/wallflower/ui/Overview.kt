@@ -101,7 +101,7 @@ internal fun rememberOverview(): Overview {
 }
 
 /**
- * Every pane of a window as a card with its live contents, in tmux's order,
+ * Every pane of a window as a card with its live contents, in the session's order,
  * then one to open a new pane. Tap a card to show it, × to close it. Cards
  * fill as many columns as the screen is wide. They come in with [progress]
  * as the [zoomed] pane shrinks into its card, which says where it is in

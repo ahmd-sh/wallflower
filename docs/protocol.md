@@ -1,4 +1,4 @@
-# wallflower protocol, version 2
+# wallflower protocol, version 3
 
 The client runs `wallflower serve` over ssh and talks to it on stdin/stdout. One
 connection is one client session; the gateway exits when the client
@@ -26,14 +26,15 @@ client is typed into the pane, byte for byte (a mouse wheel's, say);
 composed text goes in `submit`.
 
 Frames are at most 16 MiB. A frame of a type a reader doesn't know is
-skipped, so the protocol can grow by adding them. Ids are opaque strings
-(`%3`, `@1`, `$0` today); don't parse them.
+skipped, so the protocol can grow by adding them. Ids are opaque strings,
+the multiplexer's own (tmux's `%3`, `@1`, `$0`); don't parse them.
 
 ## Session
 
-1. Client sends `hello`. The gateway attaches to the tmux session it asked
-   for (default: the one tmux would pick), as any other client of it does:
-   a window switched to on the client is switched to on the others too.
+1. Client sends `hello`. The gateway attaches to the session it asked for in
+   the Mac's multiplexer (default: the one the multiplexer would pick), as
+   any other client of it does: a window switched to on the client is
+   switched to on the others too.
 2. Gateway sends `hello`, then `state`.
 3. Client sends `open` for the panes it wants to show. For each, the gateway
    sends `reset` and one data frame that repaints the pane, then streams its
@@ -48,11 +49,11 @@ client never has to resync on its own.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `cols`, `rows`, `session`?, `away`? | first message; `v` is 2 |
+| `hello` | `v`, `cols`, `rows`, `session`?, `away`? | first message; `v` is 3 |
 | `resize` | `cols`, `rows` | the client's terminal area changed |
 | `open` | `pane`, `history`? | repaint and stream a pane; `history` lines of scrollback (default 1000) |
 | `close` | `pane` | stop streaming a pane |
-| `keys` | `pane`, `keys`, `bindings`? | tmux key names: `Enter`, `Escape`, `Up`, `C-c`, `M-Enter`, `BTab`, …; encoded for the pane's modes. With `bindings`, as if typed on a keyboard attached to tmux, so its key bindings apply (`prefix` stands for the prefix key) |
+| `keys` | `pane`, `keys`, `bindings`? | keys by name (see Keys), encoded for the pane's modes. With `bindings`, as if typed on a keyboard attached to the multiplexer, so its key bindings apply (`prefix` stands for its prefix key), if it `can` |
 | `submit` | `pane`, `text`, `enter`?, `clear`? | composed text in place of what the program's input line holds, see below |
 | `select` | `window` or `pane` | make it current in the client's session (sizes it for the client) |
 | `focus` | `pane` | make it the window's active pane, zoomed if the window has others (undone on disconnect) |
@@ -67,7 +68,7 @@ client never has to resync on its own.
 | `away` | `on` | the user has left the client for now (or is back): see Sizing |
 
 Messages are handled in order, so a `pong` means everything sent before its
-`ping` has reached tmux.
+`ping` has reached the multiplexer.
 
 `submit` sends `clear` first, keys that empty the program's input line
 (the client reads the line off the screen, and knows the program). Then
@@ -82,7 +83,7 @@ them at once takes it all as a paste, Enter and all.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `tmux`, `uploads`? | tmux version; the directory uploads are saved in |
+| `hello` | `v`, `mux`, `uploads`? | the multiplexer, see below; the directory uploads are saved in |
 | `state` | `session`, `name`, `windows` | everything in the session, see below |
 | `reset` | `pane`, `cols`, `rows` | recreate the pane's terminal at this size; the next data frame repaints it |
 | `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `context`? | a pane's mobile view, see below |
@@ -92,13 +93,18 @@ them at once takes it all as a paste, Enter and all.
 | `bye` | `reason` | the gateway is exiting |
 | `notification` | `pane`, `title`?, `body` | a desktop notification a program sent, see below |
 
+`mux` is the multiplexer the session is in: its `name` (`tmux`), its
+`version`, and `can`, what it can do beyond what every one does:
+`bindings`, keys through its own key bindings. A client offers only what
+the multiplexer can.
+
 A window is `id`, `index`, `name`, `active` and `panes`. A pane is:
 
 | field | |
 |-------|---|
 | `id`, `index`, `active` | |
 | `cols`, `rows` | its size |
-| `alt` | a full-screen app owns the pane; tmux keeps no scrollback for it |
+| `alt` | a full-screen app owns the pane; no scrollback is kept for it |
 | `title`, `path` | |
 | `command` | the foreground program; tools that run from a versioned file (`.../claude/versions/2.1.300`) report the name they were run as |
 | `reader` | what reads the pane's program for its mobile view (`claude`), if anything does |
@@ -152,15 +158,26 @@ documented; entries it can't read are skipped.
 
 State is pushed whenever it changes and every open pane streams, so a client
 can keep everything it shows local: scroll, switch windows, and draw panes it
-already has open without asking. Messages are for changing tmux, not for
-looking at it.
+already has open without asking. Messages are for changing the session, not
+for looking at it.
+
+## Keys
+
+Keys go by wallflower's names, which are tmux's whatever the multiplexer:
+`Enter`, `Escape`, `Tab`, `BTab` (shift-tab), `BSpace`, `Space`, `Up`,
+`Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`, `IC`
+(insert), `DC` (delete) and `F1` to `F12`, each with any of `C-` (ctrl),
+`M-` (alt) and `S-` (shift) before it: `C-c`, `M-Enter`, `S-Up`. Anything
+else in `keys` is typed as it is, so `["Escape", ":w", "Enter"]` saves in
+vim.
 
 ## Sizing
 
-The client's size applies to windows it resizes or selects, and stays until
-another client does the same. tmux doesn't count typing, so the gateway
-reclaims the current window when the client types and the window has a
-different size.
+The client's size applies to the windows it shows and types into, however
+the multiplexer shares a window among clients of different sizes. tmux
+sizes a window for the client that last resized or selected it, and
+doesn't count typing through control mode, so the gateway selects the
+window again when the client types into it and it has another size.
 
 While the client says it's `away` (in `hello`, or since), it doesn't size
 windows at all, as if it weren't attached: a client left in the background
@@ -170,9 +187,9 @@ selects the window it shows to take it again.
 ## Notifications
 
 Programs send desktop notifications through their terminal: OSC 9
-(iTerm2's), OSC 777 `notify` (rxvt's) and OSC 99 (kitty's). tmux drops
-these, and passes them on to its terminal only from a pane on screen when a
-program wraps them in its passthrough. The gateway reads them from every
+(iTerm2's), OSC 777 `notify` (rxvt's) and OSC 99 (kitty's). A multiplexer
+may not pass them on (tmux drops them, but from a pane on screen when a
+program wraps them in its passthrough). The gateway reads them from every
 pane's output, open or not, wrapped or not, and sends each as a
 `notification`: `body` is what it says, `title` what it's about if the
 program gave one. A program's bell comes as one too, with `bell` and an

@@ -9,7 +9,7 @@ import kotlinx.serialization.json.Json
 // The wire format is defined in docs/protocol.md. Field order matches the Go
 // structs so both sides encode identical bytes (checked by the golden tests).
 
-const val VERSION = 2
+const val VERSION = 3
 const val DEFAULT_HISTORY = 1000
 
 val WireJson = Json {
@@ -47,10 +47,11 @@ data class Open(val pane: String, val history: Int? = null) : ClientMessage
 data class Close(val pane: String) : ClientMessage
 
 /**
- * tmux key names (Enter, Escape, Up, C-c, M-Enter, BTab, ...); bytes go in
- * data frames, composed text in [Submit]. With [bindings], as if typed on a
- * keyboard attached to tmux, so its key bindings apply; "prefix" stands for
- * the prefix key.
+ * Keys by wallflower's names (Enter, Escape, Up, C-c, M-Enter, BTab, ...),
+ * anything else typed as it is; bytes go in data frames, composed text in
+ * [Submit]. With [bindings], as if typed on a keyboard attached to the
+ * multiplexer, so its key bindings apply, if it can ([Mux.BINDINGS]);
+ * "prefix" stands for its prefix key.
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -135,10 +136,19 @@ sealed interface ServerMessage
 @SerialName("hello")
 data class ServerHello(
     val v: Int,
-    val tmux: String,
+    val mux: Mux,
     /** Where uploads are saved: paths under it are uploads. */
     val uploads: String? = null,
 ) : ServerMessage
+
+/** The multiplexer the session is in (tmux), its version, and what it [can] do beyond what every one does. */
+@Serializable
+data class Mux(val name: String, val version: String, val can: List<String> = emptyList()) {
+    companion object {
+        /** [Keys] can go through the multiplexer's own key bindings. */
+        const val BINDINGS = "bindings"
+    }
+}
 
 @Serializable
 @SerialName("state")

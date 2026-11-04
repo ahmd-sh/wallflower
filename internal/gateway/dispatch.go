@@ -28,7 +28,10 @@ func (g *gateway) handle(f protocol.Frame) error {
 	}
 	switch m := m.(type) {
 	case *protocol.Resize:
-		return g.resize(m.Cols, m.Rows)
+		if !validSize(m.Cols, m.Rows) {
+			return fmt.Errorf("bad size %dx%d", m.Cols, m.Rows)
+		}
+		return g.mux.Resize(m.Cols, m.Rows)
 	case *protocol.Open:
 		return g.open(m.Pane, m.History)
 	case *protocol.Close:
@@ -47,30 +50,29 @@ func (g *gateway) handle(f protocol.Frame) error {
 	case *protocol.Select:
 		switch {
 		case m.Pane != "":
-			return g.tmux.SelectPane(m.Pane)
+			return g.mux.SelectPane(m.Pane)
 		case m.Window != "":
-			return g.selectWindow(m.Window)
+			return g.mux.SelectWindow(m.Window)
 		}
 		return errors.New("select needs a window or pane")
 	case *protocol.Focus:
-		return g.focus(m.Pane)
+		return g.mux.Focus(m.Pane)
 	case *protocol.Split:
-		pane, err := g.tmux.Split(m.Pane)
+		pane, err := g.mux.Split(m.Pane)
 		if err != nil {
 			return err
 		}
-		return g.focus(pane)
+		return g.mux.Focus(pane)
 	case *protocol.New:
-		// The client's session is current here, so the window is current only for it.
-		return g.tmux.NewWindow()
+		return g.mux.NewWindow()
 	case *protocol.Rename:
-		return g.tmux.RenameWindow(m.Window, m.Name)
+		return g.mux.RenameWindow(m.Window, m.Name)
 	case *protocol.Kill:
 		switch {
 		case m.Pane != "":
-			return g.tmux.KillPane(m.Pane)
+			return g.mux.KillPane(m.Pane)
 		case m.Window != "":
-			return g.tmux.KillWindow(m.Window)
+			return g.mux.KillWindow(m.Window)
 		}
 		return errors.New("kill needs a window or pane")
 	case *protocol.Read:
@@ -87,7 +89,7 @@ func (g *gateway) handle(f protocol.Frame) error {
 		g.send(protocol.Pong{ID: m.ID})
 		return nil
 	case *protocol.Away:
-		return g.tmux.IgnoreSize(m.On)
+		return g.mux.Away(m.On)
 	case *protocol.ClientHello:
 		return errors.New("already said hello")
 	}

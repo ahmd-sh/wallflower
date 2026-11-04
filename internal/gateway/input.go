@@ -1,8 +1,6 @@
 package gateway
 
 import (
-	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -33,7 +31,7 @@ func (g *gateway) do(work func() error) {
 // hold gives a program a moment with what it was just sent: the work after
 // it waits ([first], then the rest) until d has passed. Output and state go
 // on meanwhile, and input keeps its order, so a pong still means everything
-// sent before its ping reached tmux.
+// sent before its ping reached the multiplexer.
 func (g *gateway) hold(d time.Duration, first ...func() error) {
 	g.held = append(first, g.held...)
 	g.resume = time.After(d)
@@ -41,17 +39,15 @@ func (g *gateway) hold(d time.Duration, first ...func() error) {
 
 // typeBytes types data into the pane as it is, as a mouse wheel's.
 func (g *gateway) typeBytes(pane string, data []byte) error {
-	g.claimSize(pane)
-	return g.tmux.SendBytes(pane, data)
+	return g.mux.Type(pane, data)
 }
 
 // submit gives a pane's program composed text in place of what its input
 // line holds: the keys that empty the line, then the text as the program
 // takes it best (see typeOut), then Enter if asked.
 func (g *gateway) submit(m *protocol.Submit) error {
-	g.claimSize(m.Pane)
 	if len(m.Clear) > 0 {
-		if err := g.tmux.SendKeys(m.Pane, m.Clear...); err != nil {
+		if err := g.mux.Keys(m.Pane, m.Clear...); err != nil {
 			return err
 		}
 	}
@@ -72,16 +68,16 @@ func (g *gateway) typeOut(pane string, runs []run, enter bool) error {
 		var err error
 		switch {
 		case r.upload:
-			if err := g.tmux.Paste(pane, g.buffer(), r.text); err != nil {
+			if err := g.mux.Paste(pane, r.text); err != nil {
 				return err
 			}
 			rest := runs[i+1:]
 			g.hold(uploadSettle, func() error { return g.typeOut(pane, rest, enter) })
 			return nil
 		case strings.Contains(r.text, "\n"):
-			err, typed = g.tmux.Paste(pane, g.buffer(), r.text), false
+			err, typed = g.mux.Paste(pane, r.text), false
 		default:
-			err, typed = g.tmux.SendBytes(pane, []byte(r.text)), true
+			err, typed = g.mux.Type(pane, []byte(r.text)), true
 		}
 		if err != nil {
 			return err
@@ -91,24 +87,20 @@ func (g *gateway) typeOut(pane string, runs []run, enter bool) error {
 	case !enter:
 		return nil
 	case typed:
-		g.hold(enterSettle, func() error { return g.tmux.SendKeys(pane, "Enter") })
+		g.hold(enterSettle, func() error { return g.mux.Keys(pane, "Enter") })
 		return nil
 	}
-	return g.tmux.SendKeys(pane, "Enter")
+	return g.mux.Keys(pane, "Enter")
 }
 
-// buffer names the paste buffer this gateway pastes through.
-func (g *gateway) buffer() string { return fmt.Sprintf("wallflower-%d", os.Getpid()) }
-
-// keys sends tmux key names, or, through bindings, keys as if typed on a
-// keyboard attached to tmux.
+// keys presses keys in a pane, or, through bindings, as if typed on a
+// keyboard attached to the multiplexer.
 func (g *gateway) keys(pane string, keys []string, bindings bool) error {
-	if len(keys) == 0 {
+	switch {
+	case len(keys) == 0:
 		return nil
+	case bindings:
+		return g.mux.Bound(pane, keys...)
 	}
-	g.claimSize(pane)
-	if bindings {
-		return g.tmux.SendBound(g.client, keys...)
-	}
-	return g.tmux.SendKeys(pane, keys...)
+	return g.mux.Keys(pane, keys...)
 }

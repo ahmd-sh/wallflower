@@ -57,7 +57,7 @@ fun PanePager(
     val scope = rememberCoroutineScope()
     val settling = remember { arrayOfNulls<Job>(1) }
 
-    // The shown pane changing elsewhere (a card, tmux) cuts straight to it.
+    // The shown pane changing elsewhere (a card, the Mac) cuts straight to it.
     LaunchedEffect(shown.id) {
         if (shown.id != current) {
             settling[0]?.cancel()

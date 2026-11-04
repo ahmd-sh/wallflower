@@ -30,7 +30,7 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 /**
  * The phone's keyboard typing straight into a pane, as a terminal takes it:
  * no suggestions or autocorrect, text as it's typed, every other key by its
- * tmux name, from the keyboard on screen or one plugged in.
+ * name, from the keyboard on screen or one plugged in.
  */
 @Stable
 internal class Typing {
@@ -48,7 +48,7 @@ internal class Typing {
 
 /**
  * What a key typed straight into a pane is: [Text] typed as it is, a [Key]
- * by its tmux name, or the keyboard on screen's [Return] key, which does
+ * by its name, or the keyboard on screen's [Return] key, which does
  * what the program's profile says.
  */
 internal sealed interface Typed {
@@ -59,9 +59,10 @@ internal sealed interface Typed {
 
 /**
  * A key pressed, by its Android [code] and the character it types ([char],
- * without ctrl or alt; 0 for none), as tmux takes it: keys that don't type
- * text, or any key with ctrl or alt held, by name (`Enter`, `C-c`, `M-b`,
- * `S-Up`); anything else as its text. Null for keys a terminal has no use for.
+ * without ctrl or alt; 0 for none), as wallflower names keys: keys that
+ * don't type text, or any key with ctrl or alt held, by name (`Enter`,
+ * `C-c`, `M-b`, `S-Up`); anything else as its text. Null for keys a
+ * terminal has no use for.
  */
 internal fun typed(code: Int, char: Int, ctrl: Boolean, alt: Boolean, shift: Boolean): Typed? {
     val named = NAMES[code]

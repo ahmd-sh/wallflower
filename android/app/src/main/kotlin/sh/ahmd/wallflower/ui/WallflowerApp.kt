@@ -44,6 +44,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
+import kotlinx.coroutines.flow.flowOf
 import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.protocol.Pane
@@ -94,6 +95,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     val focus = LocalFocusManager.current
     LaunchedEffect(screen) { if (screen != Screen.Terminal) focus.clearFocus() } // the composer's keyboard goes away
     val current = session
+    val mux by (current?.mux ?: flowOf(null)).collectAsStateWithLifecycle(null)
     val setup = @Composable {
         SetupScreen(
             host = host,
@@ -158,6 +160,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     store = model.keyBar,
                     ref = s.ref,
                     program = program,
+                    mux = mux,
                     onBack = { screen = s.back },
                     onOpen = { screen = s.copy(ref = it) },
                 )
@@ -169,7 +172,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
 /**
  * The session's terminals: tabs, the shown window's panes to swipe between
  * (each its terminal, or its mobile view), the composer, and the cards of
- * every pane. What's shown is the phone's own; tmux follows. A terminal is
+ * every pane. What's shown is the phone's own; the Mac follows. A terminal is
  * typed into straight from the keyboard, which a tap on it brings up; a
  * mobile view is written for in the composer's box.
  */

@@ -22,6 +22,7 @@ import sh.ahmd.wallflower.protocol.ErrorMessage
 import sh.ahmd.wallflower.protocol.Frame
 import sh.ahmd.wallflower.protocol.FrameReader
 import sh.ahmd.wallflower.protocol.FrameWriter
+import sh.ahmd.wallflower.protocol.Mux
 import sh.ahmd.wallflower.protocol.Ping
 import sh.ahmd.wallflower.protocol.Pong
 import sh.ahmd.wallflower.protocol.ServerHello
@@ -30,7 +31,7 @@ import sh.ahmd.wallflower.protocol.VERSION
 
 sealed interface Status {
     data object Connecting : Status
-    data class Connected(val tmux: String) : Status
+    data class Connected(val mux: Mux) : Status
     /** Retrying on its own. */
     data class Disconnected(val reason: String) : Status
     /** Waiting for the user, then [Session.retry]. */
@@ -42,7 +43,7 @@ sealed interface Status {
  * drops, backing off, until [stop]. Messages go out in order on the live
  * connection; with none live, nothing goes. Pings check it's alive, and
  * mark what has arrived: a pong means everything sent before its ping
- * reached tmux.
+ * reached the multiplexer.
  *
  * What a connection keeps lives in one [Live], thrown away whole when it
  * ends. What the rest of the session keeps about a connection is reset in
@@ -215,7 +216,7 @@ internal class Link(
             is ServerHello -> {
                 if (m.v != VERSION) throw Blocked.Refused("the Mac's wallflower speaks protocol ${m.v}, this app $VERSION")
                 greeted = true
-                _status.value = Status.Connected(m.tmux)
+                _status.value = Status.Connected(m.mux)
             }
             is Pong -> {
                 // Any pong says the link is alive; only the newest leaves nothing outstanding. (Uploads keep pings in flight.)

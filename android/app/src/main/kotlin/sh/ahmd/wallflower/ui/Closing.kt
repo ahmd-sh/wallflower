@@ -54,7 +54,7 @@ internal fun CloseDialog(closing: Closing, windows: List<Window>) {
         ConfirmClose(
             title = "close ${w.name}?",
             body = (if (w.panes.size == 1) "Its pane, and whatever runs in it," else "Its ${w.panes.size} panes, and whatever runs in them,") +
-                " will be killed." + if (windows.size == 1) " It's the last tab, so the tmux session ends too." else "",
+                " will be killed." + if (windows.size == 1) " It's the last tab, so the session ends too." else "",
             action = "close tab",
             onConfirm = closing::confirm,
             onDismiss = closing::dismiss,

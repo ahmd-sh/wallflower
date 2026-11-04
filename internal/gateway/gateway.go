@@ -1,10 +1,11 @@
-// Package gateway serves one client over the wallflower protocol, backed by a
-// tmux control-mode client. It keeps no state that tmux doesn't already
-// hold; everything it sends can be rebuilt from tmux.
+// Package gateway serves one client over the wallflower protocol, backed by
+// a client of the multiplexer the session is in (see package mux). It keeps
+// no state that the multiplexer doesn't already hold; everything it sends
+// can be rebuilt from it.
 //
-// One loop owns all of it: the client's messages (dispatch.go) drive tmux
-// (input.go, windows.go), and tmux's notifications become the client's pane
-// streams (panes.go) and session state (state.go), with mobile views
+// One loop owns all of it: the client's messages (dispatch.go) drive the
+// multiplexer (input.go), and its events become the client's pane streams
+// (panes.go) and session state (state.go), with mobile views
 // (mobileview.go) and uploads alongside.
 package gateway
 
@@ -17,27 +18,24 @@ import (
 
 	"github.com/ahmd-sh/wallflower/internal/desktop"
 	"github.com/ahmd-sh/wallflower/internal/mobileview"
+	"github.com/ahmd-sh/wallflower/internal/mux"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
-	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 type Options struct {
-	Socket  string              // tmux socket, see tmux.Options
+	Mux     mux.Mux             // the multiplexer the sessions are in
 	Session string              // default session when the client doesn't ask for one
 	Readers []mobileview.Source // programs whose panes have mobile views
 	Uploads string              // where files the client sends are saved; UploadDir() if empty
 }
 
 type gateway struct {
-	ctx        context.Context
-	tmux       *tmux.Client
-	out        *outbox
-	client     string // this control client's name, for keys sent through bindings
-	target     string // the session the client asked for; its own session is grouped with it
-	cols, rows int
-	exitReason string
+	ctx   context.Context
+	mux   mux.Client
+	about mux.About
+	out   *outbox
 
-	snapshot  *tmux.Session // the last
+	snapshot  *mux.Session // the last
 	lastState []byte
 	dirty     bool
 	programs  map[string]string           // tty and versioned command -> the name it was run as
@@ -46,7 +44,6 @@ type gateway struct {
 	panes    map[string]*pane            // panes the client has open
 	scanners map[string]*desktop.Scanner // every pane's output, for notifications
 	stale    bool                        // some are, so repaintStale is due
-	zoomed   map[string]bool             // windows the client zoomed -> zoomed before
 
 	held   []func() error   // work waiting for resume, in order: the client's frames, and the rest of what one asked
 	resume <-chan time.Time // while a pane settles; see hold
@@ -60,13 +57,13 @@ type gateway struct {
 }
 
 // Serve runs one client session over in and out until the client
-// disconnects or tmux exits.
+// disconnects or the multiplexer detaches it.
 func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	g := &gateway{
 		ctx: ctx, out: newOutbox(out), programs: map[string]string{},
-		panes: map[string]*pane{}, scanners: map[string]*desktop.Scanner{}, zoomed: map[string]bool{},
+		panes: map[string]*pane{}, scanners: map[string]*desktop.Scanner{},
 		sources: opts.Readers, reading: map[string]reading{}, updates: make(chan readUpdate, 16),
 		uploads: uploads{dir: opts.Uploads, open: map[string]*upload{}},
 	}
@@ -82,38 +79,22 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 		g.send(protocol.Bye{Reason: err.Error()})
 		return err
 	}
-	g.cols, g.rows = hello.Cols, hello.Rows
 	session := hello.Session
 	if session == "" {
 		session = opts.Session
 	}
-	if g.target, err = tmux.ResolveSession(opts.Socket, session); err != nil {
-		g.send(protocol.Bye{Reason: err.Error()})
-		return err
-	}
-
-	// The client attaches to the session itself, as the desktop does, so
-	// both are one session: a window switched to on one is switched to on
-	// the other. Not tied to ctx: cleanup still needs tmux after a signal.
-	flags := []string{"new-layouts", "no-detach-on-destroy"}
-	if hello.Away {
-		flags = append(flags, "ignore-size")
-	}
-	g.tmux, err = tmux.Start(context.Background(), tmux.Options{Socket: opts.Socket, Session: g.target, Flags: flags})
+	g.mux, err = opts.Mux.Attach(mux.Attach{Session: session, Cols: hello.Cols, Rows: hello.Rows, Away: hello.Away})
 	if err != nil {
 		g.send(protocol.Bye{Reason: err.Error()})
 		return err
 	}
-	defer g.cleanup()
-
-	version, client, err := g.tmux.Configure(g.cols, g.rows)
-	if err != nil {
-		err = g.tmuxErr(err)
-		g.send(protocol.Bye{Reason: err.Error()})
-		return err
-	}
-	g.client = client
-	g.send(protocol.ServerHello{V: protocol.Version, Tmux: version, Uploads: g.uploads.dir})
+	defer g.mux.Close()
+	g.about = g.mux.About()
+	g.send(protocol.ServerHello{
+		V:       protocol.Version,
+		Mux:     protocol.Mux{Name: g.about.Name, Version: g.about.Version, Can: g.about.Can},
+		Uploads: g.uploads.dir,
+	})
 	g.sendState()
 
 	frames := make(chan protocol.Frame)
@@ -166,16 +147,22 @@ func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readEr
 	defer activity.Stop()
 	for {
 		select {
-		case n, ok := <-g.tmux.Events():
+		case e, ok := <-g.mux.Events():
 			if !ok {
-				reason := "tmux exited"
-				if g.exitReason != "" {
-					reason += ": " + g.exitReason
+				err := g.mux.Err()
+				reason := g.about.Name + " exited"
+				if err != nil {
+					reason += ": " + err.Error()
 				}
 				g.send(protocol.Bye{Reason: reason})
-				return g.tmux.Err()
+				return err
 			}
-			g.notify(n)
+			if e.Changed {
+				g.dirty = true
+			} else {
+				g.scan(e)
+				g.output(e)
+			}
 		case f := <-frames:
 			g.take(f)
 		case r := <-g.updates:
@@ -212,26 +199,6 @@ func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readEr
 	}
 }
 
-func (g *gateway) notify(n tmux.Notification) {
-	switch n.Type {
-	case "output":
-		g.scan(n)
-		g.output(n)
-	case "layout-change", "window-add", "window-close", "window-renamed", "window-pane-changed",
-		"session-window-changed", "session-changed", "session-renamed", "subscription-changed":
-		g.dirty = true
-	case "exit":
-		g.exitReason = n.Value
-	}
-}
-
-// cleanup puts back the zoom state of windows the client zoomed, then
-// detaches.
-func (g *gateway) cleanup() {
-	g.tmux.SetZoom(g.zoomed)
-	g.tmux.Close()
-}
-
 func (g *gateway) send(m protocol.Message) {
 	b, err := protocol.AppendJSON(nil, m)
 	if errors.Is(err, protocol.ErrTooBig) {
@@ -241,18 +208,4 @@ func (g *gateway) send(m protocol.Message) {
 		panic(err) // our own message types always encode
 	}
 	g.out.push(b)
-}
-
-// tmuxErr prefers tmux's own exit message (no server, no such session) over
-// the generic closed error.
-func (g *gateway) tmuxErr(err error) error {
-	if errors.Is(err, tmux.ErrClosed) {
-		if exitErr := g.tmux.Err(); exitErr != nil {
-			return exitErr
-		}
-		if g.exitReason != "" {
-			return errors.New(g.exitReason)
-		}
-	}
-	return err
 }

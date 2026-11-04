@@ -53,7 +53,7 @@ func connectOpts(t *testing.T, ctx context.Context, cols, rows int, opts Options
 	outR, outW := io.Pipe()
 	c := &client{t: t, w: inW, frames: make(chan protocol.Frame, 1024), done: make(chan error, 1), socket: socket, tmux: tmuxRun}
 	go func() {
-		opts.Socket, opts.Session = socket, "t"
+		opts.Mux, opts.Session = tmux.Server{Socket: socket}, "t"
 		c.done <- Serve(ctx, inR, outW, opts)
 		outW.Close()
 	}()
@@ -187,7 +187,8 @@ func TestHelloStateOpenType(t *testing.T) {
 	c := connect(t, 56, 20)
 
 	_, m := c.expect("hello", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.ServerHello); return ok })
-	if h := m.(*protocol.ServerHello); h.V != protocol.Version || !strings.HasPrefix(h.Tmux, "3.") {
+	if h := m.(*protocol.ServerHello); h.V != protocol.Version || h.Mux.Name != "tmux" || !strings.HasPrefix(h.Mux.Version, "3.") ||
+		!reflect.DeepEqual(h.Mux.Can, []string{protocol.CanBindings}) {
 		t.Errorf("hello = %+v", h)
 	}
 	// The phone's size applies to the window it's looking at.
@@ -552,7 +553,7 @@ func TestBadHello(t *testing.T) {
 	b, _ := protocol.AppendJSON(nil, protocol.ClientHello{V: 99, Cols: 80, Rows: 24})
 	in.Write(b)
 	var out bytes.Buffer
-	if err := Serve(context.Background(), &in, &out, Options{Socket: socket}); err == nil {
+	if err := Serve(context.Background(), &in, &out, Options{Mux: tmux.Server{Socket: socket}}); err == nil {
 		t.Fatal("accepted protocol version 99")
 	}
 	f, err := protocol.NewReader(&out).Next()

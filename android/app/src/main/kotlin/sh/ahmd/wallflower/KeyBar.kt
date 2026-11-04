@@ -9,10 +9,11 @@ import kotlinx.serialization.json.Json
 import sh.ahmd.wallflower.program.Program
 
 /**
- * A key on the bar: what it shows, and the tmux keys it sends (`Escape`,
- * `C-c`, or literal text). A [sticky] key waits for the next key, from the
- * bar or the keyboard, and goes with it. With [bindings], tmux's key bindings
- * apply, as if typed on a keyboard attached to it; `prefix` is its prefix key.
+ * A key on the bar: what it shows, and the keys it sends by wallflower's
+ * names (`Escape`, `C-c`, or literal text). A [sticky] key waits for the next
+ * key, from the bar or the keyboard, and goes with it. With [bindings], the
+ * multiplexer's key bindings apply, as if typed on a keyboard attached to it;
+ * `prefix` is its prefix key.
  */
 @Serializable
 data class BarKey(

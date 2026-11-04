@@ -39,7 +39,7 @@ class Drafts(private val prefs: SharedPreferences, private val scope: CoroutineS
         }
     }
 
-    /** Forgets the drafts of panes that are gone (tmux reuses their ids for new ones). */
+    /** Forgets the drafts of panes that are gone (their ids can come back for new ones). */
     fun keep(panes: Set<String>) {
         val gone = (saved.keys + states.keys).filterNot { it in panes }
         if (gone.isEmpty()) return

@@ -1,10 +1,8 @@
-package gateway
+package tmux
 
 import (
 	"bytes"
 	"testing"
-
-	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 func TestBackground(t *testing.T) {
@@ -40,14 +38,14 @@ func TestPaintDropsBackgroundAtBreaks(t *testing.T) {
 }
 
 func TestRepaintEscapes(t *testing.T) {
-	c := &tmux.Capture{Cols: 10, Rows: 3, X: 4, Y: 1, Bottom: 2, History: []string{"h2", "h3"}, Normal: []string{"a", "b", ""}}
+	c := &Capture{Cols: 10, Rows: 3, X: 4, Y: 1, Bottom: 2, History: []string{"h2", "h3"}, Normal: []string{"a", "b", ""}}
 	want := "\x1b[0m\x1b[H\x1b[2Jh2\r\nh3\r\na\r\nb\r\n\x1b[0m\x1b[2;5H"
 	if got := string(repaint(c)); got != want {
 		t.Errorf("repaint = %q\nwant      %q", got, want)
 	}
 
 	// A full-screen app with the mouse on, as Claude Code runs: any-event tracking, SGR encoding.
-	c = &tmux.Capture{
+	c = &Capture{
 		Cols: 10, Rows: 3, CursorHidden: true, Alt: true, Top: 1, Bottom: 2, Mouse: []int{1003, 1006},
 		Normal: []string{"n1", "n2", "n3"}, AltScreen: []string{"x", "y", "z"},
 	}

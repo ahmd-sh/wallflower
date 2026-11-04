@@ -65,7 +65,7 @@ fun SetupScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text("wallflower", color = Palette.fg, fontFamily = words, fontSize = wordSize(22.sp, 28.sp), fontWeight = FontWeight.Bold)
-        Text("Your Mac's tmux, over Tailscale and ssh.", color = Palette.grey, style = Type.body)
+        Text("Your Mac's terminals, over Tailscale and ssh.", color = Palette.grey, style = Type.body)
 
         Section("mac")
         Field("host", address) { address = it }

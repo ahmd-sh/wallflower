@@ -9,6 +9,7 @@ import (
 	"github.com/ahmd-sh/wallflower/internal/claude"
 	"github.com/ahmd-sh/wallflower/internal/gateway"
 	"github.com/ahmd-sh/wallflower/internal/mobileview"
+	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 const usage = `usage: wallflower <command> [flags]
@@ -49,7 +50,7 @@ func gatewayFlags(fs *flag.FlagSet) func() gateway.Options {
 		if *claudeDir != "" {
 			readers = append(readers, claude.New(*claudeDir))
 		}
-		return gateway.Options{Socket: *socket, Session: *session, Readers: readers}
+		return gateway.Options{Mux: tmux.Server{Socket: *socket}, Session: *session, Readers: readers}
 	}
 }
 

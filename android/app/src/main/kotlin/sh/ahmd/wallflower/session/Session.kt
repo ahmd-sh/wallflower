@@ -19,6 +19,7 @@ import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Pong
 import sh.ahmd.wallflower.protocol.Reset
 import sh.ahmd.wallflower.protocol.Resize
+import sh.ahmd.wallflower.protocol.Mux
 import sh.ahmd.wallflower.protocol.ServerHello
 import sh.ahmd.wallflower.protocol.ServerMessage
 import sh.ahmd.wallflower.protocol.State
@@ -29,8 +30,8 @@ import sh.ahmd.wallflower.screen.Screen
 import sh.ahmd.wallflower.terminal.Terminal
 
 /**
- * The phone's session with the Mac's tmux, over one [Link] at a time,
- * reconnecting until [stop]. tmux's state arrives pushed and is kept here
+ * The phone's session with the Mac's multiplexer ([mux]), over one [Link] at
+ * a time, reconnecting until [stop]. Its state arrives pushed and is kept here
  * ([Workspace]), with the panes' terminals ([Terminals]) and mobile views
  * ([MobileViews]); presentation is local, and what the user does goes out as
  * intents ([Input], uploads). While the user is [away], it stays connected
@@ -60,6 +61,10 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
     /** Desktop notifications the Mac's programs send, from any pane. */
     val notifications: SharedFlow<Notification> = _notifications
 
+    private val _mux = MutableStateFlow<Mux?>(null)
+    /** The multiplexer the session is in, as the gateway last said. */
+    val mux: StateFlow<Mux?> = _mux.asStateFlow()
+
     private val _uploadDir = MutableStateFlow<String?>(null)
     /** Where the gateway saves uploads: paths under it in what's sent are uploads, pasted on their own. */
     val uploadDir: StateFlow<String?> = _uploadDir.asStateFlow()
@@ -83,7 +88,10 @@ class Session(transport: Transport, private val scope: CoroutineScope, clock: ()
 
         override fun message(m: ServerMessage) {
             when (m) {
-                is ServerHello -> _uploadDir.value = m.uploads
+                is ServerHello -> {
+                    _mux.value = m.mux
+                    _uploadDir.value = m.uploads
+                }
                 is State -> workspace.state(m)
                 is Reset -> panes.reset(m)
                 is Entries -> reads.entries(m)

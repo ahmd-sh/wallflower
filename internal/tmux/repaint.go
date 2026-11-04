@@ -1,19 +1,17 @@
-package gateway
+package tmux
 
 import (
 	"bytes"
 	"fmt"
 	"regexp"
 	"strings"
-
-	"github.com/ahmd-sh/wallflower/internal/tmux"
 )
 
 // repaint returns bytes that rebuild a captured pane in a fresh terminal of
 // the same size: history scrolls into the scrollback, then the screen, then
 // the alternate screen on top if one is active, then cursor state, and the
 // mouse modes, which a full-screen app needs to get its scroll wheel.
-func repaint(c *tmux.Capture) []byte {
+func repaint(c *Capture) []byte {
 	var b bytes.Buffer
 	b.WriteString("\x1b[0m\x1b[H\x1b[2J")
 	paint(&b, append(c.History[:len(c.History):len(c.History)], c.Normal...))

@@ -1,8 +1,10 @@
 # wallflower
 
-A phone-first shell around your terminal. tmux stays the server; a small
-gateway on the Mac speaks tmux control mode and serves a lean, versioned
-protocol to clients (an Android app first) over SSH.
+A phone-first shell around your terminal. Your multiplexer stays the
+server (tmux today); a small gateway on the Mac drives it and serves a lean,
+versioned protocol to clients (an Android app first) over SSH. How it fits
+together, and where multiplexers and programs plug in:
+[docs/architecture.md](docs/architecture.md).
 
 ```
 phone app ──ssh stdio──▶ wallflower serve (one per connection) ──tmux -C──▶ tmux server
