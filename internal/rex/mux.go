@@ -79,6 +79,7 @@ func attach(c *control, a mux.Attach) (*attached, error) {
 	}
 	var att struct {
 		Client string `json:"client_id"`
+		View   view   `json:"view"`
 	}
 	if err := c.call("session.attach", map[string]string{"session_id": session}, &att); err != nil {
 		return nil, err
@@ -87,10 +88,19 @@ func attach(c *control, a mux.Attach) (*attached, error) {
 		c: c, session: session, client: att.Client, cols: a.Cols, rows: a.Rows, away: a.Away,
 		about:  mux.About{Name: "rex", Version: version.Rex},
 		blocks: map[string]*block{}, owned: map[string][2]int{},
-		events: make(chan mux.Event),
+		events: make(chan mux.Event), closed: make(chan struct{}),
 	}
 	t.cond = sync.NewCond(&t.qmu)
 	go t.pump()
+	// Attached, the client shows the session's current window, as tmux's do.
+	for _, w := range att.View.Windows {
+		if w.ID == att.View.Active && w.Focused != "" {
+			if err := t.claim(w.Focused); err != nil {
+				t.Close()
+				return nil, err
+			}
+		}
+	}
 	return t, nil
 }
 
@@ -120,6 +130,7 @@ type attached struct {
 	err    error
 	over   bool // no more events
 	events chan mux.Event
+	closed chan struct{} // by Close: the events left aren't wanted
 }
 
 // A block is what the client knows of one terminal.
@@ -162,6 +173,11 @@ func (t *attached) Err() error {
 // end.
 func (t *attached) Close() error {
 	t.end(nil)
+	select {
+	case <-t.closed:
+	default:
+		close(t.closed)
+	}
 	t.mu.Lock()
 	for _, b := range t.blocks {
 		if b.stream != nil {
@@ -213,7 +229,11 @@ func (t *attached) pump() {
 		e := t.queue[0]
 		t.queue = t.queue[1:]
 		t.qmu.Unlock()
-		t.events <- e
+		select {
+		case t.events <- e:
+		case <-t.closed:
+			return
+		}
 	}
 }
 
@@ -396,6 +416,12 @@ func (t *attached) follow(id string) *block {
 	}
 	t.c.callBlock(t.session, id, "size", nil, &size)
 	b.cols, b.rows = size.Cols, size.Rows
+	// One the client owns is at the size it gave it, which the server may not have got to.
+	t.mu.Lock()
+	if s, ok := t.owned[id]; ok {
+		b.cols, b.rows = s[0], s[1]
+	}
+	t.mu.Unlock()
 	var title struct {
 		Title string `json:"title"`
 	}

@@ -113,10 +113,19 @@ func connect(endpoint string) (net.Conn, error) {
 	}
 	conn, err := net.Dial("unix", path)
 	if err != nil {
-		return nil, fmt.Errorf("rex: no server at %s: %w", path, err)
+		return nil, &noServer{path, err}
 	}
 	return conn, nil
 }
+
+// noServer is nothing listening at a server's socket.
+type noServer struct {
+	path string
+	err  error
+}
+
+func (e *noServer) Error() string { return "rex: no server at " + e.path + ": " + e.err.Error() }
+func (e *noServer) Unwrap() error { return e.err }
 
 // call calls a method and decodes its result into result, if it's not nil.
 func (c *control) call(method string, payload, result any) error {

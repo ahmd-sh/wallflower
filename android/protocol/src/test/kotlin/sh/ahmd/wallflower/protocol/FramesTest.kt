@@ -46,6 +46,12 @@ class FramesTest {
             Ping(3),
             Away(true),
             Away(false),
+            Sessions,
+            Switch("rex", "session:1"),
+            NewSession("tmux", "work ✓"),
+            NewSession("tmux"),
+            RenameSession("tmux", "$2", "play"),
+            KillSession("tmux", "$2"),
         ).forEach(w::send)
         w.sendData("%1", "\u001b[<64;10;5M".encodeToByteArray())
         w.sendUpload("u1", byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0), length = 3)
@@ -111,6 +117,15 @@ class FramesTest {
         assertEquals("gone" to 0, gone.id to gone.length)
         assertEquals(Uploaded("u1", path = "/Users/me/Library/Caches/wallflower/uploads/PXL-1.jpg"), message())
         assertEquals(Uploaded("u2", error = "too big"), message())
+        assertEquals(
+            SessionList(
+                listOf(
+                    MuxSessions("rex", error = "rex: no server at /x/server.sock"),
+                    MuxSessions("tmux", listOf(SessionInfo("$1", "o", 3), SessionInfo("$2", "work ✓", 1))),
+                ),
+            ),
+            message(),
+        )
         assertEquals(Bye("tmux exited"), message())
         assertNull(r.next())
     }

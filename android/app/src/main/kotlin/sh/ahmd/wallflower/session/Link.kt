@@ -215,6 +215,8 @@ internal class Link(
         when (m) {
             is ServerHello -> {
                 if (m.v != VERSION) throw Blocked.Refused("the Mac's wallflower speaks protocol ${m.v}, this app $VERSION")
+                // Hello again: the session switched, so what was kept of the last goes, as for a new connection.
+                if (greeted) synchronized(lock) { events.linked() }
                 greeted = true
                 _status.value = Status.Connected(m.mux)
             }

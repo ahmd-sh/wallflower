@@ -31,6 +31,7 @@ func (g *gateway) handle(f protocol.Frame) error {
 		if !validSize(m.Cols, m.Rows) {
 			return fmt.Errorf("bad size %dx%d", m.Cols, m.Rows)
 		}
+		g.cols, g.rows = m.Cols, m.Rows
 		return g.mux.Resize(m.Cols, m.Rows)
 	case *protocol.Open:
 		return g.open(m.Pane, m.History)
@@ -89,7 +90,19 @@ func (g *gateway) handle(f protocol.Frame) error {
 		g.send(protocol.Pong{ID: m.ID})
 		return nil
 	case *protocol.Away:
+		g.away = m.On
 		return g.mux.Away(m.On)
+	case *protocol.Sessions:
+		g.sessions()
+		return nil
+	case *protocol.Switch:
+		return g.switchTo(m.Mux, m.Session)
+	case *protocol.NewSession:
+		return g.newSession(m.Mux, m.Name)
+	case *protocol.RenameSession:
+		return g.renameSession(m.Mux, m.Session, m.Name)
+	case *protocol.KillSession:
+		return g.killSession(m.Mux, m.Session)
 	case *protocol.ClientHello:
 		return errors.New("already said hello")
 	}

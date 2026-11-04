@@ -12,14 +12,33 @@
 // translates them.
 package mux
 
-// A Mux is a multiplexer a client can attach to.
+// A Mux is a multiplexer a client can attach to, and whose sessions it can
+// list, start and end without being attached to them.
 type Mux interface {
 	Attach(a Attach) (Client, error)
+
+	// Sessions lists its sessions, in its own order; none if it isn't
+	// running.
+	Sessions() ([]Listed, error)
+	// NewSession starts a session in the user's home directory, with one
+	// shell, named name or a name of its own if that's empty, and says its id.
+	NewSession(name string) (string, error)
+	RenameSession(session, name string) error
+	// KillSession ends a session, and the programs in it.
+	KillSession(session string) error
+}
+
+// A Listed session is one as its multiplexer lists them.
+type Listed struct {
+	ID      string
+	Name    string
+	Windows int
 }
 
 // Attach says which session to attach to (empty: the one the multiplexer
 // would pick), the client's size, and whether its user is away (see
-// Client.Away).
+// Client.Away). Unless they are, the client shows the session's current
+// window once attached, so it's sized for it.
 type Attach struct {
 	Session    string
 	Cols, Rows int

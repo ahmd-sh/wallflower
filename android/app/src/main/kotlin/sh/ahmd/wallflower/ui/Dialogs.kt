@@ -216,16 +216,24 @@ fun ConfirmClose(title: String, body: String, action: String, onConfirm: (dontAs
     )
 }
 
+/** Asks for a name: a new one for a tab, say. With [blank], none is an answer too. */
 @Composable
-fun RenameDialog(name: String, onRename: (String) -> Unit, onDismiss: () -> Unit) {
+fun RenameDialog(
+    name: String,
+    onRename: (String) -> Unit,
+    onDismiss: () -> Unit,
+    title: String = "rename tab",
+    action: String = "rename",
+    blank: Boolean = false,
+) {
     val state = rememberTextFieldState(name, initialSelection = TextRange(0, name.length))
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
-    val rename = { state.text.toString().trim().takeIf { it.isNotEmpty() }?.let(onRename) }
+    val rename = { state.text.toString().trim().takeIf { blank || it.isNotEmpty() }?.let(onRename) }
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Palette.bg1,
-        title = { DialogTitle("rename tab") },
+        title = { DialogTitle(title) },
         text = {
             BasicTextField(
                 state = state,
@@ -241,7 +249,20 @@ fun RenameDialog(name: String, onRename: (String) -> Unit, onDismiss: () -> Unit
                     .padding(12.dp),
             )
         },
-        confirmButton = { TextButton(onClick = { rename() }) { Text("rename", color = Palette.green, fontFamily = words) } },
+        confirmButton = { TextButton(onClick = { rename() }) { Text(action, color = Palette.green, fontFamily = words) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("cancel", color = Palette.fg, fontFamily = words) } },
+    )
+}
+
+/** Asks before something that can't be undone. */
+@Composable
+fun Confirm(title: String, body: String, action: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Palette.bg1,
+        title = { DialogTitle(title) },
+        text = { Text(body, color = Palette.grey, style = Type.body, lineHeight = wordSize(TextUnit.Unspecified, 21.sp)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(action, color = Palette.red, fontFamily = words) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("cancel", color = Palette.fg, fontFamily = words) } },
     )
 }

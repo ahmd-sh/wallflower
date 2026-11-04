@@ -53,17 +53,20 @@ import sh.ahmd.wallflower.session.Status
  * The tabs (the session's windows), with new tab first and the connection last. It's
  * local: it scrolls natively and a tap switches immediately, the Mac learns
  * afterwards. The highlight glides to the tab chosen. Holding a tab offers
- * rename and close.
+ * rename and close. The connection's menu says which [session] this is, and
+ * goes to the others.
  */
 @Composable
 internal fun TabBar(
     windows: List<Window>,
     selected: String?,
     status: Status,
+    session: String?,
     onSelect: (Window) -> Unit,
     onNew: () -> Unit,
     onRename: (Window) -> Unit,
     onClose: (Window) -> Unit,
+    onSessions: () -> Unit,
     onSettings: () -> Unit,
     onExit: () -> Unit,
 ) {
@@ -157,7 +160,7 @@ internal fun TabBar(
                 }
             }
         }
-        PowerButton(status, onSettings, onExit)
+        PowerButton(status, session, onSessions, onSettings, onExit)
     }
 }
 
@@ -181,11 +184,11 @@ private fun BarButton(glyph: Glyph, color: Color, modifier: Modifier = Modifier,
     ) { GlyphIcon(glyph, color, size = 14.dp) }
 }
 
-/** The connection: its color says how it is; the menu says why, and leaves. */
+/** The connection: its color says how it is; the menu says why and where, goes elsewhere, and leaves. */
 @Composable
-private fun PowerButton(status: Status, onSettings: () -> Unit, onExit: () -> Unit) {
+private fun PowerButton(status: Status, session: String?, onSessions: () -> Unit, onSettings: () -> Unit, onExit: () -> Unit) {
     val (target, what) = when (status) {
-        is Status.Connected -> Palette.green to "connected · ${status.mux.name} ${status.mux.version}"
+        is Status.Connected -> Palette.green to "connected · ${listOfNotNull(session, status.mux.name + " " + status.mux.version).joinToString(" in ")}"
         Status.Connecting -> Palette.yellow to "connecting…"
         is Status.Disconnected -> Palette.red to "reconnecting: ${status.reason}"
         is Status.NeedsUser -> Palette.orange to "waiting for you"
@@ -198,6 +201,7 @@ private fun PowerButton(status: Status, onSettings: () -> Unit, onExit: () -> Un
             expanded = open,
             onDismiss = { open = false },
             actions = listOf(
+                MenuAction("sessions") { open = false; onSessions() },
                 MenuAction("settings") { open = false; onSettings() },
                 MenuAction("disconnect", Palette.red) { open = false; onExit() },
             ),

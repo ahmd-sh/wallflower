@@ -13,8 +13,9 @@ import (
 // each command checks the ids it's given.
 
 var (
-	paneID   = regexp.MustCompile(`^%[0-9]+$`)
-	windowID = regexp.MustCompile(`^@[0-9]+$`)
+	paneID    = regexp.MustCompile(`^%[0-9]+$`)
+	windowID  = regexp.MustCompile(`^@[0-9]+$`)
+	sessionID = regexp.MustCompile(`^\$[0-9]+$`)
 )
 
 func check(re *regexp.Regexp, id string) error {

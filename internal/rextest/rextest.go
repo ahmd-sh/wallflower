@@ -32,7 +32,8 @@ type Server struct {
 }
 
 // Start starts a server with no config and nothing saved, holding one
-// session "t" whose terminal runs /bin/sh, owned by no client.
+// session "t" whose terminal runs /bin/sh, owned by no client. Other
+// terminals run the user's login shell, without their config.
 func Start(t *testing.T) *Server {
 	t.Helper()
 	bin := Binary()
@@ -50,7 +51,8 @@ func Start(t *testing.T) *Server {
 	s := &Server{Socket: filepath.Join(dir, "s"), t: t, bin: bin}
 	s.cmd = exec.Command(bin, "server", "run", "--listen", s.Socket, "--state-dir", filepath.Join(dir, "state"),
 		"--restore=false", "--config", config, "--autostart=false")
-	s.cmd.Env = append(os.Environ(), "SHELL=/bin/sh", "PS1=$ ", "ENV=")
+	// New terminals run the login shell: none of the user's config.
+	s.cmd.Env = append(os.Environ(), "SHELL=/bin/sh", "PS1=$ ", "ENV=", "ZDOTDIR="+dir)
 	if err := s.cmd.Start(); err != nil {
 		t.Fatal(err)
 	}

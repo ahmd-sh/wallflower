@@ -123,26 +123,63 @@ type Ping struct {
 	ID int `json:"id"`
 }
 
-func (ClientHello) Type() string { return "hello" }
-func (Resize) Type() string      { return "resize" }
-func (Open) Type() string        { return "open" }
-func (Close) Type() string       { return "close" }
-func (Keys) Type() string        { return "keys" }
-func (Submit) Type() string      { return "submit" }
-func (Select) Type() string      { return "select" }
-func (Focus) Type() string       { return "focus" }
-func (Split) Type() string       { return "split" }
-func (New) Type() string         { return "new" }
-func (Rename) Type() string      { return "rename" }
-func (Kill) Type() string        { return "kill" }
-func (Read) Type() string        { return "read" }
-func (Picture) Type() string     { return "picture" }
-func (Upload) Type() string      { return "upload" }
-func (Ping) Type() string        { return "ping" }
-func (Away) Type() string        { return "away" }
+// Sessions asks for the sessions in every multiplexer the gateway has,
+// which come in a Sessions of its own.
+type Sessions struct{}
+
+// Switch attaches the client to another session, in this multiplexer or
+// another. Another hello says which, and state follows, as if the client
+// had connected again: its panes are closed, and its mobile views off.
+type Switch struct {
+	Mux     string `json:"mux"`
+	Session string `json:"session"`
+}
+
+// NewSession starts a session, named Name or a name of the multiplexer's
+// own, and switches to it.
+type NewSession struct {
+	Mux  string `json:"mux"`
+	Name string `json:"name,omitempty"`
+}
+
+type RenameSession struct {
+	Mux     string `json:"mux"`
+	Session string `json:"session"`
+	Name    string `json:"name"`
+}
+
+// KillSession ends a session, and the programs in it; not the client's own.
+type KillSession struct {
+	Mux     string `json:"mux"`
+	Session string `json:"session"`
+}
+
+func (ClientHello) Type() string   { return "hello" }
+func (Resize) Type() string        { return "resize" }
+func (Open) Type() string          { return "open" }
+func (Close) Type() string         { return "close" }
+func (Keys) Type() string          { return "keys" }
+func (Submit) Type() string        { return "submit" }
+func (Select) Type() string        { return "select" }
+func (Focus) Type() string         { return "focus" }
+func (Split) Type() string         { return "split" }
+func (New) Type() string           { return "new" }
+func (Rename) Type() string        { return "rename" }
+func (Kill) Type() string          { return "kill" }
+func (Read) Type() string          { return "read" }
+func (Picture) Type() string       { return "picture" }
+func (Upload) Type() string        { return "upload" }
+func (Ping) Type() string          { return "ping" }
+func (Away) Type() string          { return "away" }
+func (Sessions) Type() string      { return "sessions" }
+func (Switch) Type() string        { return "switch" }
+func (NewSession) Type() string    { return "new-session" }
+func (RenameSession) Type() string { return "rename-session" }
+func (KillSession) Type() string   { return "kill-session" }
 
 // Gateway to client.
 
+// ServerHello comes first, and again whenever the client switches session.
 type ServerHello struct {
 	V   int `json:"v"`
 	Mux Mux `json:"mux"`
@@ -291,7 +328,28 @@ type Notification struct {
 	Bell  bool   `json:"bell,omitempty"`
 }
 
+// SessionList is the sessions in each multiplexer the gateway has, sent
+// when asked and after a session is started, renamed or ended.
+type SessionList struct {
+	Muxes []MuxSessions `json:"muxes"`
+}
+
+// MuxSessions is one multiplexer's sessions, in its own order, or why they
+// can't be listed.
+type MuxSessions struct {
+	Name     string        `json:"name"`
+	Sessions []SessionInfo `json:"sessions"`
+	Error    string        `json:"error,omitempty"`
+}
+
+type SessionInfo struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Windows int    `json:"windows"`
+}
+
 func (ServerHello) Type() string  { return "hello" }
+func (SessionList) Type() string  { return "sessions" }
 func (State) Type() string        { return "state" }
 func (Reset) Type() string        { return "reset" }
 func (Error) Type() string        { return "error" }
@@ -303,11 +361,11 @@ func (Notification) Type() string { return "notification" }
 
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Submit{}, Select{}, Focus{}, Split{}, New{}, Rename{}, Kill{},
-	Read{}, Picture{}, Upload{}, Ping{}, Away{},
+	Read{}, Picture{}, Upload{}, Ping{}, Away{}, Sessions{}, Switch{}, NewSession{}, RenameSession{}, KillSession{},
 )
 
 var serverMessages = registry(
-	ServerHello{}, State{}, Reset{}, Error{}, Pong{}, Bye{}, Entries{}, Uploaded{}, Notification{},
+	ServerHello{}, State{}, Reset{}, Error{}, Pong{}, Bye{}, Entries{}, Uploaded{}, Notification{}, SessionList{},
 )
 
 // DecodeClient decodes a message sent by a client. It returns a pointer to

@@ -27,16 +27,21 @@ import (
 type Options struct {
 	Muxes    map[string]mux.Mux // the multiplexers a client can ask for, by name
 	Mux      string             // the one when it doesn't ask
-	Session  string             // default session when the client doesn't ask for one
+	Session  string             // the session in that one when it doesn't ask, or what it asks for is gone
 	Programs []program.Program  // the programs it knows, by the panes that run them; first match wins
 	Uploads  string             // where files the client sends are saved; UploadDir() if empty
 }
 
 type gateway struct {
 	ctx   context.Context
+	opts  Options
 	mux   mux.Client
+	muxed string // the name of the multiplexer it's attached to
 	about mux.About
 	out   *outbox
+
+	cols, rows int // the client's size
+	away       bool
 
 	snapshot  *mux.Session // the last
 	lastState []byte
@@ -65,7 +70,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	g := &gateway{
-		ctx: ctx, out: newOutbox(out), names: map[string]string{},
+		ctx: ctx, opts: opts, out: newOutbox(out), names: map[string]string{},
 		panes: map[string]*pane{}, scanners: map[string]*desktop.Scanner{},
 		programs: opts.Programs, reading: map[string]reading{}, updates: make(chan readUpdate, 16),
 		uploads: uploads{dir: opts.Uploads, open: map[string]*upload{}},
@@ -82,26 +87,14 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 		g.send(protocol.Bye{Reason: err.Error()})
 		return err
 	}
-	session := hello.Session
-	if session == "" {
-		session = opts.Session
-	}
-	m, err := opts.pick(hello.Mux)
-	if err == nil {
-		g.mux, err = m.Attach(mux.Attach{Session: session, Cols: hello.Cols, Rows: hello.Rows, Away: hello.Away})
-	}
+	g.cols, g.rows, g.away = hello.Cols, hello.Rows, hello.Away
+	name, c, err := g.attach(hello.Mux, hello.Session)
 	if err != nil {
 		g.send(protocol.Bye{Reason: err.Error()})
 		return err
 	}
-	defer g.mux.Close()
-	g.about = g.mux.About()
-	g.send(protocol.ServerHello{
-		V:       protocol.Version,
-		Mux:     protocol.Mux{Name: g.about.Name, Version: g.about.Version, Can: g.about.Can},
-		Uploads: g.uploads.dir,
-	})
-	g.sendState()
+	defer func() { g.mux.Close() }()
+	g.attached(name, c)
 
 	frames := make(chan protocol.Frame)
 	readErr := make(chan error, 1)
@@ -122,20 +115,56 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	return g.loop(ctx, frames, readErr)
 }
 
-// pick is the multiplexer named, or the default for none.
-func (o Options) pick(name string) (mux.Mux, error) {
+// attach attaches a client of the multiplexer named (the default if it's
+// empty) to the session, or the one the multiplexer would pick if that's
+// gone, at the client's size.
+func (g *gateway) attach(name, session string) (string, mux.Client, error) {
+	name, m, err := g.opts.pick(name)
+	if err != nil {
+		return "", nil, err
+	}
+	fallback := ""
+	if name == g.opts.Mux {
+		fallback = g.opts.Session
+	}
+	if session == "" {
+		session = fallback
+	}
+	at := func(session string) (mux.Client, error) {
+		return m.Attach(mux.Attach{Session: session, Cols: g.cols, Rows: g.rows, Away: g.away})
+	}
+	c, err := at(session)
+	if err != nil && session != fallback {
+		c, err = at(fallback)
+	}
+	return name, c, err
+}
+
+// attached makes c the client's, saying hello and sending its state.
+func (g *gateway) attached(name string, c mux.Client) {
+	g.mux, g.muxed, g.about = c, name, c.About()
+	g.send(protocol.ServerHello{
+		V:       protocol.Version,
+		Mux:     protocol.Mux{Name: g.about.Name, Version: g.about.Version, Can: g.about.Can},
+		Uploads: g.uploads.dir,
+	})
+	g.sendState()
+}
+
+// pick is the multiplexer named, or the default for none, and its name.
+func (o Options) pick(name string) (string, mux.Mux, error) {
 	if name == "" {
 		name = o.Mux
 	}
 	if m, ok := o.Muxes[name]; ok {
-		return m, nil
+		return name, m, nil
 	}
 	names := make([]string, 0, len(o.Muxes))
 	for n := range o.Muxes {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	return nil, fmt.Errorf("no multiplexer %q here (%s)", name, strings.Join(names, ", "))
+	return "", nil, fmt.Errorf("no multiplexer %q here (%s)", name, strings.Join(names, ", "))
 }
 
 func readHello(r *protocol.Reader) (*protocol.ClientHello, error) {

@@ -8,6 +8,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import sh.ahmd.wallflower.notify.ConnectionService
@@ -18,6 +19,7 @@ import sh.ahmd.wallflower.protocol.Notification
 import sh.ahmd.wallflower.session.HardwareKey
 import sh.ahmd.wallflower.session.Host
 import sh.ahmd.wallflower.session.HostKeys
+import sh.ahmd.wallflower.session.Place
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.SshTransport
 import sh.ahmd.wallflower.session.Status
@@ -55,6 +57,16 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         connect(host)
     }
 
+    /** Where the phone is, kept so it comes back there; switching there isn't connecting again. */
+    private fun remember(place: Place) {
+        val host = _host.value ?: return
+        if (host.mux == place.mux && host.session == place.session) return
+        host.copy(mux = place.mux, session = place.session).also {
+            it.save(prefs)
+            _host.value = it
+        }
+    }
+
     /** Connects to the configured Mac, unless already connected. */
     fun ensure() {
         if (_session.value == null) _host.value?.let(::connect)
@@ -64,9 +76,10 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         _session.value?.stop()
         watching?.cancel()
         val transport = if (host.dev) TcpTransport() else SshTransport(host, key, hostKeys)
-        val session = Session(transport, scope, host.mux)
+        val session = Session(transport, scope, host.mux, host.session)
         session.away(away)
         watching = scope.launch {
+            launch { session.place.filterNotNull().collect(::remember) }
             launch {
                 session.notifications.collect { n ->
                     if (away || n.pane != session.shownPane()) {

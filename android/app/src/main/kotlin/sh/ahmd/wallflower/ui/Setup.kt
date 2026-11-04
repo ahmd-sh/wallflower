@@ -112,7 +112,7 @@ fun SetupScreen(
 
         Spacer(Modifier.height(4.dp))
         Button("connect", primary = true) {
-            onConnect(Host(address = address.trim(), user = user.trim(), port = port.toIntOrNull() ?: 22, command = initial.command, mux = mux, dev = dev))
+            onConnect(Host(address = address.trim(), user = user.trim(), port = port.toIntOrNull() ?: 22, command = initial.command, mux = mux, session = initial.session.takeIf { mux == initial.mux }, dev = dev))
         }
     }
 }

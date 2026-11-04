@@ -71,9 +71,7 @@ Ghostty's binary format, which would fix that and line up exactly, but the
 format isn't stable yet. Output that arrives while a pane is being read can
 show twice; none is lost. A terminal's output reaches the gateway from when
 it first sees the terminal, so what a program writes the moment it starts
-in a new window can be missed. And Rex sizes a terminal for the phone when
-the phone first focuses it or types into it, where tmux sizes the current
-window as soon as the phone attaches.
+in a new window can be missed.
 
 ## The core client
 

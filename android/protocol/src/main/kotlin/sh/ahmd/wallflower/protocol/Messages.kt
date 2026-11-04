@@ -9,7 +9,7 @@ import kotlinx.serialization.json.Json
 // The wire format is defined in docs/protocol.md. Field order matches the Go
 // structs so both sides encode identical bytes (checked by the golden tests).
 
-const val VERSION = 4
+const val VERSION = 5
 const val DEFAULT_HISTORY = 1000
 
 val WireJson = Json {
@@ -130,9 +130,34 @@ data class Ping(val id: Int) : ClientMessage
 @SerialName("away")
 data class Away(val on: Boolean) : ClientMessage
 
+/** Asks for the sessions in every multiplexer the gateway has, which come in a [SessionList]. */
+@Serializable
+@SerialName("sessions")
+data object Sessions : ClientMessage
+
+/** Attaches to another session, in this multiplexer or another: another hello says which, and state follows, as if connected again. */
+@Serializable
+@SerialName("switch")
+data class Switch(val mux: String, val session: String) : ClientMessage
+
+/** Starts a session, named [name] or a name of the multiplexer's own, and switches to it. */
+@Serializable
+@SerialName("new-session")
+data class NewSession(val mux: String, val name: String? = null) : ClientMessage
+
+@Serializable
+@SerialName("rename-session")
+data class RenameSession(val mux: String, val session: String, val name: String) : ClientMessage
+
+/** Ends a session and the programs in it; not the one the app is in. */
+@Serializable
+@SerialName("kill-session")
+data class KillSession(val mux: String, val session: String) : ClientMessage
+
 @Serializable
 sealed interface ServerMessage
 
+/** Comes first, and again whenever the app switches session. */
 @Serializable
 @SerialName("hello")
 data class ServerHello(
@@ -257,3 +282,15 @@ data class Uploaded(val id: String, val path: String? = null, val error: String?
 @Serializable
 @SerialName("notification")
 data class Notification(val pane: String, val title: String? = null, val body: String = "", val bell: Boolean = false) : ServerMessage
+
+/** The sessions in each multiplexer the gateway has; sent when asked, and after one is started, renamed or ended. */
+@Serializable
+@SerialName("sessions")
+data class SessionList(val muxes: List<MuxSessions>) : ServerMessage
+
+/** One multiplexer's sessions, in its own order, or why they can't be listed. */
+@Serializable
+data class MuxSessions(val name: String, val sessions: List<SessionInfo> = emptyList(), val error: String? = null)
+
+@Serializable
+data class SessionInfo(val id: String, val name: String, val windows: Int = 0)

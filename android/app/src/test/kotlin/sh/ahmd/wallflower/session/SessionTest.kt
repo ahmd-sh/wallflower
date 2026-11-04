@@ -36,6 +36,7 @@ import sh.ahmd.wallflower.protocol.ServerHello
 import sh.ahmd.wallflower.protocol.ServerMessage
 import sh.ahmd.wallflower.protocol.State
 import sh.ahmd.wallflower.protocol.Submit
+import sh.ahmd.wallflower.protocol.Switch
 import sh.ahmd.wallflower.protocol.VERSION
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.protocol.WireJson
@@ -172,6 +173,29 @@ class SessionTest {
         second.send(ServerHello(VERSION, TMUX))
         second.send(state)
         assertEquals("%1", second.message<Open>().pane)
+    }
+
+    @Test
+    fun aSwitchIsAnotherSessionOverTheSameConnectionAndWhereTheNextOneGoes() {
+        val first = connect()
+        session.start(56, 20)
+        first.send(ServerHello(VERSION, TMUX))
+        first.send(state)
+        assertEquals("%1", first.message<Open>().pane)
+        eventually { session.place.first { it == Place("tmux", "\$1") } }
+
+        session.switchTo("rex", "s:2")
+        assertEquals(Switch("rex", "s:2"), first.message<Switch>())
+        first.send(ServerHello(VERSION, Mux("rex", "0.1")))
+        first.send(State("s:2", "work", listOf(Window("w:1", 1, "Window", active = true, panes = listOf(Pane("b:1", 0, true, 56, 20, command = "zsh"))))))
+        assertEquals("b:1", first.message<Open>().pane)
+        eventually { session.place.first { it == Place("rex", "s:2") } }
+        assertEquals("w:1", session.viewing.value)
+
+        // Connecting again, it comes back here.
+        val second = connect()
+        first.close()
+        assertEquals(ClientHello(VERSION, 56, 20, mux = "rex", session = "s:2"), second.message<ClientHello>())
     }
 
     @Test

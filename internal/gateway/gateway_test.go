@@ -33,6 +33,7 @@ type client struct {
 	done       chan error
 	desk       desk
 	cols, rows int
+	last       *protocol.State // the latest state read
 }
 
 // tmux runs tmux against the client's server, for what only tmux does.
@@ -49,6 +50,13 @@ func (b backend) connect(t *testing.T, cols, rows int) *client {
 // are filled in.
 func (b backend) connectOpts(t *testing.T, ctx context.Context, cols, rows int, opts Options) *client {
 	t.Helper()
+	return b.dial(t, ctx, opts, protocol.ClientHello{V: protocol.Version, Cols: cols, Rows: rows})
+}
+
+// dial is connectOpts saying its own hello.
+func (b backend) dial(t *testing.T, ctx context.Context, opts Options, hello protocol.ClientHello) *client {
+	t.Helper()
+	cols, rows := hello.Cols, hello.Rows
 	m, d := b.start(t)
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
@@ -70,7 +78,7 @@ func (b backend) connectOpts(t *testing.T, ctx context.Context, cols, rows int, 
 		}
 	}()
 	t.Cleanup(func() { c.disconnect() })
-	c.send(protocol.ClientHello{V: protocol.Version, Cols: cols, Rows: rows})
+	c.send(hello)
 	return c
 }
 
@@ -116,6 +124,9 @@ func (c *client) expect(what string, match func(f protocol.Frame, m protocol.Mes
 				if m, err = protocol.DecodeServer(f.Data); err != nil {
 					c.t.Fatalf("bad server message %s: %v", f.Data, err)
 				}
+				if s, ok := m.(*protocol.State); ok {
+					c.last = s
+				}
 			}
 			if match(f, m) {
 				return f, m
@@ -158,10 +169,13 @@ func (c *client) output(pane, contains string) {
 func (c *client) show(pane string) {
 	c.t.Helper()
 	c.send(protocol.Focus{Pane: pane})
-	c.state("phone-sized "+pane, func(s protocol.State) bool {
+	sized := func(s protocol.State) bool {
 		p := paneOf(s, pane)
 		return p.Active && p.Cols == c.cols && p.Rows == c.rows
-	})
+	}
+	if c.last == nil || !sized(*c.last) {
+		c.state("phone-sized "+pane, sized)
+	}
 	c.send(protocol.Open{Pane: pane})
 	c.output(pane, "$")
 }
@@ -218,16 +232,13 @@ func TestHelloStateOpenType(t *testing.T) {
 		if h := m.(*protocol.ServerHello); h.V != protocol.Version || h.Mux.Name != b.name || h.Mux.Version == "" || !slices.Equal(h.Mux.Can, b.can) {
 			t.Errorf("hello = %+v", h)
 		}
-		s := c.state("state", anyState)
+		s := c.state("phone-sized", func(s protocol.State) bool { p := activePane(s); return p.Cols == 56 && p.Rows == 20 })
 		p := activePane(s)
 		// macOS's /bin/sh is bash: tmux names the executable, Rex what it was run as.
 		if s.Name != "t" || p.ID == "" || (p.Command != "sh" && p.Command != "bash") {
 			t.Fatalf("state = %+v", s)
 		}
 
-		// The pane the phone focuses is sized for it.
-		c.send(protocol.Focus{Pane: p.ID})
-		c.state("phone-sized", func(s protocol.State) bool { p := activePane(s); return p.Cols == 56 && p.Rows == 20 })
 		c.send(protocol.Open{Pane: p.ID})
 		_, m = c.expect("reset", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Reset); return ok })
 		if r := m.(*protocol.Reset); r.Pane != p.ID || r.Cols != 56 || r.Rows != 20 {
@@ -243,11 +254,12 @@ func TestHelloStateOpenType(t *testing.T) {
 	})
 }
 
-// The phone's size applies to the window it's on as soon as it's attached:
-// tmux sizes a window for the client that was active last.
-func TestTmuxSizesForThePhoneAtOnce(t *testing.T) {
-	c := tmuxBackend.connect(t, 56, 20)
-	c.state("phone-sized", func(s protocol.State) bool { p := activePane(s); return p.Cols == 56 && p.Rows == 20 })
+// The phone's size applies to the window it's on as soon as it's attached.
+func TestSizedForThePhoneAtOnce(t *testing.T) {
+	each(t, func(t *testing.T, b backend) {
+		c := b.connect(t, 56, 20)
+		c.state("phone-sized", func(s protocol.State) bool { p := activePane(s); return p.Cols == 56 && p.Rows == 20 })
+	})
 }
 
 func TestRepaint(t *testing.T) {
@@ -286,10 +298,8 @@ func TestRepaint(t *testing.T) {
 func TestResizeAndReclaim(t *testing.T) {
 	each(t, func(t *testing.T, b backend) {
 		c := b.connect(t, 50, 20)
-		p := activePane(c.state("state", anyState)).ID
+		p := activePane(c.state("phone-sized", func(s protocol.State) bool { return activePane(s).Cols == 50 })).ID
 		c.send(protocol.Open{Pane: p})
-		c.sendText(p, "x")
-		c.state("phone-sized", func(s protocol.State) bool { return paneOf(s, p).Cols == 50 })
 
 		c.send(protocol.Resize{Cols: 70, Rows: 25})
 		c.state("resized", func(s protocol.State) bool { p := paneOf(s, p); return p.Cols == 70 && p.Rows == 25 })
@@ -764,10 +774,8 @@ func TestNotificationsFromEveryPane(t *testing.T) {
 func TestAwayLeavesSizing(t *testing.T) {
 	each(t, func(t *testing.T, b backend) {
 		c := b.connect(t, 50, 20)
-		s := c.state("state", anyState)
+		s := c.state("phone-sized", func(s protocol.State) bool { return activePane(s).Cols == 50 })
 		p := activePane(s).ID
-		c.sendText(p, "x")
-		c.state("phone-sized", func(s protocol.State) bool { return paneOf(s, p).Cols == 50 })
 		c.desk.take(p)
 		c.state("desktop-sized", func(s protocol.State) bool { return paneOf(s, p).Cols == 120 })
 

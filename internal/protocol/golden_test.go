@@ -44,6 +44,12 @@ func goldenClient(t *testing.T) []byte {
 		Ping{ID: 3},
 		Away{On: true},
 		Away{},
+		Sessions{},
+		Switch{Mux: "rex", Session: "session:1"},
+		NewSession{Mux: "tmux", Name: "work ✓"},
+		NewSession{Mux: "tmux"},
+		RenameSession{Mux: "tmux", Session: "$2", Name: "play"},
+		KillSession{Mux: "tmux", Session: "$2"},
 	} {
 		b = mustJSON(t, b, m)
 	}
@@ -88,6 +94,10 @@ func goldenServer(t *testing.T) []byte {
 	b = AppendPicture(b, "gone", nil)
 	b = mustJSON(t, b, Uploaded{ID: "u1", Path: "/Users/me/Library/Caches/wallflower/uploads/PXL-1.jpg"})
 	b = mustJSON(t, b, Uploaded{ID: "u2", Error: "too big"})
+	b = mustJSON(t, b, SessionList{Muxes: []MuxSessions{
+		{Name: "rex", Sessions: []SessionInfo{}, Error: "rex: no server at /x/server.sock"},
+		{Name: "tmux", Sessions: []SessionInfo{{ID: "$1", Name: "o", Windows: 3}, {ID: "$2", Name: "work ✓", Windows: 1}}},
+	}})
 	return mustJSON(t, b, Bye{Reason: "tmux exited"})
 }
 

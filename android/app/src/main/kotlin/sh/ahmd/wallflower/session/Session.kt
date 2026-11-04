@@ -14,6 +14,12 @@ import kotlinx.coroutines.launch
 import sh.ahmd.wallflower.protocol.Away
 import sh.ahmd.wallflower.protocol.ClientHello
 import sh.ahmd.wallflower.protocol.Entries
+import sh.ahmd.wallflower.protocol.KillSession
+import sh.ahmd.wallflower.protocol.NewSession
+import sh.ahmd.wallflower.protocol.RenameSession
+import sh.ahmd.wallflower.protocol.SessionList
+import sh.ahmd.wallflower.protocol.Sessions
+import sh.ahmd.wallflower.protocol.Switch
 import sh.ahmd.wallflower.protocol.Notification
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Pong
@@ -29,9 +35,14 @@ import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.screen.Screen
 import sh.ahmd.wallflower.terminal.Terminal
 
+/** Where the phone is: a session ([session], its id) in a multiplexer ([mux], by name). */
+data class Place(val mux: String, val session: String)
+
 /**
  * The phone's session with the Mac's multiplexer ([mux]), over one [Link] at
- * a time, reconnecting until [stop]. Its state arrives pushed and is kept here
+ * a time, reconnecting until [stop], to the [place] it was last in. It can
+ * switch to another session, or another multiplexer's, over the same link
+ * ([switchTo]). Its state arrives pushed and is kept here
  * ([Workspace]), with the panes' terminals ([Terminals]) and mobile views
  * ([MobileViews]); presentation is local, and what the user does goes out as
  * intents ([Input], uploads). While the user is [away], it stays connected
@@ -40,10 +51,14 @@ import sh.ahmd.wallflower.terminal.Terminal
 class Session(
     transport: Transport,
     private val scope: CoroutineScope,
-    /** The multiplexer to ask the gateway for, by name; null for its default. */
-    private val asking: String? = null,
+    /** The multiplexer to ask the gateway for, by name, and the session in it; null for its defaults. */
+    mux: String? = null,
+    session: String? = null,
     clock: () -> Long = SystemClock::elapsedRealtime,
 ) {
+    /** What a new connection asks for: where the phone was last. */
+    @Volatile private var askingMux: String? = mux
+    @Volatile private var askingSession: String? = session
     private val link: Link = Link(transport, scope, clock, Events())
     private val panes = Terminals(link)
     private val workspace = Workspace(link, panes)
@@ -71,6 +86,14 @@ class Session(
     /** The multiplexer the session is in, as the gateway last said. */
     val mux: StateFlow<Mux?> = _mux.asStateFlow()
 
+    private val _place = MutableStateFlow<Place?>(null)
+    /** Where the phone is, once the gateway says: hello's multiplexer, and the session its state is of. */
+    val place: StateFlow<Place?> = _place.asStateFlow()
+
+    private val _sessions = MutableStateFlow<SessionList?>(null)
+    /** The sessions in every multiplexer on the Mac, as last listed ([listSessions]). */
+    val sessions: StateFlow<SessionList?> = _sessions.asStateFlow()
+
     private val _uploadDir = MutableStateFlow<String?>(null)
     /** Where the gateway saves uploads: paths under it in what's sent are uploads, pasted on their own. */
     val uploadDir: StateFlow<String?> = _uploadDir.asStateFlow()
@@ -82,7 +105,7 @@ class Session(
     private var quieting: Job? = null
 
     private inner class Events : Link.Events {
-        override fun hello() = ClientHello(cols = grid.first, rows = grid.second, mux = asking, away = away)
+        override fun hello() = ClientHello(cols = grid.first, rows = grid.second, mux = askingMux, session = askingSession, away = away)
 
         override fun linked() {
             panes.linked()
@@ -96,9 +119,15 @@ class Session(
             when (m) {
                 is ServerHello -> {
                     _mux.value = m.mux
+                    askingMux = m.mux.name
                     _uploadDir.value = m.uploads
                 }
-                is State -> workspace.state(m)
+                is State -> {
+                    askingSession = m.session
+                    askingMux?.let { _place.value = Place(it, m.session) }
+                    workspace.state(m)
+                }
+                is SessionList -> _sessions.value = m
                 is Reset -> panes.reset(m)
                 is Entries -> reads.entries(m)
                 is Pong -> input.arrived(m.id)
@@ -209,6 +238,20 @@ class Session(
     fun kill(pane: Pane) = workspace.kill(pane)
 
     fun rename(window: Window, name: String) = workspace.rename(window, name)
+
+    /** Asks for the sessions in every multiplexer, which come in [sessions]. */
+    fun listSessions() = link.send(Sessions)
+
+    /** Moves to another session, over this link; the gateway says hello again, and its state follows. */
+    fun switchTo(mux: String, session: String) = link.send(Switch(mux, session))
+
+    /** Starts a session, named [name] or by the multiplexer, and moves to it. */
+    fun newSession(mux: String, name: String?) = link.send(NewSession(mux, name?.trim()?.takeIf { it.isNotEmpty() }))
+
+    fun renameSession(mux: String, session: String, name: String) = link.send(RenameSession(mux, session, name))
+
+    /** Ends a session and its programs; not the one the phone is in. */
+    fun killSession(mux: String, session: String) = link.send(KillSession(mux, session))
 
     /** Has the gateway send these panes' mobile views, and no others'. */
     fun read(panes: Set<String>) = reads.read(panes)

@@ -64,6 +64,7 @@ import sh.ahmd.wallflower.ui.composer.Typing
 
 private sealed interface Screen {
     data object Terminal : Screen
+    data object Sessions : Screen
     data object Settings : Screen
     data object Setup : Screen
     data class Profile(val ref: ProfileRef, val back: Screen) : Screen
@@ -73,13 +74,13 @@ private sealed interface Screen {
 private val Screen.depth: Int
     get() = when (this) {
         Screen.Terminal -> 0
-        Screen.Settings -> 1
+        Screen.Sessions, Screen.Settings -> 1
         Screen.Setup -> 2
         is Screen.Profile -> back.depth + 1
     }
 
 private fun Screen.previous(): Screen = when (this) {
-    Screen.Terminal, Screen.Settings -> Screen.Terminal
+    Screen.Terminal, Screen.Sessions, Screen.Settings -> Screen.Terminal
     Screen.Setup -> Screen.Settings
     is Screen.Profile -> back
 }
@@ -123,6 +124,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                 model,
                 unlock,
                 onProgram = { command, id -> program = command; programId = id },
+                onSessions = { screen = Screen.Sessions },
                 onSettings = { screen = Screen.Settings },
                 onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
                 onExit = onExit,
@@ -147,6 +149,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
         ) { s ->
             when (s) {
                 Screen.Terminal -> Unit
+                Screen.Sessions -> SessionsScreen(current, onBack = { screen = Screen.Terminal })
                 Screen.Settings -> SettingsScreen(
                     host = host,
                     store = model.keyBar,
@@ -185,6 +188,7 @@ private fun TerminalScreen(
     model: AppModel,
     unlock: (onDone: (Boolean) -> Unit) -> Unit,
     onProgram: (command: String?, program: String?) -> Unit,
+    onSessions: () -> Unit,
     onSettings: () -> Unit,
     onEditKeys: () -> Unit,
     onExit: () -> Unit,
@@ -262,10 +266,12 @@ private fun TerminalScreen(
             windows = windows,
             selected = window?.id,
             status = status,
+            session = state?.name,
             onSelect = { session.view(it) },
             onNew = { session.newWindow() },
             onRename = { renaming = it },
             onClose = { closing.close(it, null) },
+            onSessions = onSessions,
             onSettings = onSettings,
             onExit = onExit,
         )

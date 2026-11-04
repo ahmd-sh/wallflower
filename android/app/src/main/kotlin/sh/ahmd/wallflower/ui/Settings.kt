@@ -317,7 +317,7 @@ private val held = Regex("([CMS]-)+")
 
 /** A full-screen page over the terminal, with a back arrow. */
 @Composable
-private fun Page(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
+internal fun Page(title: String, onBack: () -> Unit, content: @Composable () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()

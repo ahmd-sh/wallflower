@@ -1,4 +1,4 @@
-# wallflower protocol, version 4
+# wallflower protocol, version 5
 
 The client runs `wallflower serve` over ssh and talks to it on stdin/stdout. One
 connection is one client session; the gateway exits when the client
@@ -36,12 +36,18 @@ the multiplexer's own (tmux's `%3`, `@1`, `$0`); don't parse them.
    the multiplexer it asked for (`mux`: `tmux` or `rex`; by default the
    gateway's, and the session the multiplexer would pick), as any other
    client of it does: a window switched to on the client is switched to on
-   the others too. A multiplexer the gateway doesn't have, or that isn't
-   running, gets a `bye` saying so.
+   the others too. A session that's gone is the default one instead. A
+   multiplexer the gateway doesn't have, or that isn't running, gets a
+   `bye` saying so.
 2. Gateway sends `hello`, then `state`.
 3. Client sends `open` for the panes it wants to show. For each, the gateway
    sends `reset` and one data frame that repaints the pane, then streams its
    output.
+
+The client can switch to another session, in the same multiplexer or
+another, without connecting again: after `switch` (or `new-session`) the
+gateway sends `hello` and `state` again, as if it had. What the client had
+open of the last session is closed, and its mobile views are off.
 
 `state` is resent, whole, whenever anything in it changes. When an open pane
 changes size, the gateway sends a fresh `reset` and repaint. It does the same
@@ -52,7 +58,7 @@ client never has to resync on its own.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `cols`, `rows`, `mux`?, `session`?, `away`? | first message; `v` is 4 |
+| `hello` | `v`, `cols`, `rows`, `mux`?, `session`?, `away`? | first message; `v` is 5 |
 | `resize` | `cols`, `rows` | the client's terminal area changed |
 | `open` | `pane`, `history`? | repaint and stream a pane; `history` lines of scrollback (default 1000) |
 | `close` | `pane` | stop streaming a pane |
@@ -69,6 +75,11 @@ client never has to resync on its own.
 | `upload` | `id`, `name`, `size` | send a file: `size` bytes follow in upload frames with this `id`, see below |
 | `ping` | `id` | |
 | `away` | `on` | the user has left the client for now (or is back): see Sizing |
+| `sessions` | | list the sessions in every multiplexer the gateway has; they come in `sessions` |
+| `switch` | `mux`, `session` | attach to another session, see Session |
+| `new-session` | `mux`, `name`? | start a session in the user's home directory, named `name` or a name of the multiplexer's own, and switch to it |
+| `rename-session` | `mux`, `session`, `name` | |
+| `kill-session` | `mux`, `session` | end a session and the programs in it; not the client's own |
 
 Messages are handled in order, so a `pong` means everything sent before its
 `ping` has reached the multiplexer.
@@ -86,7 +97,7 @@ them at once takes it all as a paste, Enter and all.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `mux`, `uploads`? | the multiplexer, see below; the directory uploads are saved in |
+| `hello` | `v`, `mux`, `uploads`? | the multiplexer, see below; the directory uploads are saved in. Again after a switch |
 | `state` | `session`, `name`, `windows` | everything in the session, see below |
 | `reset` | `pane`, `cols`, `rows` | recreate the pane's terminal at this size; the next data frame repaints it |
 | `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `context`? | a pane's mobile view, see below |
@@ -95,6 +106,7 @@ them at once takes it all as a paste, Enter and all.
 | `uploaded` | `id`, `path`?, `error`? | where an upload was saved, or why it wasn't |
 | `bye` | `reason` | the gateway is exiting |
 | `notification` | `pane`, `title`?, `body` | a desktop notification a program sent, see below |
+| `sessions` | `muxes` | each multiplexer's `name` and `sessions` (`id`, `name`, `windows`), or the `error` listing them; sent when asked, and after a session is started, renamed or ended |
 
 `mux` is the multiplexer the session is in: its `name` (`tmux`), its
 `version`, and `can`, what it can do beyond what every one does:
