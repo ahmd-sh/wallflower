@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.protocol.Focus
 import sh.ahmd.wallflower.protocol.Kill
 import sh.ahmd.wallflower.protocol.New
@@ -119,4 +120,11 @@ internal class Workspace(private val link: Link, private val terminals: Terminal
     fun kill(pane: Pane) = link.send(Kill(pane = pane.id))
 
     fun rename(window: Window, name: String) = link.send(Rename(window.id, name))
+}
+
+/** A window's name, unless the multiplexer named it after its pane's command: then what the pane's program has it called, if it says. */
+internal fun Window.label(): String {
+    val p = panes.firstOrNull { it.active } ?: return name
+    if (name != p.command) return name
+    return Programs.of(p.program).label(p.title) ?: name
 }

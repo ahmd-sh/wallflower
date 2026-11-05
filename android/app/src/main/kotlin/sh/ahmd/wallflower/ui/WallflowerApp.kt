@@ -59,6 +59,7 @@ import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Status
 import sh.ahmd.wallflower.session.activePane
 import sh.ahmd.wallflower.session.called
+import sh.ahmd.wallflower.session.label
 import sh.ahmd.wallflower.session.shownPane
 import sh.ahmd.wallflower.terminal.TerminalView
 import sh.ahmd.wallflower.ui.composer.Attachments

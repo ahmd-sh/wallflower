@@ -15,6 +15,7 @@ import sh.ahmd.wallflower.session.Blocked
 import sh.ahmd.wallflower.session.Host
 import sh.ahmd.wallflower.session.Status
 import sh.ahmd.wallflower.session.called
+import sh.ahmd.wallflower.session.label
 
 /**
  * What wallflower puts in the phone's notifications: what the Mac's
@@ -42,7 +43,7 @@ class Notices(private val context: Context) {
     fun show(pane: String, notice: Notice, state: State?) {
         val window = state?.windows?.firstOrNull { w -> w.panes.any { it.id == pane } }
         val program = window?.panes?.firstOrNull { it.id == pane }?.command?.takeIf { it.isNotEmpty() }
-        val where = window?.let { "${it.index} ${it.name}" }
+        val where = window?.let { "${it.index} ${it.label()}" }
         val hidden = Notification.Builder(context, MAC)
             .setSmallIcon(R.drawable.ic_wallflower)
             .setContentTitle(program ?: "wallflower")
