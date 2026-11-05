@@ -35,10 +35,12 @@ type Source struct {
 	run     *running
 	started time.Time
 	found   map[string]mobileview.Found // what the program said last
+	closed  bool
 }
 
 // running is the program while it runs.
 type running struct {
+	cmd     *exec.Cmd
 	in      io.WriteCloser
 	write   sync.Mutex
 	found   chan map[string]mobileview.Found
@@ -188,7 +190,7 @@ func (s *Source) running() *running {
 			return s.run
 		}
 	}
-	if len(s.Command) == 0 || time.Since(s.started) < restart {
+	if s.closed || len(s.Command) == 0 || time.Since(s.started) < restart {
 		return nil
 	}
 	s.started = time.Now()
@@ -204,10 +206,22 @@ func (s *Source) running() *running {
 	if cmd.Start() != nil {
 		return nil
 	}
-	r := &running{in: in, found: make(chan map[string]mobileview.Found, 1), readers: map[string]func(message){}, done: make(chan struct{})}
+	r := &running{cmd: cmd, in: in, found: make(chan map[string]mobileview.Found, 1), readers: map[string]func(message){}, done: make(chan struct{})}
 	go r.listen(out, cmd)
 	s.run = r
 	return r
+}
+
+// Close stops the program, if it runs, for good.
+func (s *Source) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	if s.run != nil {
+		s.run.in.Close()
+		s.run.cmd.Process.Kill()
+	}
+	return nil
 }
 
 // listen hands each line the program writes to whoever waits for it, until

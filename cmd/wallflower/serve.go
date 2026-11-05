@@ -21,6 +21,7 @@ func serve(args []string) error {
 		return err
 	}
 
+	defer stopPlugins(opts)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 	return gateway.Serve(ctx, os.Stdin, os.Stdout, opts)

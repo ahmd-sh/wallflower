@@ -86,6 +86,21 @@ func TestFindAndRead(t *testing.T) {
 	}
 }
 
+func TestClosedItStops(t *testing.T) {
+	s := source(t)
+	s.Find(nil)
+	r := s.running()
+	s.Close()
+	select {
+	case <-r.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the plugin still runs")
+	}
+	if s.running() != nil {
+		t.Error("started again once closed")
+	}
+}
+
 func TestAProgramThatWontRunFindsNothing(t *testing.T) {
 	s := &Source{Command: []string{"/nonexistent/plugin"}}
 	if got := s.Find([]mobileview.Pane{{ID: "%1", Command: "fake"}}); len(got) != 0 {

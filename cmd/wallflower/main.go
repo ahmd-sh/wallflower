@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -61,6 +62,15 @@ func gatewayFlags(fs *flag.FlagSet) func() (gateway.Options, error) {
 		}
 		// Yours first: a command one of yours claims is its, not a built-in's.
 		return gateway.Options{Muxes: muxes, Mux: *multiplexer, Session: *session, Programs: append(own, builtin...)}, nil
+	}
+}
+
+// stopPlugins stops the programs plugins run for their mobile views.
+func stopPlugins(opts gateway.Options) {
+	for _, p := range opts.Programs {
+		if c, ok := p.View.(io.Closer); ok {
+			c.Close()
+		}
 	}
 }
 
