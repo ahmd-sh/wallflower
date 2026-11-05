@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import sh.ahmd.wallflower.read.Entry
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.activityOf
 import sh.ahmd.wallflower.screen.InputLine
@@ -43,7 +44,7 @@ internal fun PanePage(
     onGridSize: (cols: Int, rows: Int, ahead: Boolean) -> Unit,
     onView: (TerminalView) -> Unit,
     onTap: (() -> Unit)?,
-    onRecalled: () -> Unit = {},
+    onRecalled: (Entry.Said) -> Unit = {},
     tab: String? = null,
 ) = Box(Modifier.fillMaxSize()) {
     val theme = Palette.terminal
@@ -76,7 +77,7 @@ internal fun PanePage(
             onKeys = { keys -> actions.keys(keys) },
             onPicked = actions::picked,
             onCompact = if (current && compact != null) ({ compact(line()) }) else null,
-            onEdit = if (current) ({ e -> if (actions.recall(e, shown, line())) onRecalled() }) else null,
+            onEdit = if (current) ({ e -> if (actions.recall(e, shown, line())) onRecalled(e) }) else null,
             title = shown.title?.takeIf { it != tab },
             live = current,
         )

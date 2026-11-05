@@ -67,7 +67,7 @@ class Session(
     private val link: Link = Link(transport, scope, clock, Events())
     private val panes = Terminals(link)
     private val workspace = Workspace(link, panes)
-    private val reads = MobileViews(link)
+    private val reads = MobileViews(link, clock)
     private val input = Input(link)
     private val transfer = Transfer(link)
 
@@ -270,7 +270,10 @@ class Session(
     /** [pane]'s conversation was rewound to before the user's message [said] matches. */
     fun rewound(pane: String, said: (String) -> Boolean) = reads.rewound(pane, said)
 
-    /** [pane]'s input line holds [line], which may be the user's latest message, taken back. */
+    /** The user stopped [pane]'s program. */
+    fun stopped(pane: String) = reads.stopped(pane)
+
+    /** [pane]'s input line holds [line], which may be the user's latest message, taken back by a stop. */
     fun takenBack(pane: String, line: String?) = reads.takenBack(pane, line)
 
     fun keys(pane: String, keys: List<String>, bindings: Boolean = false) = input.keys(pane, keys, bindings)

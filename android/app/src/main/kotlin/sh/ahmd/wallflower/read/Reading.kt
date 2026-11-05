@@ -8,7 +8,8 @@ package sh.ahmd.wallflower.read
  * a rewind went back to before, which the program doesn't record until the
  * next message; it and what followed aren't [shown] till then. What the
  * program is doing is its pane's ([activityOf]). [title]: what the
- * conversation is called, if it's named.
+ * conversation is called, if it's named. [stopped]: when the user last
+ * stopped the program, by the session's clock (0: not lately).
  */
 data class Reading(
     val entries: List<Entry> = emptyList(),
@@ -18,6 +19,7 @@ data class Reading(
     val context: Int = 0,
     val rewound: String? = null,
     val title: String? = null,
+    val stopped: Long = 0,
 ) {
     val shown: List<Entry> get() = rewound?.let { r -> entries.takeWhile { it.id != r } } ?: entries
 
@@ -31,18 +33,16 @@ data class Reading(
     }
 
     /**
-     * Taken back to before a message of the user's the program has put back
-     * in its input line ([line]) unsent, as Claude Code does with one stopped
-     * before its reply, or rewound to (from the Mac, too): recorded still,
-     * till the next. Their latest, or an earlier one too long to be typed
-     * again by chance.
+     * Less the user's latest message, if the program has put it back in its
+     * input line ([line]) unsent just after they stopped it (as of [now]), as
+     * Claude Code does with one stopped before its reply: taken back, though
+     * it's recorded till the next. Only then: the same text there otherwise is
+     * history brought back (↑), not taken back.
      */
-    fun takenBack(line: String?): Reading {
-        if (line.isNullOrBlank() || rewound != null) return this
-        val held = bare(line)
-        val said = entries.filter { it is Entry.Said && it.by == Party.User }
-        val back = said.lastOrNull { bare((it as Entry.Said).text) == held && (it === said.last() || held.length >= DISTINCT) }
-        return back?.let { copy(rewound = it.id) } ?: this
+    fun takenBack(line: String?, now: Long): Reading {
+        if (line.isNullOrBlank() || rewound != null || stopped == 0L || now - stopped > TAKES_BACK_MS) return this
+        val last = entries.lastOrNull { it is Entry.Said && it.by == Party.User } as Entry.Said? ?: return this
+        return if (bare(last.text) == bare(line)) copy(rewound = last.id, stopped = 0) else this
     }
 
     private fun bare(text: String) = text.filterNot(Char::isWhitespace)
@@ -73,7 +73,7 @@ data class Reading(
     companion object {
         const val MAX_ENTRIES = 1000
 
-        /** Characters (not counting blanks) a message has to have to be told from others by its words alone. */
-        private const val DISTINCT = 24
+        /** How long after a stop the program can take the user's message back. */
+        private const val TAKES_BACK_MS = 5_000L
     }
 }

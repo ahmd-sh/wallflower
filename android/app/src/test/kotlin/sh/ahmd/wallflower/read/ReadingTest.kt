@@ -19,19 +19,18 @@ class ReadingTest {
     }
 
     @Test
-    fun theLatestMessageBackInTheProgramsLineIsTakenBack() {
+    fun theLatestMessageBackInTheProgramsLineJustAfterAStopIsTakenBack() {
         val r = Reading().apply(
             Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "said", "fix it"), text("a"), WireEntry("u2", "user", "said", "now write\nthe tests"))),
         )
-        assertEquals(listOf("u1", "a"), r.takenBack("now write the tests").shown.map { it.id })
-        assertEquals(r, r.takenBack("fix it")) // a short earlier one typed again is just typed
-        assertEquals(r, r.takenBack(""))
-        val long = Reading().apply(
-            Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "said", "rename the gateway's options to settings"), text("a"), WireEntry("u2", "user", "said", "go on"))),
-        )
-        assertEquals(emptyList<String>(), long.takenBack("rename the gateway's options to settings").shown.map { it.id }) // rewound to on the Mac
+        val stopped = r.copy(stopped = 1_000)
+        assertEquals(listOf("u1", "a"), stopped.takenBack("now write the tests", now = 2_000).shown.map { it.id })
+        assertEquals(r, r.takenBack("now write the tests", now = 2_000)) // no stop: history brought back with ↑
+        assertEquals(stopped, stopped.takenBack("now write the tests", now = 9_000)) // a stop long ago
+        assertEquals(stopped, stopped.takenBack("fix it", now = 2_000)) // only the latest
+        assertEquals(stopped, stopped.takenBack("", now = 2_000))
         // Sent again as it was, not taken back after all: the next message recorded ends it.
-        val again = r.takenBack("now write the tests").apply(Entries("%1", entries = listOf(WireEntry("u3", "user", "said", "now write the tests"))))
+        val again = stopped.takenBack("now write the tests", now = 2_000).apply(Entries("%1", entries = listOf(WireEntry("u3", "user", "said", "now write the tests"))))
         assertEquals(listOf("u1", "a", "u2", "u3"), again.shown.map { it.id })
     }
 

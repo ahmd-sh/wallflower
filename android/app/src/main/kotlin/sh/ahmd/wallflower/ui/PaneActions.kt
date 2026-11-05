@@ -47,7 +47,10 @@ internal class PaneActions(
         }
     }
 
-    fun stop() = keys(stopKeys)
+    fun stop() {
+        session.stopped(pane.id)
+        keys(stopKeys)
+    }
 
     /**
      * Brings the user's [message] back into the program's input line, to edit,

@@ -27,7 +27,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,6 +63,7 @@ import sh.ahmd.wallflower.session.shownPane
 import sh.ahmd.wallflower.terminal.TerminalView
 import sh.ahmd.wallflower.ui.composer.Attachments
 import sh.ahmd.wallflower.ui.composer.Composer
+import sh.ahmd.wallflower.ui.composer.Recalled
 import sh.ahmd.wallflower.ui.composer.Typing
 
 private sealed interface Screen {
@@ -354,7 +354,7 @@ private fun TerminalScreen(
         }
         BackHandler(enabled = overview.open) { overview.hide(into = pane?.id) }
         var view by remember { mutableStateOf<TerminalView?>(null) } // the shown pane's
-        var recalled by remember(pane?.id) { mutableLongStateOf(0L) } // when a message was last asked back to edit
+        var recalled by remember(pane?.id) { mutableStateOf<Recalled?>(null) } // the message last asked back to edit
         val typing = remember { Typing() }
         var paneBounds by remember { mutableStateOf(Rect.Zero) }
         var position by remember { mutableFloatStateOf(0f) }
@@ -375,7 +375,7 @@ private fun TerminalScreen(
             onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
             onView = { view = it },
             onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
-            onRecalled = { recalled = System.nanoTime() },
+            onRecalled = { e -> recalled = Recalled(e.text, System.nanoTime()) },
             tab = window?.label(),
         )
 

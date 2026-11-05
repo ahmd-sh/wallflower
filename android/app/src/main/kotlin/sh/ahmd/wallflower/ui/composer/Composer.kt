@@ -68,7 +68,7 @@ import sh.ahmd.wallflower.ui.haptics
  * the box's, to type something else). A suggestion cut short to fit the
  * screen ("…") comes in whole: the program takes it into its line
  * ([onAcceptSuggestion]), and it comes from there. So does a sent message
- * asked back to edit ([recalled] changes), once the program puts it back. What's in the box replaces the line
+ * asked back to edit ([recalled]), once the program puts it back. What's in the box replaces the line
  * when sent, so the box is exactly what runs. The button sends (held: types
  * it in without Enter), enters the app's line when only that has text, or
  * stops: while the program isn't idle ([stoppable]), or just after sending,
@@ -106,7 +106,7 @@ internal fun Composer(
     onEditKeys: () -> Unit,
     commands: List<Command> = emptyList(),
     onAcceptSuggestion: (() -> Unit)? = null,
-    recalled: Long = 0L,
+    recalled: Recalled? = null,
     stoppable: Boolean = true,
 ) {
     val focus = remember { FocusRequester() }
@@ -160,16 +160,17 @@ internal fun Composer(
             take(cut.removeSuffix("…"))
         }
     }
-    var recalling by remember { mutableStateOf(false) }
+    var recalling by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(recalled) {
-        if (recalled == 0L) return@LaunchedEffect
-        recalling = true
+        recalling = recalled?.text ?: return@LaunchedEffect
         delay(RECALL_WAIT_MS) // long enough to pick it from a list
-        recalling = false
+        recalling = null
     }
     LaunchedEffect(recalling, pending) {
-        if (recalling && pending.isNotEmpty()) {
-            recalling = false
+        // That message, not what's typed on the way (/rewind) or was there before.
+        val want = recalling ?: return@LaunchedEffect
+        if (pending.filterNot(Char::isWhitespace) == want.filterNot(Char::isWhitespace)) {
+            recalling = null
             take(pending)
         }
     }
@@ -294,6 +295,9 @@ private const val ACCEPT_WAIT_MS = 1_500L
 
 /** How long after sending the button can stop what's sent, whatever the program was last heard doing. */
 private const val SENT_STOPS_MS = 3_000L
+
+/** A sent message asked back to edit, its [text], each time it's asked ([at]). */
+internal data class Recalled(val text: String, val at: Long)
 
 /** How long a message asked back has to come back into the program's line to be taken into the box. */
 private const val RECALL_WAIT_MS = 60_000L

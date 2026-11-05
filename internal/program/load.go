@@ -48,8 +48,11 @@ var pluginID = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 // Load reads the plugins in dir, one JSON file each, after the programs
 // already known (taken), whose IDs they can't have. A file that doesn't
-// make a plugin is an error, and the rest still load; no dir is none.
+// make a plugin is an error, and the rest still load; no dir (or "") is none.
 func Load(dir string, taken []Program) ([]Program, []error) {
+	if dir == "" {
+		return nil, nil
+	}
 	files, _ := filepath.Glob(filepath.Join(dir, "*.json"))
 	sort.Strings(files)
 	ids := map[string]bool{}

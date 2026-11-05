@@ -10,7 +10,7 @@ import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.apply
 
 /** The mobile views of the panes the phone shows them for, as the gateway sends them. */
-internal class MobileViews(private val link: Link) {
+internal class MobileViews(private val link: Link, private val clock: () -> Long) {
     private val _readings = MutableStateFlow<Map<String, Reading>>(emptyMap())
     val readings: StateFlow<Map<String, Reading>> = _readings.asStateFlow()
 
@@ -55,6 +55,9 @@ internal class MobileViews(private val link: Link) {
     /** [pane]'s conversation was rewound to before the user's message [said] matches: hidden from there until the program records more. */
     fun rewound(pane: String, said: (String) -> Boolean) = _readings.update { all -> all[pane]?.let { all + (pane to it.rewoundTo(said)) } ?: all }
 
-    /** [pane]'s program has put the user's latest message back in its input [line], if that's what it holds: hidden as [rewound]. */
-    fun takenBack(pane: String, line: String?) = _readings.update { all -> all[pane]?.let { all + (pane to it.takenBack(line)) } ?: all }
+    /** The user stopped [pane]'s program, which may take their latest message back. */
+    fun stopped(pane: String) = _readings.update { all -> all[pane]?.let { all + (pane to it.copy(stopped = clock())) } ?: all }
+
+    /** [pane]'s program has put the user's latest message back in its input [line], if that's what it holds just after a stop: hidden as [rewound]. */
+    fun takenBack(pane: String, line: String?) = _readings.update { all -> all[pane]?.let { all + (pane to it.takenBack(line, clock())) } ?: all }
 }

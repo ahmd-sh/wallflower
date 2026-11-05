@@ -43,4 +43,8 @@ func TestLoad(t *testing.T) {
 	if none, errs := Load(filepath.Join(dir, "missing"), nil); len(none) != 0 || len(errs) != 0 {
 		t.Errorf("no dir: %v, %v", none, errs)
 	}
+	t.Chdir(dir) // "" isn't the working directory
+	if none, errs := Load("", nil); len(none) != 0 || len(errs) != 0 {
+		t.Errorf(`"": %v, %v`, none, errs)
+	}
 }

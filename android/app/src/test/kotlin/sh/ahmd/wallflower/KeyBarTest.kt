@@ -61,6 +61,7 @@ class KeyBarTest {
         }
     }
 
+    @Test
     fun aHeldKeySaysWhatItSends() {
         assertEquals("ctrl c", KeyBar.nameOf(BarKey("^c", listOf("C-c"))))
         assertEquals("ctrl alt left", KeyBar.nameOf(BarKey("^⌥←", listOf("C-M-Left"))))
