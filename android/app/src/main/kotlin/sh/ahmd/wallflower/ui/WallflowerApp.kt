@@ -14,7 +14,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -102,7 +100,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     LaunchedEffect(screen) { if (screen != Screen.Terminal) focus.clearFocus() } // the composer's keyboard goes away
     val current = session
     val mux by (current?.mux ?: flowOf(null)).collectAsStateWithLifecycle(null)
-    val setup = @Composable {
+    val setup = @Composable { onBack: (() -> Unit)? ->
         SetupScreen(
             host = host,
             hasKey = hasKey,
@@ -111,6 +109,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
             createKey = model::createKey,
             unlockSeconds = unlockSeconds,
             newKey = model::newKey,
+            onBack = onBack,
         ) {
             model.configure(it)
             screen = Screen.Terminal
@@ -118,7 +117,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     }
     val mac = host
     if (mac == null || current == null) {
-        setup()
+        setup(null)
         return
     }
     // Pages draw over the terminal, which keeps its place underneath.
@@ -166,7 +165,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     onEditHost = { screen = Screen.Setup },
                     onOpen = { screen = Screen.Profile(it, Screen.Settings) },
                 )
-                Screen.Setup -> Box(Modifier.pointerInput(Unit) { detectTapGestures { } }) { setup() }
+                Screen.Setup -> setup { screen = Screen.Settings }
                 is Screen.Profile -> ProfileScreen(
                     store = model.keyBar,
                     ref = s.ref,

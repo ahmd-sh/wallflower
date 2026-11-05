@@ -9,9 +9,9 @@ import android.content.SharedPreferences
  * through adb reverse instead of ssh.
  */
 data class Host(
-    val address: String = "100.116.36.118",
+    val address: String = "",
     val port: Int = 22,
-    val user: String = "ahmedshaikh",
+    val user: String = "",
     val command: String = "~/go/bin/wallflower serve",
     val mux: String = "tmux",
     val session: String? = null,
