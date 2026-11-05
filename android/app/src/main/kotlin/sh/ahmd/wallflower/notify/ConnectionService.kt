@@ -32,14 +32,14 @@ class ConnectionService : Service() {
         val connection = connection
         scope.launch {
             val status = connection.session.flatMapLatest { s -> s?.status ?: flowOf(null) }
-            combine(connection.session, status) { s, st -> s to st }.collect { (session, st) ->
+            combine(connection.session, status, connection.host) { s, st, h -> Triple(s, st, h) }.collect { (session, st, host) ->
                 if (session == null) {
                     stopSelf()
                 } else {
                     // Swiped away, it stays away.
                     val manager = getSystemService(NotificationManager::class.java)
                     if (manager.activeNotifications.any { it.id == Notices.CONNECTED }) {
-                        manager.notify(Notices.CONNECTED, connection.notices.connected(connection.host.value, st))
+                        manager.notify(Notices.CONNECTED, connection.notices.connected(host, st))
                     }
                 }
             }

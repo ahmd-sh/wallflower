@@ -58,13 +58,17 @@ class Connection(private val context: Context, private val scope: CoroutineScope
     }
 
     /** Where the phone is, kept so it comes back there; switching there isn't connecting again. */
-    private fun remember(place: Place) {
+    private fun remember(place: Place) = update { it.copy(mux = place.mux, session = place.session) }
+
+    /** What the Mac's called, kept so it's named before the next connection's hello. */
+    private fun named(machine: String) = update { it.copy(machine = machine) }
+
+    private fun update(change: (Host) -> Host) {
         val host = _host.value ?: return
-        if (host.mux == place.mux && host.session == place.session) return
-        host.copy(mux = place.mux, session = place.session).also {
-            it.save(prefs)
-            _host.value = it
-        }
+        val changed = change(host)
+        if (changed == host) return
+        changed.save(prefs)
+        _host.value = changed
     }
 
     /** Connects to the configured Mac, unless already connected. */
@@ -80,6 +84,7 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         session.away(away)
         watching = scope.launch {
             launch { session.place.filterNotNull().collect(::remember) }
+            launch { session.machine.filterNotNull().collect(::named) }
             launch {
                 session.notifications.collect { n ->
                     if (away || n.pane != session.shownPane()) {
@@ -90,10 +95,10 @@ class Connection(private val context: Context, private val scope: CoroutineScope
             }
             session.status.collect { s ->
                 when {
-                    s is Status.Connected -> notices.lost(null)
+                    s is Status.Connected -> notices.back()
                     s is Status.NeedsUser && away -> {
                         // It can't get back on its own: the user has to, from the app.
-                        notices.lost(s)
+                        notices.lost(_host.value, s.blocked)
                         ConnectionService.stop(context)
                     }
                 }
@@ -139,7 +144,7 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         ensure()
         val session = _session.value ?: return
         session.away(false)
-        notices.lost(null)
+        notices.back()
         ConnectionService.start(context)
     }
 

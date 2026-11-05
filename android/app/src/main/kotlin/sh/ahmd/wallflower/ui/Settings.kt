@@ -90,7 +90,10 @@ fun SettingsScreen(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Palette.bg1).clickable(onClick = onEditHost).padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("${host.user}@${host.address}:${host.port}", color = Palette.fg, fontFamily = Mono, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    host.machine?.let { Text(it, color = Palette.fg, style = Type.body) }
+                    Text("${host.user}@${host.address}:${host.port}", color = if (host.machine == null) Palette.fg else Palette.grey, fontFamily = Mono, fontSize = 13.sp)
+                }
                 Text("edit ›", color = Palette.grey, style = Type.label)
             }
         }

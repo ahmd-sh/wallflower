@@ -3,9 +3,10 @@ package sh.ahmd.wallflower.session
 import android.content.SharedPreferences
 
 /**
- * Where the gateway runs, and the multiplexer ([mux], tmux or rex) and
- * [session] (its id; null: the one the gateway picks) the phone was last
- * in. [dev] uses `wallflower listen` through adb reverse instead of ssh.
+ * Where the gateway runs, the name it last gave its [machine], and the
+ * multiplexer ([mux], tmux or rex) and [session] (its id; null: the one the
+ * gateway picks) the phone was last in. [dev] uses `wallflower listen`
+ * through adb reverse instead of ssh.
  */
 data class Host(
     val address: String = "100.116.36.118",
@@ -15,6 +16,7 @@ data class Host(
     val mux: String = "tmux",
     val session: String? = null,
     val dev: Boolean = false,
+    val machine: String? = null,
 ) {
     fun save(prefs: SharedPreferences) = prefs.edit()
         .putString("address", address)
@@ -24,6 +26,7 @@ data class Host(
         .putString("mux", mux)
         .putString("session", session)
         .putBoolean("dev", dev)
+        .putString("machine", machine)
         .putBoolean("configured", true)
         .apply()
 
@@ -39,7 +42,11 @@ data class Host(
                 mux = prefs.getString("mux", d.mux) ?: d.mux,
                 session = prefs.getString("session", null),
                 dev = prefs.getBoolean("dev", false),
+                machine = prefs.getString("machine", null),
             )
         }
     }
 }
+
+/** What to call the Mac: its name, once its gateway has said it. */
+val Host?.called: String get() = this?.machine ?: "your Mac"

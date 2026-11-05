@@ -125,11 +125,12 @@ class SessionTest {
         assertEquals(ClientHello(VERSION, 56, 20), g.message<ClientHello>())
         session.read(setOf("%1"))
         assertEquals(Read("%1", on = true), g.message<Read>())
-        g.send(ServerHello(VERSION, TMUX, uploads = "/up"))
+        g.send(ServerHello(VERSION, TMUX, uploads = "/up", machine = "vishingstar"))
         g.send(state)
         assertEquals("%1", g.message<Open>().pane)
         eventually { session.status.first { it is Status.Connected } }
         assertEquals("/up", session.uploadDir.value)
+        assertEquals("vishingstar", session.machine.value)
         assertEquals("@1", session.viewing.value)
     }
 
