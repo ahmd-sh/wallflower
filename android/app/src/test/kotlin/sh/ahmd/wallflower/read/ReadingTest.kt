@@ -24,8 +24,12 @@ class ReadingTest {
             Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "said", "fix it"), text("a"), WireEntry("u2", "user", "said", "now write\nthe tests"))),
         )
         assertEquals(listOf("u1", "a"), r.takenBack("now write the tests").shown.map { it.id })
-        assertEquals(r, r.takenBack("fix it")) // only the latest: an earlier one typed again is just typed
+        assertEquals(r, r.takenBack("fix it")) // a short earlier one typed again is just typed
         assertEquals(r, r.takenBack(""))
+        val long = Reading().apply(
+            Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "said", "rename the gateway's options to settings"), text("a"), WireEntry("u2", "user", "said", "go on"))),
+        )
+        assertEquals(emptyList<String>(), long.takenBack("rename the gateway's options to settings").shown.map { it.id }) // rewound to on the Mac
     }
 
     @Test

@@ -31,14 +31,18 @@ data class Reading(
     }
 
     /**
-     * Less the user's latest message, if the program has put it back in its
-     * input line ([line]) unsent, as Claude Code does with one stopped before
-     * its reply, or rewound to: taken back, though it's recorded till the next.
+     * Taken back to before a message of the user's the program has put back
+     * in its input line ([line]) unsent, as Claude Code does with one stopped
+     * before its reply, or rewound to (from the Mac, too): recorded still,
+     * till the next. Their latest, or an earlier one too long to be typed
+     * again by chance.
      */
     fun takenBack(line: String?): Reading {
         if (line.isNullOrBlank() || rewound != null) return this
-        val last = entries.lastOrNull { it is Entry.Said && it.by == Party.User } as Entry.Said? ?: return this
-        return if (bare(last.text) == bare(line)) copy(rewound = last.id) else this
+        val held = bare(line)
+        val said = entries.filter { it is Entry.Said && it.by == Party.User }
+        val back = said.lastOrNull { bare((it as Entry.Said).text) == held && (it === said.last() || held.length >= DISTINCT) }
+        return back?.let { copy(rewound = it.id) } ?: this
     }
 
     private fun bare(text: String) = text.filterNot(Char::isWhitespace)
@@ -64,5 +68,8 @@ data class Reading(
 
     companion object {
         const val MAX_ENTRIES = 1000
+
+        /** Characters (not counting blanks) a message has to have to be told from others by its words alone. */
+        private const val DISTINCT = 24
     }
 }
