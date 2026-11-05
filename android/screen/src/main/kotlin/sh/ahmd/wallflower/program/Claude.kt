@@ -90,6 +90,9 @@ object Claude : Program {
 
     override fun prompt(screen: Screen): Prompt? = Prompt.read(screen)
 
+    /** Claude's command is its version; its title is the conversation's name, after a mark that spins while it works. */
+    override fun label(title: String): String? = title.trimStart { !it.isLetterOrDigit() }.trim().ifEmpty { null }
+
     override val readsScreenToNotify = true
 
     /**

@@ -336,6 +336,7 @@ private fun TerminalScreen(
             onView = { view = it },
             onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
             onRecalled = { recalled = System.nanoTime() },
+            tab = window?.label(),
         )
 
         // The panes take what the composer leaves; the cards cover both. While the

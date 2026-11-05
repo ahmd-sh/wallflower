@@ -26,7 +26,8 @@ import sh.ahmd.wallflower.terminal.TerminalView
  * [prompt] the pane's screen offers, can compact (with its [line]), and
  * animates; its terminal view goes to [onView]. A tap on the terminal
  * goes to [onTap]. A message asked back to edit goes to the program, and
- * [onRecalled] once it's on its way.
+ * [onRecalled] once it's on its way. The conversation's title shows unless
+ * the [tab] says it already.
  */
 @Composable
 internal fun PanePage(
@@ -43,6 +44,7 @@ internal fun PanePage(
     onView: (TerminalView) -> Unit,
     onTap: (() -> Unit)?,
     onRecalled: () -> Unit = {},
+    tab: String? = null,
 ) = Box(Modifier.fillMaxSize()) {
     AndroidView(
         modifier = Modifier.fillMaxSize().padding(horizontal = PAGE_PADDING).clipToBounds(),
@@ -73,6 +75,7 @@ internal fun PanePage(
             onPicked = actions::picked,
             onCompact = if (current && compact != null) ({ compact(line()) }) else null,
             onEdit = if (current) ({ e -> if (actions.recall(e, shown, line())) onRecalled() }) else null,
+            title = shown.title?.takeIf { it != tab },
             live = current,
         )
     }

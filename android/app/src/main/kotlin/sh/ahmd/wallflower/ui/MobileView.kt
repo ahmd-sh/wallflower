@@ -103,7 +103,7 @@ import sh.ahmd.wallflower.screen.Prompt
  * a [prompt] (a permission, a question), that's there to answer, and the keys
  * picking an option go to [onKeys], and the option to [onPicked]. Sideways
  * drags go to [swipe], to move between panes as on the terminal. The
- * conversation's title, once it has one, sits at the top.
+ * conversation's [title], if its tab doesn't say it, sits at the top.
  */
 @Composable
 fun MobileView(
@@ -122,6 +122,7 @@ fun MobileView(
     onCompact: (() -> Unit)? = null,
     /** Asks for one of the user's messages back, to edit; null while it can't be. */
     onEdit: ((Entry.Said) -> Unit)? = null,
+    title: String? = reading.title,
     /** On screen, so what moves moves; a page beside it holds still. */
     live: Boolean = true,
 ) = CompositionLocalProvider(LocalLive provides live) {
@@ -248,15 +249,15 @@ fun MobileView(
                 }
             }
         }
-        val title = rememberLast(reading.title)
+        val shownTitle = rememberLast(title)
         AnimatedVisibility(
-            reading.title != null,
+            title != null,
             modifier = Modifier.align(Alignment.TopStart),
             enter = fadeIn(Motion.effect()),
             exit = fadeOut(Motion.effect()),
         ) {
             Text(
-                title.orEmpty(),
+                shownTitle.orEmpty(),
                 color = Palette.grey,
                 style = Type.label,
                 maxLines = 1,

@@ -64,6 +64,9 @@ func stateOf(s *mux.Session, program func(mux.Pane) string, matches map[string]m
 				}
 			}
 			pw.Panes = append(pw.Panes, pp)
+			if p.Active && w.Name == p.Command && pp.Command != p.Command {
+				pw.Name = pp.Command // named after the version the program runs as
+			}
 		}
 		st.Windows = append(st.Windows, pw)
 	}

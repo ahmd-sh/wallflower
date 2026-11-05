@@ -66,6 +66,13 @@ interface Program {
     /** What picking [option] of [prompt] does besides answering it, if wallflower needs to know. */
     fun picked(prompt: Prompt, option: Prompt.Option): Effect? = null
 
+    /**
+     * What a tab shows for the program's window, from the terminal title it
+     * sets ([title]), in place of a name the multiplexer gave the window
+     * after the program's command; null keeps that name.
+     */
+    fun label(title: String): String? = null
+
     /** The key bar its panes get until the user sets them one; programs with the same one share it. */
     val keyBar: KeyDefaults? get() = null
 }

@@ -539,7 +539,13 @@ func TestVersionedProgram(t *testing.T) {
 			t.Fatal(err)
 		}
 		c.desk.run(p, "WALLFLOWER_TEST_SLEEP=1 "+filepath.Join(dir, "tool"))
-		c.state("program named tool", func(s protocol.State) bool { return paneOf(s, p).Command == "tool" })
+		s := c.state("program named tool", func(s protocol.State) bool { return paneOf(s, p).Command == "tool" })
+		// tmux names a window after its command, here the version, unless told otherwise.
+		if b.name == "tmux" {
+			c.state("window named tool", func(s protocol.State) bool { return activeWindow(s).Name == "tool" })
+		} else if activeWindow(s).Name == "1.2.3" {
+			t.Errorf("window named after the version")
+		}
 	})
 }
 

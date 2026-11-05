@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import kotlin.math.ceil
 import kotlin.math.floor
+import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.read.Activity
 import sh.ahmd.wallflower.read.activityOf
@@ -146,7 +147,7 @@ internal fun TabBar(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text("${w.index}", color = number, style = Type.label, fontWeight = FontWeight.Bold)
-                        Text(" ${w.name}", color = name, style = Type.label, maxLines = 1)
+                        Text(" ${w.label()}", color = name, style = Type.label, maxLines = 1)
                         if (agent != null) AgentDot(agent, Modifier.padding(start = 6.dp))
                     }
                     PopupMenu(
@@ -211,6 +212,13 @@ private fun PowerButton(status: Status, session: String?, onSessions: () -> Unit
 }
 
 /** What a window's programs are doing that needs an eye: one waiting for the user before any working. */
+/** A window's name, unless the multiplexer named it after its pane's command: then what the pane's program has it called, if it says. */
+internal fun Window.label(): String {
+    val p = panes.firstOrNull { it.active } ?: return name
+    if (name != p.command) return name
+    return Programs.of(p.program).label(p.title) ?: name
+}
+
 private fun activityOf(w: Window): Activity? {
     val doing = w.panes.mapNotNull { activityOf(it) }
     return doing.firstOrNull { it == Activity.Waiting } ?: doing.firstOrNull { it == Activity.Working }
