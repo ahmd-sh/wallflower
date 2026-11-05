@@ -308,6 +308,22 @@ class PromptTest {
     }
 
     @Test
+    fun aMultipleChoicesNextAndSubmitStayWithTheCursorOnThem() {
+        val labels = mapOf(
+            "claude-question-multi-next.ansi" to listOf("Red", "Green", "Blue", "Type something", "Next", "Chat about this"),
+            "claude-question-multi-submit.ansi" to listOf("Apple", "Pear", "Plum", "Type something", "Submit", "Chat about this"),
+        )
+        for ((name, options) in labels) {
+            val menu = Prompt.read(captured(name, 70))!!
+            assertEquals(options, menu.options.map { it.label })
+            val item = menu.options[4]
+            assertEquals(null, item.number)
+            assertEquals(true, item.current)
+            assertEquals(listOf("Enter"), menu.keys(item))
+        }
+    }
+
+    @Test
     fun aPromptsSuggestionsAreNotAList() {
         val s = screen(
             plain(rule),

@@ -203,7 +203,7 @@ data class Prompt(
                             last.copy(detail = if (last.detail.isEmpty()) text else last.detail + (if (wrapped) " " else "\n") + text)
                         }
                     }
-                    indent(row) > numberAt && options.isNotEmpty() -> {
+                    indent(unmarked(row)) > numberAt && options.isNotEmpty() -> {
                         val current = marker.containsMatchIn(row)
                         val label = row.trim().removePrefix("❯").removePrefix("›").removePrefix("▶").trim()
                         options += Option(null, label, "", null, current, rows[y].mutedFrom(indent(row)))
@@ -303,6 +303,9 @@ data class Prompt(
         }
 
         private fun indent(row: String) = row.length - row.trimStart().length
+
+        /** [row] with the cursor that starts it blanked, so an item under it keeps its indent (❯    Next). */
+        private fun unmarked(row: String) = marker.find(row)?.takeIf { it.range.first == 0 }?.let { " ".repeat(it.value.length) + row.substring(it.value.length) } ?: row
 
         /**
          * The app wrapped [next]'s words off [row]: its first word wouldn't
