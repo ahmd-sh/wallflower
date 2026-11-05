@@ -93,6 +93,10 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	}
 	g.cols, g.rows, g.away = hello.Cols, hello.Rows, hello.Away
 	name, c, err := g.attach(hello.Mux, hello.Session)
+	if err != nil && name != "" && name != opts.Mux {
+		// Where the client was last isn't there (Rex quit, say): it comes back to the default, not to nothing.
+		name, c, err = g.attach(opts.Mux, "")
+	}
 	if err != nil {
 		g.send(protocol.Bye{Reason: err.Error()})
 		return err

@@ -15,6 +15,7 @@ import (
 	"github.com/ahmd-sh/wallflower/internal/mux"
 	"github.com/ahmd-sh/wallflower/internal/program"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
+	"github.com/ahmd-sh/wallflower/internal/rex"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 	"github.com/ahmd-sh/wallflower/internal/tmuxtest"
 )
@@ -635,6 +636,20 @@ func TestHelloPicksTheMux(t *testing.T) {
 		default:
 			t.Errorf("asked for %s, got %+v", ask, m)
 		}
+	}
+}
+
+// A client that was last in a multiplexer that isn't running comes back to
+// the default one.
+func TestHelloFallsBackToTheDefaultMux(t *testing.T) {
+	socket, _ := tmuxtest.Server(t, 80, 24)
+	opts := Options{Muxes: map[string]mux.Mux{"tmux": tmux.Server{Socket: socket}, "rex": rex.Server{Endpoint: filepath.Join(t.TempDir(), "none")}}, Mux: "tmux", Session: "t"}
+	var in, out bytes.Buffer
+	b, _ := protocol.AppendJSON(nil, protocol.ClientHello{V: protocol.Version, Cols: 80, Rows: 24, Mux: "rex", Session: "night"})
+	in.Write(b)
+	Serve(context.Background(), &in, &out, opts)
+	if m, _ := protocol.DecodeServer(firstJSON(t, &out)); m == nil || m.(*protocol.ServerHello).Mux.Name != "tmux" {
+		t.Errorf("hello %+v, want tmux's", m)
 	}
 }
 

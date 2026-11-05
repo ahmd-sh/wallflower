@@ -36,9 +36,10 @@ the multiplexer's own (tmux's `%3`, `@1`, `$0`); don't parse them.
    the multiplexer it asked for (`mux`: `tmux` or `rex`; by default the
    gateway's, and the session the multiplexer would pick), as any other
    client of it does: a window switched to on the client is switched to on
-   the others too. A session that's gone is the default one instead. A
-   multiplexer the gateway doesn't have, or that isn't running, gets a
-   `bye` saying so.
+   the others too. A session that's gone is the default one instead, and so
+   is a multiplexer that isn't running: the gateway's default, in its
+   default session. One the gateway doesn't have, or the default not
+   running, gets a `bye` saying so.
 2. Gateway sends `hello`, then `state`.
 3. Client sends `open` for the panes it wants to show. For each, the gateway
    sends `reset` and one data frame that repaints the pane, then streams its
