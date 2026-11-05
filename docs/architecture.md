@@ -99,7 +99,11 @@ two halves, each optional:
   names the commands the composer's + offers (Claude Code's `/compact`,
   `/rewind`…), and the key that takes the program's suggestion into its
   line whole (Claude Code's Tab), since one cut short to fit the screen
-  can't be read off it.
+  can't be read off it. It says how a sent message comes back to edit
+  (Claude Code: ^C before the reply, else `/rewind`, each putting the
+  message back in its box, where the composer takes it), and what a tab
+  shows for a window the multiplexer named after the program's command
+  (Claude Code's conversation name, from the title it sets).
 
 The halves go by one id. The gateway says which program each pane runs
 (`program` in `state`), and whether it has a view (`view`); the phone looks
