@@ -30,6 +30,7 @@ type Options struct {
 	Session  string             // the session in that one when it doesn't ask, or what it asks for is gone
 	Programs []program.Program  // the programs it knows, by the panes that run them; first match wins
 	Uploads  string             // where files the client sends are saved; UploadDir() if empty
+	Machine  string             // the machine's name, said in hello; MachineName() if empty
 }
 
 type gateway struct {
@@ -77,6 +78,9 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	}
 	if g.uploads.dir == "" {
 		g.uploads.dir = UploadDir()
+	}
+	if g.opts.Machine == "" {
+		g.opts.Machine = MachineName()
 	}
 	defer g.uploads.close()
 	defer g.out.close(2 * time.Second)
@@ -147,6 +151,7 @@ func (g *gateway) attached(name string, c mux.Client) {
 		V:       protocol.Version,
 		Mux:     protocol.Mux{Name: g.about.Name, Version: g.about.Version, Can: g.about.Can},
 		Uploads: g.uploads.dir,
+		Machine: g.opts.Machine,
 	})
 	g.sendState()
 }
