@@ -19,11 +19,11 @@ import (
 )
 
 const (
-	// answer is how long Find waits for the program to say which panes it
-	// reads; past that, it's what it said last.
-	answer = 300 * time.Millisecond
 	// restart is how soon a program that stopped is started again.
 	restart = 5 * time.Second
+	// queued is how many messages can wait for the program to read them;
+	// past that, it isn't reading, and more are dropped.
+	queued = 64
 )
 
 // A Source is a mobile view read by a program run as Command (its path,
@@ -34,7 +34,6 @@ type Source struct {
 	mu      sync.Mutex
 	run     *running
 	started time.Time
-	found   map[string]mobileview.Found // what the program said last
 	closed  bool
 }
 
@@ -42,10 +41,10 @@ type Source struct {
 type running struct {
 	cmd     *exec.Cmd
 	in      io.WriteCloser
-	write   sync.Mutex
-	found   chan map[string]mobileview.Found
+	out     chan []byte // lines on their way to it
 	mu      sync.Mutex
-	readers map[string]func(message) // by pane, while it's read
+	found   map[string]mobileview.Found // what it said last
+	readers map[string]func(message)    // by pane, while it's read
 	done    chan struct{}
 }
 
@@ -96,34 +95,28 @@ type pane struct {
 
 func paneOf(p mobileview.Pane) pane { return pane{ID: p.ID, TTY: p.TTY, Command: p.Command} }
 
-// Find asks the program which panes it reads; if it's slow to say, or not
-// running, it's what it said last.
+// Find asks the program which panes it reads, and says what it said last,
+// without waiting: it's asked every moment or so, on the gateway's one
+// loop. While the program isn't running, it reads none.
 func (s *Source) Find(panes []mobileview.Pane) map[string]mobileview.Found {
 	r := s.running()
-	s.mu.Lock()
-	last := s.found
-	s.mu.Unlock()
 	if r == nil {
-		return last
+		return nil
 	}
 	ps := make([]pane, len(panes))
 	for i, p := range panes {
 		ps[i] = paneOf(p)
 	}
-	if r.send(map[string]any{"find": ps}) != nil {
-		return last
+	r.send(map[string]any{"find": ps})
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[string]mobileview.Found{}
+	for _, p := range panes {
+		if f, ok := r.found[p.ID]; ok {
+			out[p.ID] = f
+		}
 	}
-	select {
-	case f := <-r.found:
-		s.mu.Lock()
-		s.found = f
-		s.mu.Unlock()
-		return f
-	case <-time.After(answer):
-		return last
-	case <-r.done:
-		return last
-	}
+	return out
 }
 
 // Read has the program send what's in the pane until ctx is done, or it
@@ -153,9 +146,7 @@ func (s *Source) Read(ctx context.Context, p mobileview.Pane, send func(mobilevi
 		r.mu.Unlock()
 		r.send(map[string]any{"stop": p.ID})
 	}()
-	if err := r.send(map[string]any{"read": paneOf(p)}); err != nil {
-		return err
-	}
+	r.send(map[string]any{"read": paneOf(p)})
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -206,8 +197,9 @@ func (s *Source) running() *running {
 	if cmd.Start() != nil {
 		return nil
 	}
-	r := &running{cmd: cmd, in: in, found: make(chan map[string]mobileview.Found, 1), readers: map[string]func(message){}, done: make(chan struct{})}
+	r := &running{cmd: cmd, in: in, out: make(chan []byte, queued), readers: map[string]func(message){}, done: make(chan struct{})}
 	go r.listen(out, cmd)
+	go r.write()
 	s.run = r
 	return r
 }
@@ -241,11 +233,9 @@ func (r *running) listen(out io.Reader, cmd *exec.Cmd) {
 			for id, x := range m.Found {
 				f[id] = mobileview.Found{Activity: mobileview.Activity(x.Activity), Since: x.Since}
 			}
-			select {
-			case <-r.found: // an answer no one waited for
-			default:
-			}
-			r.found <- f
+			r.mu.Lock()
+			r.found = f
+			r.mu.Unlock()
 			continue
 		}
 		r.mu.Lock()
@@ -257,13 +247,29 @@ func (r *running) listen(out io.Reader, cmd *exec.Cmd) {
 	}
 }
 
-func (r *running) send(v any) error {
+// send queues a message for the program, dropped if it isn't reading what
+// it's sent: the gateway doesn't wait on it.
+func (r *running) send(v any) {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return err
+		return
 	}
-	r.write.Lock()
-	defer r.write.Unlock()
-	_, err = r.in.Write(append(b, '\n'))
-	return err
+	select {
+	case r.out <- append(b, '\n'):
+	default:
+	}
+}
+
+// write hands the program what's queued for it, in order, until it stops.
+func (r *running) write() {
+	for {
+		select {
+		case b := <-r.out:
+			if _, err := r.in.Write(b); err != nil {
+				return
+			}
+		case <-r.done:
+			return
+		}
+	}
 }

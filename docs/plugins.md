@@ -42,9 +42,11 @@ The `view` program runs while the gateway does, and speaks JSON, a message
 a line, on its stdin and stdout. It's told:
 
 - `{"find": [{"id": "%1", "tty": "/dev/ttys003", "command": "aider"}, …]}`,
-  every moment or so: the panes there are. Say which you read, at once (in
-  under 300 ms, or what you said last stands), and what each is doing if you
-  know: `{"found": {"%1": {"activity": "working", "since": 1730000000000}}}`.
+  every moment or so: the panes there are. Say which you read, and what each
+  is doing if you know:
+  `{"found": {"%1": {"activity": "working", "since": 1730000000000}}}`. The
+  gateway doesn't wait: what you said last stands until you say again. Read
+  what you're sent promptly; messages that pile up unread are dropped.
   `activity` is `working`, `waiting` (for the user to answer something) or
   `idle`; `since` is Unix milliseconds.
 - `{"read": {"id": "%1", "tty": …, "command": …}}`: send what's in the pane,

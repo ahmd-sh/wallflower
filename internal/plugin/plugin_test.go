@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,11 +65,27 @@ func source(t *testing.T) *Source {
 	return &Source{Command: []string{self}}
 }
 
+// said asks until the program has said, as the gateway asks every moment.
+func said(t *testing.T, s *Source, panes []mobileview.Pane) map[string]mobileview.Found {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if f := s.Find(panes); len(f) > 0 {
+			return f
+		}
+	}
+	t.Fatal("the plugin never said which panes it reads")
+	return nil
+}
+
 func TestFindAndRead(t *testing.T) {
 	s := source(t)
+	defer s.Close()
 	panes := []mobileview.Pane{{ID: "%1", Command: "fake"}, {ID: "%2", Command: "zsh"}}
-	if got := s.Find(panes); !reflect.DeepEqual(got, map[string]mobileview.Found{"%1": {Activity: mobileview.Working, Since: 42}}) {
+	if got := said(t, s, panes); !reflect.DeepEqual(got, map[string]mobileview.Found{"%1": {Activity: mobileview.Working, Since: 42}}) {
 		t.Fatalf("found %v", got)
+	}
+	if got := s.Find(panes[1:]); len(got) != 0 {
+		t.Errorf("asked of %%2 alone, found %v", got)
 	}
 	var updates []mobileview.Update
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -83,6 +100,20 @@ func TestFindAndRead(t *testing.T) {
 	}
 	if !reflect.DeepEqual(updates, want) {
 		t.Errorf("updates\n%+v\nwant\n%+v", updates, want)
+	}
+}
+
+// A plugin that doesn't read what it's sent doesn't hold up whoever asks it.
+func TestAStuckPluginHoldsNothingUp(t *testing.T) {
+	s := &Source{Command: []string{"sleep", "30"}}
+	defer s.Close()
+	panes := []mobileview.Pane{{ID: "%1", Command: "fake", TTY: strings.Repeat("x", 4096)}}
+	start := time.Now()
+	for range 1000 {
+		s.Find(panes)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("1000 finds took %v", d)
 	}
 }
 

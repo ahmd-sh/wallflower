@@ -22,8 +22,7 @@ func listen(args []string) error {
 	addr := fs.String("addr", "127.0.0.1:41777", "loopback address to listen on")
 	options := gatewayFlags(fs)
 	fs.Parse(args)
-	opts, err := options()
-	if err != nil {
+	if _, err := options(); err != nil {
 		return err
 	}
 
@@ -38,7 +37,6 @@ func listen(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer stopPlugins(opts)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
@@ -57,6 +55,9 @@ func listen(args []string) error {
 		}
 		go func() {
 			defer conn.Close()
+			// Each connection its own, as serve's are: plugins' programs aren't shared.
+			opts, _ := options()
+			defer stopPlugins(opts)
 			err := gateway.Serve(ctx, conn, conn, opts)
 			fmt.Fprintf(os.Stderr, "wallflower: %s disconnected: %v\n", conn.RemoteAddr(), err)
 		}()
