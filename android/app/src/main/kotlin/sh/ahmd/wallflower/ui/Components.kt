@@ -3,6 +3,7 @@ package sh.ahmd.wallflower.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -97,18 +98,33 @@ internal fun Body(text: String) = Text(
     lineHeight = if (grotesque) 20.sp else TextUnit.Unspecified,
 )
 
+/** A labelled line to type in, showing [hint] while it's empty. */
 @Composable
-internal fun Field(label: String, value: String, keyboard: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+internal fun Field(
+    label: String,
+    value: String,
+    keyboard: KeyboardType = KeyboardType.Text,
+    modifier: Modifier = Modifier,
+    hint: String? = null,
+    onChange: (String) -> Unit,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, color = Palette.dim, style = Type.caption)
+        val style = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp)
         BasicTextField(
             value = value,
             onValueChange = onChange,
             singleLine = true,
-            textStyle = TextStyle(color = Palette.fg, fontFamily = Mono, fontSize = 15.sp),
+            textStyle = style,
             cursorBrush = SolidColor(Palette.orange),
             keyboardOptions = KeyboardOptions(keyboardType = keyboard, autoCorrectEnabled = false),
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Palette.bg1).padding(12.dp),
+            decorationBox = { field ->
+                Box {
+                    if (value.isEmpty() && hint != null) Text(hint, style = style.copy(color = Palette.dim), maxLines = 1)
+                    field()
+                }
+            },
         )
     }
 }
@@ -154,6 +170,21 @@ internal fun copy(context: Context, text: String) {
     val clipboard = context.getSystemService(ClipboardManager::class.java)
     clipboard.setPrimaryClip(ClipData.newPlainText("wallflower", text))
 }
+
+internal fun share(context: Context, text: String) {
+    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+    context.startActivity(Intent.createChooser(send, "Authorize wallflower"))
+}
+
+/** A command to run, or a value to copy, in a box of its own. */
+@Composable
+internal fun Code(text: String) = Text(
+    text,
+    color = Palette.fg,
+    fontFamily = Mono,
+    fontSize = 11.sp,
+    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Palette.bg1).padding(10.dp),
+)
 
 /** A choice among a few, or a key to add: on when [selected]. */
 @Composable

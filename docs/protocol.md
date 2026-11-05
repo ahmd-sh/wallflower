@@ -97,7 +97,7 @@ them at once takes it all as a paste, Enter and all.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `mux`, `uploads`? | the multiplexer, see below; the directory uploads are saved in. Again after a switch |
+| `hello` | `v`, `mux`, `uploads`?, `machine`? | the multiplexer, see below; the directory uploads are saved in; the machine's name, as its owner calls it (a Mac's Computer Name). Again after a switch |
 | `state` | `session`, `name`, `windows` | everything in the session, see below |
 | `reset` | `pane`, `cols`, `rows` | recreate the pane's terminal at this size; the next data frame repaints it |
 | `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `context`?, `title`? | a pane's mobile view, see below |

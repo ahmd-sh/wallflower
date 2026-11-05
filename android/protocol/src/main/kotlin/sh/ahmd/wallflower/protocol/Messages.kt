@@ -165,6 +165,8 @@ data class ServerHello(
     val mux: Mux,
     /** Where uploads are saved: paths under it are uploads. */
     val uploads: String? = null,
+    /** The machine's name, as its owner calls it (a Mac's Computer Name). */
+    val machine: String? = null,
 ) : ServerMessage
 
 /** The multiplexer the session is in (tmux), its version, and what it [can] do beyond what every one does. */

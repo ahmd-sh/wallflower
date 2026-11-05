@@ -60,7 +60,7 @@ func goldenClient(t *testing.T) []byte {
 func goldenServer(t *testing.T) []byte {
 	var b []byte
 	context := 17967
-	b = mustJSON(t, b, ServerHello{V: Version, Mux: Mux{Name: "tmux", Version: "3.8", Can: []string{CanBindings}}, Uploads: "/Users/me/Library/Caches/wallflower/uploads"})
+	b = mustJSON(t, b, ServerHello{V: Version, Mux: Mux{Name: "tmux", Version: "3.8", Can: []string{CanBindings}}, Uploads: "/Users/me/Library/Caches/wallflower/uploads", Machine: "vishingstar"})
 	b = mustJSON(t, b, State{Session: "$1", Name: "o", Windows: []Window{{
 		ID: "@1", Index: 1, Name: "base", Active: true,
 		Panes: []Pane{

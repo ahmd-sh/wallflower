@@ -94,6 +94,10 @@ class Session(
     /** The sessions in every multiplexer on the Mac, as last listed ([listSessions]). */
     val sessions: StateFlow<SessionList?> = _sessions.asStateFlow()
 
+    private val _machine = MutableStateFlow<String?>(null)
+    /** The Mac's name, as the gateway last said. */
+    val machine: StateFlow<String?> = _machine.asStateFlow()
+
     private val _uploadDir = MutableStateFlow<String?>(null)
     /** Where the gateway saves uploads: paths under it in what's sent are uploads, pasted on their own. */
     val uploadDir: StateFlow<String?> = _uploadDir.asStateFlow()
@@ -121,6 +125,7 @@ class Session(
                     _mux.value = m.mux
                     askingMux = m.mux.name
                     _uploadDir.value = m.uploads
+                    m.machine?.let { _machine.value = it }
                 }
                 is State -> {
                     askingSession = m.session
@@ -157,7 +162,7 @@ class Session(
         link.stop()
     }
 
-    /** Tries again now, after the user dealt with a [Status.NeedsUser]. */
+    /** Tries again now: after the user dealt with a [Status.NeedsUser], or rather than wait for the next try. */
     fun retry() = link.retry()
 
     /**

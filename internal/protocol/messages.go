@@ -186,6 +186,9 @@ type ServerHello struct {
 	// Uploads is the directory uploads are saved in, so a client can tell
 	// their paths from others in what it sends.
 	Uploads string `json:"uploads,omitempty"`
+	// Machine is the name of the machine the gateway runs on, as its owner
+	// calls it (a Mac's Computer Name), for a client to say where it is.
+	Machine string `json:"machine,omitempty"`
 }
 
 // Mux is the multiplexer the session is in (tmux), its version, and what

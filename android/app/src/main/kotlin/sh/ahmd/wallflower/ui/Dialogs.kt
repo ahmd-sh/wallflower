@@ -49,7 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.PopupProperties
 
-enum class Glyph { Plus, Close, Power, Chat, Terminal, Spark, Copy, Check }
+enum class Glyph { Plus, Close, Chat, Terminal, Spark, Copy, Check }
 
 /** Line icons, drawn to match the send button rather than pulled from an icon set. */
 @Composable
@@ -67,15 +67,6 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
                 val d = r * 0.75f
                 drawLine(color, Offset(c.x - d, c.y - d), Offset(c.x + d, c.y + d), w, StrokeCap.Round)
                 drawLine(color, Offset(c.x + d, c.y - d), Offset(c.x - d, c.y + d), w, StrokeCap.Round)
-            }
-            Glyph.Power -> {
-                val ring = r * 0.85f
-                drawArc(
-                    color, startAngle = -50f, sweepAngle = 280f, useCenter = false,
-                    topLeft = Offset(c.x - ring, c.y - ring + r * 0.1f), size = Size(ring * 2, ring * 2),
-                    style = Stroke(w, cap = StrokeCap.Round),
-                )
-                drawLine(color, Offset(c.x, c.y - r), Offset(c.x, c.y), w, StrokeCap.Round)
             }
             Glyph.Chat -> {
                 val top = c.y - r * 0.8f
