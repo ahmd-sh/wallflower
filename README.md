@@ -1,10 +1,12 @@
 # wallflower
 
 A phone-first shell around your terminal. Your multiplexer stays the
-server (tmux today); a small gateway on the Mac drives it and serves a lean,
+server (tmux or Rex); a small gateway on the Mac drives it and serves a lean,
 versioned protocol to clients (an Android app first) over SSH. How it fits
 together, and where multiplexers and programs plug in:
-[docs/architecture.md](docs/architecture.md).
+[docs/architecture.md](docs/architecture.md). Programs beyond the built-in
+ones (Claude Code, shells) can have plugins of your own:
+[docs/plugins.md](docs/plugins.md).
 
 ```
 phone app ──ssh stdio──▶ wallflower serve (one per connection) ──tmux -C──▶ tmux server
@@ -13,8 +15,9 @@ phone app ──ssh stdio──▶ wallflower serve (one per connection) ──t
 ## Status
 
 The gateway works end to end. The Android app (`android/`) renders live panes
-with libghostty-vt, with window tabs, native scrollback and a composer; it
-connects over a development TCP transport for now, SSH is next.
+with libghostty-vt, with window tabs, native scrollback, a composer, mobile
+views of the programs that have one, and the sessions of every multiplexer;
+it connects over SSH (Tailscale), or a development TCP transport.
 
 <img src="docs/first-light.png" width="300" alt="A tmux pane in wallflower on Android"> The wire format is
 [docs/protocol.md](docs/protocol.md), pinned by golden frames in `testdata/`
