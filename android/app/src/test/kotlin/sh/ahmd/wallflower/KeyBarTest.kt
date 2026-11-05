@@ -45,8 +45,8 @@ class KeyBarTest {
     }
 
     @Test
-    fun claudeStopsWithEscapeAndShellsWithCtrlC() {
-        assertEquals(listOf("Escape"), bar.profileFor("claude").stop)
+    fun claudeAndShellsStopWithCtrlC() {
+        assertEquals(listOf("C-c"), bar.profileFor("claude").stop)
         assertEquals(listOf("C-c"), bar.profileFor("zsh").stop)
     }
 

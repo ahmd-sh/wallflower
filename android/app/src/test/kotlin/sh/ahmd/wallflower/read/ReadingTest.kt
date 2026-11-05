@@ -19,6 +19,16 @@ class ReadingTest {
     }
 
     @Test
+    fun theLatestMessageBackInTheProgramsLineIsTakenBack() {
+        val r = Reading().apply(
+            Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "said", "fix it"), text("a"), WireEntry("u2", "user", "said", "now write\nthe tests"))),
+        )
+        assertEquals(listOf("u1", "a"), r.takenBack("now write the tests").shown.map { it.id })
+        assertEquals(r, r.takenBack("fix it")) // only the latest: an earlier one typed again is just typed
+        assertEquals(r, r.takenBack(""))
+    }
+
+    @Test
     fun entriesReplaceTheirsByIdOrComeLast() {
         val r = Reading()
             .apply(Entries("%1", reset = true, more = true, entries = listOf(text("a"), WireEntry("t", "program", "step", "ls", name = "Bash", status = "running"))))

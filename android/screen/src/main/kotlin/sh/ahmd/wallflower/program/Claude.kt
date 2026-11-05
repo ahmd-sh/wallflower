@@ -27,7 +27,7 @@ object Claude : Program {
     override val keyBar = KeyDefaults(
         "claude code",
         listOf("Escape", "BTab", "Up", "Down", "Enter", "1", "2", "3", "C-o", "C-c"),
-        stop = listOf("Escape"), // Claude stops what it's doing at Esc
+        stop = listOf("C-c"), // vim mode's INSERT takes Esc to leave it, not to stop Claude
     )
 
     /**
@@ -110,6 +110,13 @@ object Claude : Program {
      */
     override fun clear(line: InputLine, keys: List<String>, unseen: Boolean): List<String> =
         (if (unseen && keys == clearKeys) listOf("A") else emptyList()) + super.clear(line, keys, unseen)
+
+    /**
+     * Stopped before it replies, Claude puts the message back in its box. Any
+     * message comes back by a /rewind to before it, picked from Claude's list.
+     */
+    override fun recall(latest: Boolean, working: Boolean): Recall =
+        if (latest && working) Recall.Keys(listOf("C-c")) else Recall.Command("/rewind")
 
     /** Restoring the conversation from /rewind takes it back to before the message the prompt quotes. */
     override fun picked(prompt: Prompt, option: Prompt.Option): Effect? {

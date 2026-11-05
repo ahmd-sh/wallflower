@@ -66,7 +66,8 @@ import sh.ahmd.wallflower.ui.haptics
  * typing; a swipe right brings either into the box to edit (a tap is just
  * the box's, to type something else). A suggestion cut short to fit the
  * screen ("…") comes in whole: the program takes it into its line
- * ([onAcceptSuggestion]), and it comes from there. What's in the box replaces the line
+ * ([onAcceptSuggestion]), and it comes from there. So does a sent message
+ * asked back to edit ([recalled] changes), once the program puts it back. What's in the box replaces the line
  * when sent, so the box is exactly what runs. The button sends (held: types
  * it in without Enter), enters the app's line when only that has text, or
  * stops.
@@ -103,6 +104,8 @@ internal fun Composer(
     onEditKeys: () -> Unit,
     commands: List<Command> = emptyList(),
     onAcceptSuggestion: (() -> Unit)? = null,
+    recalled: Long = 0L,
+    stoppable: Boolean = true,
 ) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -152,6 +155,19 @@ internal fun Composer(
             accepting = null
             haptics.reject()
             take(cut.removeSuffix("…"))
+        }
+    }
+    var recalling by remember { mutableStateOf(false) }
+    LaunchedEffect(recalled) {
+        if (recalled == 0L) return@LaunchedEffect
+        recalling = true
+        delay(RECALL_WAIT_MS) // long enough to pick it from a list
+        recalling = false
+    }
+    LaunchedEffect(recalling, pending) {
+        if (recalling && pending.isNotEmpty()) {
+            recalling = false
+            take(pending)
         }
     }
     val whole = remember(paths) { paths?.let(::WholeUploads) }
@@ -247,7 +263,7 @@ internal fun Composer(
                     pending.isNotEmpty() -> Action.Enter
                     else -> Action.Stop
                 },
-                connected = connected,
+                connected = connected && (stoppable || typing != null || !empty || pending.isNotEmpty()),
                 label = if (typing == null || sendKeys == listOf("Enter")) null else KeyBar.labelOf(sendKeys),
                 onSend = { enter -> if (onSend(state.text.toString(), enter)) state.clearText() },
                 onEnter = onEnter,
@@ -259,6 +275,9 @@ internal fun Composer(
 
 /** How long a suggestion asked for whole has to come in before what was seen of it does. */
 private const val ACCEPT_WAIT_MS = 1_500L
+
+/** How long a message asked back has to come back into the program's line to be taken into the box. */
+private const val RECALL_WAIT_MS = 60_000L
 
 /** A command a draft starts with. */
 private val leadingCommand = Regex("^/[^\\s]+\\s*")

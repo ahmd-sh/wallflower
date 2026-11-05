@@ -2,7 +2,13 @@ package sh.ahmd.wallflower.ui
 
 import sh.ahmd.wallflower.program.Effect
 import sh.ahmd.wallflower.program.Program
+import sh.ahmd.wallflower.program.Recall
 import sh.ahmd.wallflower.protocol.Pane
+import sh.ahmd.wallflower.read.Activity
+import sh.ahmd.wallflower.read.Entry
+import sh.ahmd.wallflower.read.Party
+import sh.ahmd.wallflower.read.Reading
+import sh.ahmd.wallflower.read.activityOf
 import sh.ahmd.wallflower.screen.InputLine
 import sh.ahmd.wallflower.screen.Prompt
 import sh.ahmd.wallflower.session.Session
@@ -41,7 +47,27 @@ internal class PaneActions(
         }
     }
 
-    fun stop() = keys(stopKeys)
+    /** Stops the program, unless it says it's idle, when a stop can mean more (twice, ^C quits Claude Code). */
+    fun stop() {
+        if (activityOf(pane) != Activity.Idle) keys(stopKeys)
+    }
+
+    /**
+     * Brings the user's [message] back into the program's input line, to edit,
+     * if the program can; true if it's on its way. [line]: what the line holds
+     * now, which a command sent for it replaces.
+     */
+    fun recall(message: Entry.Said, reading: Reading, line: InputLine?): Boolean {
+        val latest = reading.entries.lastOrNull { it is Entry.Said && it.by == Party.User }?.id == message.id
+        return when (val r = program.recall(latest, activityOf(pane) == Activity.Working)) {
+            is Recall.Keys -> {
+                keys(r.keys)
+                true
+            }
+            is Recall.Command -> send(r.text, enter = true, line, unseen = true)
+            null -> false
+        }
+    }
 
     /** Whether anything empties its input line. */
     val clears: Boolean get() = clearKeys.isNotEmpty()

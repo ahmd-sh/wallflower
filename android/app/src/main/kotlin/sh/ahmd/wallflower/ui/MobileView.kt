@@ -23,6 +23,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -117,6 +118,8 @@ fun MobileView(
     onPicked: (Prompt, Prompt.Option) -> Unit = { _, _ -> },
     /** Sends the program its compact command, from the context button; null while it can't. */
     onCompact: (() -> Unit)? = null,
+    /** Asks for one of the user's messages back, to edit; null while it can't be. */
+    onEdit: ((Entry.Said) -> Unit)? = null,
     /** On screen, so what moves moves; a page beside it holds still. */
     live: Boolean = true,
 ) = CompositionLocalProvider(LocalLive provides live) {
@@ -218,7 +221,7 @@ fun MobileView(
                         }
                         items(items.asReversed(), key = { it.key }, contentType = { it::class }) {
                             Box(Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())) {
-                                ItemView(it, picture, ongoing = status != null && it === newest, beside = context.takeIf { _ -> it === newest })
+                                ItemView(it, picture, ongoing = status != null && it === newest, beside = context.takeIf { _ -> it === newest }, onEdit = onEdit)
                             }
                         }
                         if (reading.more) item(key = "more") { Note("earlier messages are in the terminal") }
@@ -264,22 +267,31 @@ private fun Item.copies(ongoing: Boolean) = this is Item.Said && last && !ongoin
 
 /** [ongoing]: the newest item of a turn still going, whose reply isn't the last word yet. [beside]: on its copy row's right. */
 @Composable
-private fun ItemView(item: Item, picture: suspend (String) -> ByteArray?, ongoing: Boolean, beside: (@Composable () -> Unit)? = null) {
+private fun ItemView(
+    item: Item,
+    picture: suspend (String) -> ByteArray?,
+    ongoing: Boolean,
+    beside: (@Composable () -> Unit)? = null,
+    onEdit: ((Entry.Said) -> Unit)? = null,
+) {
     when (item) {
         is Item.Steps -> Steps(item.entries)
         is Item.Said -> when (val e = item.entry) {
             is Entry.Picture -> Picture(e, picture)
             is Entry.Note -> Note(e.text)
-            is Entry.Said -> if (e.by == Party.User) Prompt(e.text) else Reply(e.text, copyable = item.copies(ongoing), beside)
+            is Entry.Said -> if (e.by == Party.User) Prompt(e.text, onEdit?.let { { it(e) } }) else Reply(e.text, copyable = item.copies(ongoing), beside)
             is Entry.Step, is Entry.Thought -> Unit // folded into steps
         }
     }
 }
 
+/** Something the user said: tapped, it opens if it's cut short; held, it offers to [onEdit] it and send it again. */
 @Composable
-private fun Prompt(text: String) {
+private fun Prompt(text: String, onEdit: (() -> Unit)?) {
     var open by remember { mutableStateOf(false) }
     var cut by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    val copier = rememberCopier()
     val style = TextStyle(color = Palette.fg, fontFamily = words, fontSize = wordSize(14.sp, 15.sp), lineHeight = wordSize(21.sp, 22.sp))
     Column(Modifier.fillMaxWidth().padding(start = 40.dp), horizontalAlignment = Alignment.End) {
         Column(
@@ -287,7 +299,11 @@ private fun Prompt(text: String) {
                 .animateContentSize(Motion.spatial())
                 .clip(RoundedCornerShape(18.dp))
                 .background(Palette.bg2)
-                .clickable { open = !open }
+                .combinedClickable(
+                    hapticFeedbackEnabled = false, // the menu's opening is felt, as the setting allows
+                    onClick = { open = !open },
+                    onLongClick = { menu = true },
+                )
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
             Text(
@@ -299,6 +315,14 @@ private fun Prompt(text: String) {
             )
             // What's cut off is said on a line of its own, as something to open.
             if (cut && !open) Text("…", style = style.copy(color = Palette.blue, fontSize = 20.sp, fontWeight = FontWeight.Bold, lineHeight = 16.sp))
+            PopupMenu(
+                expanded = menu,
+                onDismiss = { menu = false },
+                actions = listOfNotNull(
+                    onEdit?.let { edit -> MenuAction("edit") { menu = false; edit() } },
+                    MenuAction("copy") { menu = false; copier.copy(text) },
+                ),
+            )
         }
         CopyIcon { text }
     }

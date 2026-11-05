@@ -56,6 +56,13 @@ interface Program {
     /** Commands the composer's + offers for the program's panes, which start what's sent. */
     val commands: List<Command> get() = emptyList()
 
+    /**
+     * What brings a message the user sent back into the input line, to edit
+     * and send again, if the program can: [latest] being their newest, which
+     * the program is still on while [working].
+     */
+    fun recall(latest: Boolean, working: Boolean): Recall? = null
+
     /** What picking [option] of [prompt] does besides answering it, if wallflower needs to know. */
     fun picked(prompt: Prompt, option: Prompt.Option): Effect? = null
 
@@ -71,6 +78,13 @@ data class KeyDefaults(val name: String, val keys: List<String>, val stop: List<
 
 /** A command a program takes, as the + offers it: its [text], and what it's [about]. */
 data class Command(val text: String, val about: String)
+
+/** What brings back a message the user sent: [Keys], or a [Command] sent as if typed. */
+sealed interface Recall {
+    data class Keys(val keys: List<String>) : Recall
+
+    data class Command(val text: String) : Recall
+}
 
 /** A notification as the phone shows it. */
 data class Notice(val title: String?, val body: String)

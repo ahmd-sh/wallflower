@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -310,6 +311,7 @@ private fun TerminalScreen(
         }
         BackHandler(enabled = overview.open) { overview.hide(into = pane?.id) }
         var view by remember { mutableStateOf<TerminalView?>(null) } // the shown pane's
+        var recalled by remember(pane?.id) { mutableLongStateOf(0L) } // when a message was last asked back to edit
         val typing = remember { Typing() }
         var paneBounds by remember { mutableStateOf(Rect.Zero) }
         var position by remember { mutableFloatStateOf(0f) }
@@ -320,7 +322,7 @@ private fun TerminalScreen(
         fun Page(p: Pane?, current: Boolean, swipe: Swipe?) = PanePage(
             actions = remember(session, p, bar) { p?.let(::actionsOf) },
             terminal = p?.let { terminals[it.id] },
-            reading = p?.takeIf { it.id in mobileViews }?.let { readings[it.id] ?: Reading() },
+            reading = p?.takeIf { it.id in mobileViews }?.let { readings[it.id] ?: Reading() }?.let { if (current) it.takenBack(screen.line?.text) else it },
             current = current,
             swipe = swipe,
             settleHeight = settleHeight,
@@ -330,6 +332,7 @@ private fun TerminalScreen(
             onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
             onView = { view = it },
             onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
+            onRecalled = { recalled = System.nanoTime() },
         )
 
         // The panes take what the composer leaves; the cards cover both. While the
@@ -435,6 +438,8 @@ private fun TerminalScreen(
                             returnKeys = actions.returnKeys,
                             commands = actions.program.commands,
                             onAcceptSuggestion = actions.acceptSuggestion,
+                            recalled = recalled,
+                            stoppable = activity != Activity.Idle,
                             onType = { text ->
                                 view?.scrollToBottom()
                                 if (screen.line != null) view?.predict(text) // at a prompt, which echoes
