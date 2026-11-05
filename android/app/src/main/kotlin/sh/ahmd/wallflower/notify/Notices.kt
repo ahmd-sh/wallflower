@@ -104,6 +104,7 @@ class Notices(private val context: Context) {
         is Blocked.UnknownHost -> "Tap to confirm it's really $mac."
         is Blocked.HostKeyChanged -> "Its identity changed. Tap to check before reconnecting."
         is Blocked.NotAuthorized -> "It doesn't let this phone in any more. Tap to see what to do."
+        is Blocked.Outdated -> if (blocked.gateway < blocked.app) "Update wallflower on $mac to reconnect." else "Update this app to reconnect."
         is Blocked.Refused -> "Tap to see why."
     }
 

@@ -1,5 +1,6 @@
 package sh.ahmd.wallflower.session
 
+import java.io.IOException
 import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
@@ -32,8 +33,12 @@ import sh.ahmd.wallflower.protocol.VERSION
 sealed interface Status {
     data object Connecting : Status
     data class Connected(val mux: Mux) : Status
-    /** Retrying on its own. */
-    data class Disconnected(val reason: String) : Status
+    /**
+     * Retrying on its own: [trying] now, or next at [retryAt]; down since
+     * [since], its last try ended for [reason]. Times are the session's
+     * clock's.
+     */
+    data class Disconnected(val reason: String, val since: Long, val retryAt: Long, val trying: Boolean = false) : Status
     /** Waiting for the user, then [Session.retry]. */
     data class NeedsUser(val blocked: Blocked) : Status
 }
@@ -118,7 +123,7 @@ internal class Link(
         job = scope.launch(Dispatchers.IO) {
             var backoff = 500L
             while (isActive) {
-                _status.value = Status.Connecting
+                _status.value = (_status.value as? Status.Disconnected)?.copy(trying = true) ?: Status.Connecting
                 retries.tryReceive() // a retry asked for before this attempt is this attempt
                 greeted = false
                 val reason = try {
@@ -132,7 +137,8 @@ internal class Link(
                     e.message ?: e.javaClass.simpleName
                 }
                 if (greeted) backoff = 500L // it worked a while; a gateway that won't start doesn't get hammered
-                if (_status.value !is Status.Disconnected) _status.value = Status.Disconnected(reason)
+                val now = clock()
+                _status.value = Status.Disconnected(reason, (_status.value as? Status.Disconnected)?.since ?: now, now + backoff)
                 withTimeoutOrNull(backoff) { retries.receive() }
                 backoff = (backoff * 2).coerceAtMost(5_000)
             }
@@ -214,7 +220,7 @@ internal class Link(
     private fun handle(l: Live, m: ServerMessage) {
         when (m) {
             is ServerHello -> {
-                if (m.v != VERSION) throw Blocked.Refused("the Mac's wallflower speaks protocol ${m.v}, this app $VERSION")
+                if (m.v != VERSION) throw Blocked.Outdated(m.v, VERSION)
                 // Hello again: the session switched, so what was kept of the last goes, as for a new connection.
                 if (greeted) synchronized(lock) { events.linked() }
                 greeted = true
@@ -228,12 +234,16 @@ internal class Link(
                     clear()
                 }
             }
-            is Bye -> if (greeted) _status.value = Status.Disconnected(m.reason) else throw Blocked.Refused(m.reason)
+            is Bye -> throw if (greeted) IOException(m.reason) else refusal(m.reason)
             is ErrorMessage -> android.util.Log.w("wallflower", "gateway: ${m.message}")
             else -> Unit
         }
         events.message(m)
     }
+
+    /** Why the gateway turned the connection down: a protocol version it doesn't speak says which it does. */
+    private fun refusal(reason: String): Blocked =
+        Regex("""speaks (\d+)""").find(reason)?.let { Blocked.Outdated(it.groupValues[1].toInt(), VERSION) } ?: Blocked.Refused(reason)
 
     /** Mobile connections die silently; an unanswered ping closes the socket so it reconnects. */
     private suspend fun heartbeat(l: Live) {

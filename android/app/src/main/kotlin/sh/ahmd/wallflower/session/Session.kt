@@ -162,7 +162,7 @@ class Session(
         link.stop()
     }
 
-    /** Tries again now, after the user dealt with a [Status.NeedsUser]. */
+    /** Tries again now: after the user dealt with a [Status.NeedsUser], or rather than wait for the next try. */
     fun retry() = link.retry()
 
     /**

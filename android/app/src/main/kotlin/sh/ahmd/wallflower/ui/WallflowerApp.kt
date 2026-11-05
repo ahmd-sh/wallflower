@@ -3,6 +3,7 @@ package sh.ahmd.wallflower.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -44,6 +45,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.program.Programs
@@ -53,9 +55,11 @@ import sh.ahmd.wallflower.read.Activity
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.activityOf
 import sh.ahmd.wallflower.session.Blocked
+import sh.ahmd.wallflower.session.Host
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Status
 import sh.ahmd.wallflower.session.activePane
+import sh.ahmd.wallflower.session.called
 import sh.ahmd.wallflower.session.shownPane
 import sh.ahmd.wallflower.terminal.TerminalView
 import sh.ahmd.wallflower.ui.composer.Attachments
@@ -112,7 +116,8 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
             screen = Screen.Terminal
         }
     }
-    if (host == null || current == null) {
+    val mac = host
+    if (mac == null || current == null) {
         setup()
         return
     }
@@ -121,6 +126,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
         key(current) {
             TerminalScreen(
                 current,
+                mac,
                 model,
                 unlock,
                 onProgram = { command, id -> program = command; programId = id },
@@ -180,11 +186,13 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
  * (each its terminal, or its mobile view), the composer, and the cards of
  * every pane. What's shown is the phone's own; the Mac follows. A terminal is
  * typed into straight from the keyboard, which a tap on it brings up; a
- * mobile view is written for in the composer's box.
+ * mobile view is written for in the composer's box. While the connection
+ * to [host] is down, it says so, and how it's coming back.
  */
 @Composable
 private fun TerminalScreen(
     session: Session,
+    host: Host,
     model: AppModel,
     unlock: (onDone: (Boolean) -> Unit) -> Unit,
     onProgram: (command: String?, program: String?) -> Unit,
@@ -262,19 +270,42 @@ private fun TerminalScreen(
         }
         CloseDialog(closing, windows)
 
+        val machine = host.called
+        val address = if (host.dev) "development transport" else "${host.user}@${host.address}:${host.port}"
         TabBar(
             windows = windows,
             selected = window?.id,
             status = status,
+            machine = machine,
+            address = address,
             session = state?.name,
             onSelect = { session.view(it) },
             onNew = { session.newWindow() },
             onRename = { renaming = it },
             onClose = { closing.close(it, null) },
+            onRetry = session::retry,
             onSessions = onSessions,
             onSettings = onSettings,
             onExit = onExit,
         )
+
+        // Down a moment, as across a network change, it isn't worth saying; down longer, what was shown dims beneath how it's coming back.
+        val down = status == Status.Connecting || status is Status.Disconnected
+        var saysDown by remember { mutableStateOf(false) }
+        LaunchedEffect(down) {
+            if (down) delay(DOWN_UNSAID_MS)
+            saysDown = down
+        }
+        val reconnecting = saysDown && state != null
+        val lastDown = rememberLast(status.takeIf { down })
+        AnimatedVisibility(
+            reconnecting,
+            enter = fadeIn(Motion.effect()) + expandVertically(Motion.spatial()),
+            exit = fadeOut(Motion.effect()) + shrinkVertically(Motion.spatial()),
+        ) {
+            lastDown?.let { Reconnecting(it, machine, session::retry) }
+        }
+        val shown by animateFloatAsState(if (reconnecting) 0.45f else 1f, Motion.effect(), label = "down")
 
         val blocked = (status as? Status.NeedsUser)?.blocked
         // Connecting is the moment to ask for the fingerprint, so ask right away.
@@ -290,6 +321,7 @@ private fun TerminalScreen(
             lastBlocked?.let {
                 BlockedCard(
                     blocked = it,
+                    machine = machine,
                     unlockSeconds = model.unlockSeconds.value,
                     authorizeCommand = model::authorizeCommand,
                     onUnlock = { unlock { ok -> if (ok) session.retry() } },
@@ -341,7 +373,8 @@ private fun TerminalScreen(
                         Modifier
                             .fillMaxSize()
                             .onSizeChanged { areaHeight = it.height }
-                            .onGloballyPositioned { paneBounds = it.rootRect() },
+                            .onGloballyPositioned { paneBounds = it.rootRect() }
+                            .graphicsLayer { alpha = shown },
                     ) {
                         Box(
                             Modifier
@@ -378,6 +411,8 @@ private fun TerminalScreen(
                                 }
                             }
                         }
+                        val first by animateFloatAsState(if (state == null) 1f else 0f, Motion.effect(), label = "connecting")
+                        if (first > 0f) Connecting(status, machine, address, session::retry, Modifier.graphicsLayer { alpha = first })
                         if (window != null && pane != null) {
                             Row(
                                 Modifier.align(Alignment.TopEnd).graphicsLayer { alpha = 1f - overview.zoom.value },
@@ -499,3 +534,6 @@ private fun TerminalScreen(
         }
     }
 }
+
+/** How long the connection is down before the screen says so. */
+private const val DOWN_UNSAID_MS = 1_500L

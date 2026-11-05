@@ -3,6 +3,7 @@ package sh.ahmd.wallflower.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -154,6 +155,21 @@ internal fun copy(context: Context, text: String) {
     val clipboard = context.getSystemService(ClipboardManager::class.java)
     clipboard.setPrimaryClip(ClipData.newPlainText("wallflower", text))
 }
+
+internal fun share(context: Context, text: String) {
+    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+    context.startActivity(Intent.createChooser(send, "Authorize wallflower"))
+}
+
+/** A command to run, or a value to copy, in a box of its own. */
+@Composable
+internal fun Code(text: String) = Text(
+    text,
+    color = Palette.fg,
+    fontFamily = Mono,
+    fontSize = 11.sp,
+    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Palette.bg1).padding(10.dp),
+)
 
 /** A choice among a few, or a key to add: on when [selected]. */
 @Composable

@@ -200,6 +200,39 @@ class SessionTest {
     }
 
     @Test
+    fun aDroppedConnectionSaysWhyWhenItTriesNextAndSinceWhenItsDown() {
+        val first = connect()
+        session.start(56, 20)
+        first.send(ServerHello(VERSION, TMUX))
+        eventually { session.status.first { it is Status.Connected } }
+        first.send(Bye("tmux exited"))
+        val down = eventually { session.status.first { it is Status.Disconnected && !it.trying } } as Status.Disconnected
+        assertEquals("tmux exited", down.reason)
+        assertTrue(down.retryAt > down.since)
+
+        // Trying again (with no gateway yet), it's been down since the same moment.
+        val trying = eventually { session.status.first { it is Status.Disconnected && it.trying } } as Status.Disconnected
+        assertEquals(down.since, trying.since)
+        connect().send(ServerHello(VERSION, TMUX))
+        eventually { session.status.first { it is Status.Connected } }
+    }
+
+    @Test
+    fun aGatewayOfAnotherProtocolVersionAsksForTheOlderToBeUpdated() {
+        val first = connect()
+        session.start(56, 20)
+        first.send(Bye("protocol version $VERSION not supported (gateway speaks ${VERSION - 1})"))
+        val refused = eventually { session.status.first { it is Status.NeedsUser } } as Status.NeedsUser
+        val older = refused.blocked as Blocked.Outdated
+        assertEquals(VERSION - 1 to VERSION, older.gateway to older.app)
+
+        connect().send(ServerHello(VERSION + 1, TMUX))
+        session.retry()
+        val newer = eventually { session.status.first { (it as? Status.NeedsUser)?.blocked?.let { b -> b is Blocked.Outdated && b.gateway == VERSION + 1 } == true } }
+        assertEquals(VERSION, ((newer as Status.NeedsUser).blocked as Blocked.Outdated).app)
+    }
+
+    @Test
     fun aGatewayThatTurnsTheConnectionDownWaitsForTheUser() {
         val g = connect()
         session.start(56, 20)

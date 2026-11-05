@@ -29,8 +29,11 @@ sealed class Blocked(message: String) : Exception(message) {
     /** The Mac doesn't accept this phone's key yet. */
     class NotAuthorized : Blocked("this phone's key isn't authorized on the Mac")
 
-    /** The gateway turned the connection down before it started, e.g. a protocol version it doesn't speak. */
+    /** The gateway turned the connection down before it started, e.g. for a multiplexer it doesn't have. */
     class Refused(val reason: String) : Blocked(reason)
+
+    /** The Mac's wallflower speaks protocol [gateway], this app [app]: the older needs updating. */
+    class Outdated(val gateway: Int, val app: Int) : Blocked("the Mac's wallflower speaks protocol $gateway, this app $app")
 }
 
 /** Connects with the hardware key and runs the gateway in an exec channel. */
