@@ -47,11 +47,15 @@ data class Reading(
 
     private fun bare(text: String) = text.filterNot(Char::isWhitespace)
 
-    /** With [new] entries: each replaces the one with its id, or comes last; the oldest go past [MAX_ENTRIES]. */
+    /**
+     * With [new] entries: each replaces the one with its id, or comes last; the oldest go past [MAX_ENTRIES].
+     * A message of the user's new among them ends what was [rewound]: the program has recorded more.
+     */
     fun with(new: List<Entry>): Reading {
         if (new.isEmpty()) return this
         val at = HashMap<String, Int>(entries.size)
         entries.forEachIndexed { i, e -> at[e.id] = i }
+        val spoke = new.any { it is Entry.Said && it.by == Party.User && it.id !in at }
         val next = entries.toMutableList()
         for (e in new) {
             val i = at[e.id]
@@ -63,7 +67,7 @@ data class Reading(
             }
         }
         val dropped = (next.size - MAX_ENTRIES).coerceAtLeast(0)
-        return copy(entries = if (dropped > 0) next.drop(dropped) else next, more = more || dropped > 0)
+        return copy(entries = if (dropped > 0) next.drop(dropped) else next, more = more || dropped > 0, rewound = if (spoke) null else rewound)
     }
 
     companion object {

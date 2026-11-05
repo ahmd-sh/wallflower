@@ -30,6 +30,9 @@ class ReadingTest {
             Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "said", "rename the gateway's options to settings"), text("a"), WireEntry("u2", "user", "said", "go on"))),
         )
         assertEquals(emptyList<String>(), long.takenBack("rename the gateway's options to settings").shown.map { it.id }) // rewound to on the Mac
+        // Sent again as it was, not taken back after all: the next message recorded ends it.
+        val again = r.takenBack("now write the tests").apply(Entries("%1", entries = listOf(WireEntry("u3", "user", "said", "now write the tests"))))
+        assertEquals(listOf("u1", "a", "u2", "u3"), again.shown.map { it.id })
     }
 
     @Test
