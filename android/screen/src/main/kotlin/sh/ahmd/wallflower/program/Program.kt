@@ -102,7 +102,20 @@ sealed interface Effect {
     class Rewound(val said: (String) -> Boolean) : Effect
 }
 
-/** The programs wallflower ships, by the id the gateway names a pane's program by. */
+/**
+ * A program the phone has no half of its own for, as a plugin the user gave
+ * the gateway describes it, in data, since the phone loads no code: its key
+ * bar, commands, and the keys that start a new line and empty one. It reads
+ * a line only from prompt marks (OSC 133), if it makes them.
+ */
+class Supplied(
+    override val keyBar: KeyDefaults?,
+    override val commands: List<Command>,
+    override val newlineKeys: List<String>?,
+    override val clearKeys: List<String>,
+) : Program by Shell(clearKeys, keyBar)
+
+/** The programs wallflower ships, and those the gateway's plugins describe, by the id the gateway names a pane's program by. */
 object Programs {
     private val shells = KeyDefaults("shell", listOf("Tab", "Up", "Down", "Left", "Right", "C-r", "C-c", "C-d", "Escape"))
     private val other = Shell()
@@ -113,6 +126,17 @@ object Programs {
         "shell" to Shell(keyBar = shells),
     )
 
-    /** A pane's program, by its id; one wallflower doesn't ship (or none) is a plain terminal's. */
-    fun of(id: String?): Program = builtin[id?.lowercase()] ?: other
+    @Volatile
+    private var supplied: Map<String, Program> = emptyMap()
+
+    /** The programs the gateway's plugins describe, by id, in place of those before. */
+    fun supply(programs: Map<String, Program>) {
+        supplied = programs.mapKeys { it.key.lowercase() }
+    }
+
+    /** A program a plugin of the user's describes, by its id; null if it's one wallflower ships, or none is. */
+    fun supplied(id: String?): Program? = id?.lowercase()?.takeIf { it !in builtin }?.let { supplied[it] }
+
+    /** A pane's program, by its id; one nothing describes (or none) is a plain terminal's. */
+    fun of(id: String?): Program = id?.lowercase()?.let { builtin[it] ?: supplied[it] } ?: other
 }

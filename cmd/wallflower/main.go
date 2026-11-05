@@ -48,13 +48,28 @@ func gatewayFlags(fs *flag.FlagSet) func() (gateway.Options, error) {
 	rexServer := fs.String("rex", "", "Rex server's socket (default: Rex.app's)")
 	session := fs.String("t", "", "session to attach to when the client doesn't name one")
 	claudeDir := fs.String("claude", defaultClaudeDir(), "Claude Code's data, for its mobile views (empty: none)")
+	plugins := fs.String("plugins", defaultPluginDir(), "plugins of your own, a JSON file each (docs/plugins.md)")
 	return func() (gateway.Options, error) {
 		muxes := map[string]mux.Mux{"tmux": tmux.Server{Socket: *socket}, "rex": rex.Server{Endpoint: *rexServer}}
 		if muxes[*multiplexer] == nil {
 			return gateway.Options{}, fmt.Errorf("no multiplexer %q: tmux or rex", *multiplexer)
 		}
-		return gateway.Options{Muxes: muxes, Mux: *multiplexer, Session: *session, Programs: program.Builtin(*claudeDir)}, nil
+		builtin := program.Builtin(*claudeDir)
+		own, errs := program.Load(*plugins, builtin)
+		for _, err := range errs {
+			fmt.Fprintln(os.Stderr, "wallflower:", err)
+		}
+		// Yours first: a command one of yours claims is its, not a built-in's.
+		return gateway.Options{Muxes: muxes, Mux: *multiplexer, Session: *session, Programs: append(own, builtin...)}, nil
 	}
+}
+
+func defaultPluginDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config", "wallflower", "plugins")
 }
 
 func defaultClaudeDir() string {

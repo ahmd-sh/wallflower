@@ -167,7 +167,27 @@ data class ServerHello(
     val uploads: String? = null,
     /** The machine's name, as its owner calls it (a Mac's Computer Name). */
     val machine: String? = null,
+    /** The phone halves of plugins the user gave the gateway, as data. */
+    val programs: List<ProgramData> = emptyList(),
 ) : ServerMessage
+
+/** A plugin's phone half as data: its key bar, the commands the composer offers, what starts a new line and empties one. */
+@Serializable
+data class ProgramData(
+    val id: String,
+    val keys: KeyBarData? = null,
+    val commands: List<CommandData> = emptyList(),
+    val newline: List<String>? = null,
+    val clear: List<String>? = null,
+)
+
+/** A key bar by key names, and what the send button presses to [stop] the program. */
+@Serializable
+data class KeyBarData(val name: String, val keys: List<String>, val stop: List<String>? = null)
+
+/** A command a program takes, as the composer offers it. */
+@Serializable
+data class CommandData(val text: String, val about: String = "")
 
 /** The multiplexer the session is in (tmux), its version, and what it [can] do beyond what every one does. */
 @Serializable

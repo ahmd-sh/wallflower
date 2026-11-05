@@ -97,7 +97,7 @@ them at once takes it all as a paste, Enter and all.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `mux`, `uploads`?, `machine`? | the multiplexer, see below; the directory uploads are saved in; the machine's name, as its owner calls it (a Mac's Computer Name). Again after a switch |
+| `hello` | `v`, `mux`, `uploads`?, `machine`?, `programs`? | the multiplexer, see below; the directory uploads are saved in; the machine's name, as its owner calls it (a Mac's Computer Name); the phone halves of the user's plugins, see below. Again after a switch |
 | `state` | `session`, `name`, `windows` | everything in the session, see below |
 | `reset` | `pane`, `cols`, `rows` | recreate the pane's terminal at this size; the next data frame repaints it |
 | `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `context`?, `title`? | a pane's mobile view, see below |
@@ -144,6 +144,12 @@ replaces it: a step gets its result. An `error` says there's nothing to
 read (any more), e.g. the program exited. A new conversation in the same
 process (`/clear`) arrives as another `reset`, as does the conversation
 going back to an earlier point (a rewind), without what it left behind.
+
+`programs` in `hello` are the phone halves of plugins the user gave the
+gateway (`docs/plugins.md`), as data, for programs the client has no half of
+its own for: each `id` (as `program` names it in `state`), and optionally
+`keys` (`name`, `keys` by key name, `stop`), `commands` (`text`, `about`?),
+`newline` and `clear` (key names).
 
 `context` is how many tokens the conversation takes of the program's
 context, as of its latest reply, sent when it says and whenever it changes;

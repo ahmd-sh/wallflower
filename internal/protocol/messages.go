@@ -189,6 +189,34 @@ type ServerHello struct {
 	// Machine is the name of the machine the gateway runs on, as its owner
 	// calls it (a Mac's Computer Name), for a client to say where it is.
 	Machine string `json:"machine,omitempty"`
+	// Programs are the phone halves of plugins the user gave the gateway,
+	// as data, for programs the client has no half of its own for.
+	Programs []Program `json:"programs,omitempty"`
+}
+
+// Program is a plugin's phone half as data: the key bar its panes get
+// (Keys), the commands the composer offers, and the keys that start a new
+// line (Newline) and empty one (Clear).
+type Program struct {
+	ID       string    `json:"id"`
+	Keys     *KeyBar   `json:"keys,omitempty"`
+	Commands []Command `json:"commands,omitempty"`
+	Newline  []string  `json:"newline,omitempty"`
+	Clear    []string  `json:"clear,omitempty"`
+}
+
+// KeyBar is a key bar by key names, and what the send button presses to
+// stop the program.
+type KeyBar struct {
+	Name string   `json:"name"`
+	Keys []string `json:"keys"`
+	Stop []string `json:"stop,omitempty"`
+}
+
+// Command is a command a program takes, as the composer offers it.
+type Command struct {
+	Text  string `json:"text"`
+	About string `json:"about,omitempty"`
 }
 
 // Mux is the multiplexer the session is in (tmux), its version, and what

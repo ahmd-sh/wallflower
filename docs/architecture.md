@@ -115,17 +115,19 @@ gone).
 
 ## Plugins users provide
 
-Built-in plugins are compiled in for now. The seams are meant to take
-plugins from outside later, without changes to the core:
+A plugin of the user's is a JSON file in `~/.config/wallflower/plugins/`
+(`docs/plugins.md`), loaded by `program.Load` beside the built-in ones,
+without changes to the core:
 
-- A server half can be an external program that speaks the
+- Its server half's mobile view can be an external program that speaks the
   `mobileview.Source` calls as JSON lines on stdin and stdout, as language
-  servers do. It can be written in any language and needs no rebuild.
-- A client half can be data the gateway sends with the program's id: key
-  bar defaults and the + menu's commands (already data, `KeyDefaults` and
-  `Command`), notification rules. The phone can't load code. Built-in plugins
-  keep their native code for what data can't say, such as reading a
-  screen.
+  servers do (`internal/plugin`). It can be written in any language and
+  needs no rebuild.
+- Its client half is data the gateway sends in `hello` (`programs`): the key
+  bar its panes get, the + menu's commands, and the keys that start a new
+  line and empty one. The phone can't load code, so it makes a `Supplied`
+  program of it. Built-in plugins keep their native code for what data
+  can't say, such as reading a screen.
 
 So the core keeps to two rules. It never assumes a plugin is built in, and
 it reaches one only through its seam.

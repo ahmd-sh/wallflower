@@ -7,6 +7,7 @@ import (
 
 	"github.com/ahmd-sh/wallflower/internal/mux"
 	"github.com/ahmd-sh/wallflower/internal/proc"
+	"github.com/ahmd-sh/wallflower/internal/program"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 )
 
@@ -101,4 +102,24 @@ func (g *gateway) windows() []mux.Window {
 		return nil
 	}
 	return g.snapshot.Windows
+}
+
+// clients is the phone halves of programs that bring theirs as data.
+func clients(programs []program.Program) []protocol.Program {
+	var out []protocol.Program
+	for _, p := range programs {
+		c := p.Client
+		if c == nil {
+			continue
+		}
+		pp := protocol.Program{ID: p.ID, Newline: c.Newline, Clear: c.Clear}
+		if c.Keys != nil {
+			pp.Keys = &protocol.KeyBar{Name: c.Keys.Name, Keys: c.Keys.Keys, Stop: c.Keys.Stop}
+		}
+		for _, cmd := range c.Commands {
+			pp.Commands = append(pp.Commands, protocol.Command{Text: cmd.Text, About: cmd.About})
+		}
+		out = append(out, pp)
+	}
+	return out
 }

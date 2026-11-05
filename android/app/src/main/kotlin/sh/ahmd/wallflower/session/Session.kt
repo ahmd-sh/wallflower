@@ -11,6 +11,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import sh.ahmd.wallflower.program.Command
+import sh.ahmd.wallflower.program.KeyDefaults
+import sh.ahmd.wallflower.program.Programs
+import sh.ahmd.wallflower.program.Supplied
 import sh.ahmd.wallflower.protocol.Away
 import sh.ahmd.wallflower.protocol.ClientHello
 import sh.ahmd.wallflower.protocol.Entries
@@ -23,6 +27,7 @@ import sh.ahmd.wallflower.protocol.Switch
 import sh.ahmd.wallflower.protocol.Notification
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Pong
+import sh.ahmd.wallflower.protocol.ProgramData
 import sh.ahmd.wallflower.protocol.Reset
 import sh.ahmd.wallflower.protocol.Resize
 import sh.ahmd.wallflower.protocol.Mux
@@ -126,6 +131,7 @@ class Session(
                     askingMux = m.mux.name
                     _uploadDir.value = m.uploads
                     m.machine?.let { _machine.value = it }
+                    Programs.supply(m.programs.associate { it.id to it.program() })
                 }
                 is State -> {
                     askingSession = m.session
@@ -287,3 +293,11 @@ class Session(
         const val QUIET_AFTER_MS = 60_000L
     }
 }
+
+/** A plugin's phone half, as the gateway describes it. */
+private fun ProgramData.program() = Supplied(
+    keyBar = keys?.let { KeyDefaults(it.name, it.keys, it.stop ?: listOf("C-c")) },
+    commands = commands.map { Command(it.text, it.about) },
+    newlineKeys = newline,
+    clearKeys = clear.orEmpty(),
+)

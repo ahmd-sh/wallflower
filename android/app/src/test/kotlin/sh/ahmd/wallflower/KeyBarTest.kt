@@ -3,7 +3,9 @@ package sh.ahmd.wallflower
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import sh.ahmd.wallflower.program.KeyDefaults
 import sh.ahmd.wallflower.program.Programs
+import sh.ahmd.wallflower.program.Supplied
 
 class KeyBarTest {
     private val bar = KeyBar.defaults
@@ -42,6 +44,19 @@ class KeyBarTest {
         assertEquals("esc :w ⏎", KeyBar.labelOf(listOf("Escape", ":w", "Enter")))
         assertEquals("C-", KeyBar.labelOf(listOf("C-")))
         assertEquals("q", KeyBar.labelOf(listOf("q")))
+    }
+
+    @Test
+    fun aPluginsProgramGetsItsOwnBarTillTheUserMakesOne() {
+        Programs.supply(mapOf("aider" to Supplied(KeyDefaults("aider", listOf("Escape", "C-c"), listOf("C-d")), emptyList(), null, emptyList())))
+        try {
+            val p = bar.profileFor("python3", "aider")
+            assertEquals(listOf("esc", "^c"), p.keys.map { it.label })
+            assertEquals(listOf("C-d"), p.stop)
+            assertEquals(bar.default, bar.profileFor("python3", "other"))
+        } finally {
+            Programs.supply(emptyMap())
+        }
     }
 
     @Test

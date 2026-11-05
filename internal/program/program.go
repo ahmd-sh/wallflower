@@ -12,11 +12,13 @@ import (
 	"github.com/ahmd-sh/wallflower/internal/mobileview"
 )
 
-// A Program is one plugin's Mac half.
+// A Program is one plugin's Mac half, and its phone half if that's data
+// (a plugin of the user's: see Load).
 type Program struct {
 	ID       string            // how both halves know it
 	Commands []string          // what its panes report as their command
 	View     mobileview.Source // its mobile view; nil if it has none
+	Client   *Client           // its phone half, sent with hello; nil if the phone has its own
 }
 
 // Runs says whether a pane's command is the program's.

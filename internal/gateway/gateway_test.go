@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/mux"
+	"github.com/ahmd-sh/wallflower/internal/program"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 	"github.com/ahmd-sh/wallflower/internal/tmux"
 	"github.com/ahmd-sh/wallflower/internal/tmuxtest"
@@ -799,4 +800,20 @@ func TestAwayLeavesSizing(t *testing.T) {
 		c.send(protocol.Select{Window: s.Windows[0].ID})
 		c.state("phone-sized again", func(s protocol.State) bool { p := paneOf(s, p); return p.Cols == 50 && p.Rows == 15 })
 	})
+}
+
+// A plugin of the user's sends its phone half with hello, and names the
+// panes that run its program.
+func TestPluginsPhoneHalf(t *testing.T) {
+	mine := program.Program{
+		ID: "mine", Commands: []string{"sh", "bash"},
+		Client: &program.Client{Keys: &program.Keys{Name: "mine", Keys: []string{"Escape"}}, Commands: []program.Command{{Text: "/go", About: "go"}}, Newline: []string{"C-j"}},
+	}
+	c := tmuxBackend.connectOpts(t, context.Background(), 56, 20, Options{Programs: []program.Program{mine}})
+	_, m := c.expect("hello", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.ServerHello); return ok })
+	want := []protocol.Program{{ID: "mine", Keys: &protocol.KeyBar{Name: "mine", Keys: []string{"Escape"}}, Commands: []protocol.Command{{Text: "/go", About: "go"}}, Newline: []string{"C-j"}}}
+	if h := m.(*protocol.ServerHello); !reflect.DeepEqual(h.Programs, want) {
+		t.Errorf("hello's programs = %+v", h.Programs)
+	}
+	c.state("the pane's program", func(s protocol.State) bool { return activePane(s).Program == "mine" })
 }

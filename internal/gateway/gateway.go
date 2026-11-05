@@ -148,10 +148,11 @@ func (g *gateway) attach(name, session string) (string, mux.Client, error) {
 func (g *gateway) attached(name string, c mux.Client) {
 	g.mux, g.muxed, g.about = c, name, c.About()
 	g.send(protocol.ServerHello{
-		V:       protocol.Version,
-		Mux:     protocol.Mux{Name: g.about.Name, Version: g.about.Version, Can: g.about.Can},
-		Uploads: g.uploads.dir,
-		Machine: g.opts.Machine,
+		V:        protocol.Version,
+		Mux:      protocol.Mux{Name: g.about.Name, Version: g.about.Version, Can: g.about.Can},
+		Uploads:  g.uploads.dir,
+		Machine:  g.opts.Machine,
+		Programs: clients(g.programs),
 	})
 	g.sendState()
 }

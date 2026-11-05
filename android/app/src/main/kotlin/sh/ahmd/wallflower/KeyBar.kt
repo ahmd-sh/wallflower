@@ -79,7 +79,9 @@ data class KeyBar(
     val default: KeyProfile,
 ) {
     fun profileFor(command: String, program: String? = null): KeyProfile =
-        profiles.firstOrNull { it.matches(command, program) } ?: default
+        profiles.firstOrNull { it.matches(command, program) }
+            ?: Programs.supplied(program)?.keyBar?.let { d -> KeyProfile(d.name, listOfNotNull(program), d.keys.map(::key), stop = d.stop) }
+            ?: default
 
     companion object {
         /** Keys offered when editing a bar. */
