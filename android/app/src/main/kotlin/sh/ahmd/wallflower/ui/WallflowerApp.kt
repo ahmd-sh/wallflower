@@ -71,6 +71,8 @@ private sealed interface Screen {
     data object Sessions : Screen
     data object Settings : Screen
     data object Setup : Screen
+    data object Look : Screen
+    data object KeyBars : Screen
     data class Profile(val ref: ProfileRef, val back: Screen) : Screen
 }
 
@@ -79,13 +81,13 @@ private val Screen.depth: Int
     get() = when (this) {
         Screen.Terminal -> 0
         Screen.Sessions, Screen.Settings -> 1
-        Screen.Setup -> 2
+        Screen.Setup, Screen.Look, Screen.KeyBars -> 2
         is Screen.Profile -> back.depth + 1
     }
 
 private fun Screen.previous(): Screen = when (this) {
     Screen.Terminal, Screen.Sessions, Screen.Settings -> Screen.Terminal
-    Screen.Setup -> Screen.Settings
+    Screen.Setup, Screen.Look, Screen.KeyBars -> Screen.Settings
     is Screen.Profile -> back
 }
 
@@ -163,11 +165,17 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     settings = model.settings,
                     program = program,
                     programId = programId,
+                    gateway = mux?.let { m -> "${m.name} ${m.version}" + (mac.machine?.let { " on $it" } ?: "") },
                     onBack = { screen = Screen.Terminal },
                     onEditHost = { screen = Screen.Setup },
-                    onOpen = { screen = Screen.Profile(it, Screen.Settings) },
+                    onLook = { screen = Screen.Look },
+                    onKeyBars = { screen = Screen.KeyBars },
                 )
                 Screen.Setup -> setup { screen = Screen.Settings }
+                Screen.Look -> LookScreen(model.settings, onBack = { screen = Screen.Settings })
+                Screen.KeyBars -> KeyBarsScreen(model.keyBar, program, programId, onBack = { screen = Screen.Settings }) {
+                    screen = Screen.Profile(it, Screen.KeyBars)
+                }
                 is Screen.Profile -> ProfileScreen(
                     store = model.keyBar,
                     ref = s.ref,

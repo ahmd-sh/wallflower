@@ -134,6 +134,9 @@ object Programs {
         supplied = programs.mapKeys { it.key.lowercase() }
     }
 
+    /** The ids of the programs the gateway's plugins describe. */
+    fun suppliedIds(): Set<String> = supplied.keys - builtin.keys
+
     /** A program a plugin of the user's describes, by its id; null if it's one wallflower ships, or none is. */
     fun supplied(id: String?): Program? = id?.lowercase()?.takeIf { it !in builtin }?.let { supplied[it] }
 

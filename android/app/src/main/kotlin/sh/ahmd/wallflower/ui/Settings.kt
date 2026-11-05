@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.BarKey
+import sh.ahmd.wallflower.BuildConfig
 import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.KeyBarStore
 import sh.ahmd.wallflower.KeyProfile
@@ -50,6 +51,7 @@ import sh.ahmd.wallflower.prefs.Preferences
 import sh.ahmd.wallflower.prefs.Scheme
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.protocol.Mux
+import sh.ahmd.wallflower.protocol.VERSION as PROTOCOL_VERSION
 import sh.ahmd.wallflower.session.Host
 
 /** A profile of the key bar, by where it sits. */
@@ -64,6 +66,11 @@ fun KeyBar.refFor(command: String?, program: String? = null): ProfileRef {
     return if (i >= 0) ProfileRef.At(i) else ProfileRef.Default
 }
 
+/**
+ * Settings: the Mac, how wallflower looks, and the key bars each a page of
+ * their own, said in a line here; what's on or off is here as it is, and
+ * what the phone knows of the gateway (its plugins, its versions) last.
+ */
 @Composable
 fun SettingsScreen(
     host: Host?,
@@ -71,54 +78,67 @@ fun SettingsScreen(
     settings: Preferences,
     program: String?,
     programId: String?,
+    gateway: String?,
     onBack: () -> Unit,
     onEditHost: () -> Unit,
-    onOpen: (ProfileRef) -> Unit,
+    onLook: () -> Unit,
+    onKeyBars: () -> Unit,
 ) {
     val bar by store.bar.collectAsStateWithLifecycle()
-    val focused = bar.refFor(program, programId)
+    val look by settings.look.flow.collectAsStateWithLifecycle()
+    val scheme by settings.scheme.flow.collectAsStateWithLifecycle()
     Page("settings", onBack) {
-        Section("look")
-        val look by settings.look.flow.collectAsStateWithLifecycle()
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Chip("terminal", look == Look.Terminal) { settings.look.set(Look.Terminal) }
-            Chip("bricolage", look == Look.Grotesque, Grotesque) { settings.look.set(Look.Grotesque) }
-        }
-        Body("The terminal, what you type for it, keys and values stay in the terminal font.")
-        val scheme by settings.scheme.flow.collectAsStateWithLifecycle()
-        ThemePicker(scheme) { settings.scheme.set(it) }
-        Body("The terminal takes the theme's colors too. Material You's come from the wallpaper, light or dark with the phone.")
+        if (host != null) PageRow(host.machine ?: "your Mac", if (host.dev) "development transport" else "${host.user}@${host.address}:${host.port}", onEditHost)
+        PageRow("look", "${scheme.label} · ${if (look == Look.Terminal) "terminal" else "bricolage"} font", onLook)
+        val focused = bar.refFor(program, programId)
+        val now = (focused as? ProfileRef.At)?.let { bar.profiles[it.index].name } ?: bar.default.name
+        PageRow("key bars", "${bar.profiles.size + 1} · this pane's: $now", onKeyBars)
+
+        Section("as you go")
+        val mobile by settings.mobileView.flow.collectAsStateWithLifecycle()
+        Toggle("mobile views, where a program has one", mobile) { settings.mobileView.set(it) }
+        Body("Claude Code shows as its conversation, the terminal running underneath; the button by a pane's dots switches.")
         val feel by settings.haptics.flow.collectAsStateWithLifecycle()
         Toggle("haptics for swipes, switches and sends", feel) { settings.haptics.set(it) }
-
-        Section("mac")
-        if (host != null) {
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Palette.bg1).clickable(onClick = onEditHost).padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    host.machine?.let { Text(it, color = Palette.fg, style = Type.body) }
-                    Text("${host.user}@${host.address}:${host.port}", color = if (host.machine == null) Palette.fg else Palette.grey, fontFamily = Mono, fontSize = 13.sp)
-                }
-                Text("edit ›", color = Palette.grey, style = Type.label)
-            }
-        }
-
-        Section("closing")
         val askPanes by settings.askClosingPane.flow.collectAsStateWithLifecycle()
         val askWindows by settings.askClosingWindow.flow.collectAsStateWithLifecycle()
         Toggle("ask before closing a pane", askPanes) { settings.askClosingPane.set(it) }
         Toggle("ask before closing a tab (or its last pane)", askWindows) { settings.askClosingWindow.set(it) }
 
-        Section("mobile view")
-        val mobile by settings.mobileView.flow.collectAsStateWithLifecycle()
-        Toggle("show panes in mobile view where there is one", mobile) { settings.mobileView.set(it) }
-        Body("Claude Code shows as its conversation: replies as markdown, steps folded. The button by a pane's dots switches every pane; the terminal keeps running underneath.")
+        Section("plugins")
+        val yours = Programs.suppliedIds()
+        Body("Built in: ${Programs.builtin.keys.joinToString(", ")}. " + if (yours.isEmpty()) "None of yours yet." else "Yours: ${yours.sorted().joinToString(", ")}.")
+        Body("Yours go on the Mac, a JSON file each in ~/.config/wallflower/plugins (docs/plugins.md in wallflower's source).")
 
-        Section("key bar")
+        Section("about")
+        Body(listOfNotNull("wallflower ${BuildConfig.VERSION_NAME} · protocol ${PROTOCOL_VERSION}", gateway).joinToString("\n"))
+    }
+}
+
+/** The theme and the font. */
+@Composable
+fun LookScreen(settings: Preferences, onBack: () -> Unit) = Page("look", onBack) {
+    Section("theme")
+    val scheme by settings.scheme.flow.collectAsStateWithLifecycle()
+    ThemePicker(scheme) { settings.scheme.set(it) }
+    Body("The terminal takes the theme's colors too. Material You's come from the wallpaper, light or dark with the phone.")
+    Section("font")
+    val look by settings.look.flow.collectAsStateWithLifecycle()
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Chip("terminal", look == Look.Terminal) { settings.look.set(Look.Terminal) }
+        Chip("bricolage", look == Look.Grotesque, Grotesque) { settings.look.set(Look.Grotesque) }
+    }
+    Body("For wallflower's own words. The terminal, what you type for it, keys and values stay in the terminal font.")
+}
+
+/** The key bar's profiles, by the programs they're for, to open and change. */
+@Composable
+fun KeyBarsScreen(store: KeyBarStore, program: String?, programId: String?, onBack: () -> Unit, onOpen: (ProfileRef) -> Unit) {
+    val bar by store.bar.collectAsStateWithLifecycle()
+    val focused = bar.refFor(program, programId)
+    Page("key bars", onBack) {
         Body(
-            "Follows the focused pane's program; the first profile listing it wins." +
+            "Each pane gets the first profile listing its program." +
                 (program?.takeIf { it.isNotEmpty() }?.let { " The focused pane runs $it." } ?: ""),
         )
         bar.profiles.forEachIndexed { i, p ->
@@ -146,6 +166,21 @@ fun SettingsScreen(
                 confirm = !confirm
             }
         }
+    }
+}
+
+/** A row that opens a page: what it's about, what's set there now, and ›. */
+@Composable
+private fun PageRow(title: String, summary: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Palette.bg1).clickable(onClick = onClick).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, color = Palette.fg, style = Type.body)
+            Text(summary, color = Palette.grey, style = Type.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text("›", color = Palette.grey, style = Type.title)
     }
 }
 
