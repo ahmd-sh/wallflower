@@ -61,6 +61,7 @@ internal class PaneActions(
         val latest = reading.entries.lastOrNull { it is Entry.Said && it.by == Party.User }?.id == message.id
         return when (val r = program.recall(latest, activityOf(pane) == Activity.Working)) {
             is Recall.Keys -> {
+                session.stopped(pane.id) // as a stop does, the program may take the message back
                 keys(r.keys)
                 true
             }

@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/ahmd-sh/wallflower/internal/gateway"
@@ -45,6 +46,9 @@ func listen(args []string) error {
 	}()
 	fmt.Fprintf(os.Stderr, "wallflower: listening on %s (development only)\n", ln.Addr())
 
+	// Shutting down waits for the connections, which stop their plugins' programs.
+	var conns sync.WaitGroup
+	defer conns.Wait()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -53,7 +57,9 @@ func listen(args []string) error {
 			}
 			return err
 		}
+		conns.Add(1)
 		go func() {
+			defer conns.Done()
 			defer conn.Close()
 			// Each connection its own, as serve's are: plugins' programs aren't shared.
 			opts, _ := options()

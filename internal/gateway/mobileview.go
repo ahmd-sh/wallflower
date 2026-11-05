@@ -101,17 +101,11 @@ func (g *gateway) read(id string) {
 			}
 		}
 	}
+	// What the client was last told has a view: a Source asked of one pane
+	// alone (a plugin's) could forget its others.
 	var src mobileview.Source
-	if p.ID != "" {
-		for _, pr := range g.programs {
-			if pr.View == nil {
-				continue
-			}
-			if _, ok := pr.View.Find([]mobileview.Pane{p})[id]; ok {
-				src = pr.View
-				break
-			}
-		}
+	if m, ok := g.found[id]; ok && m.view && p.ID != "" {
+		src = m.program.View
 	}
 	if src == nil {
 		g.send(protocol.Entries{Pane: id, Reset: true, Error: "nothing to read in this pane"})
