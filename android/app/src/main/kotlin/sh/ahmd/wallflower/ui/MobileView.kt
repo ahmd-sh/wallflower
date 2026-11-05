@@ -731,6 +731,7 @@ private fun Working(since: Long) {
     } else {
         null
     }
+    val colors = Palette
     Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Running(Modifier)
         Text(
@@ -744,7 +745,7 @@ private fun Working(since: Long) {
                     // A light passing along it.
                     val x = (shine?.value ?: -0.5f) * size.width
                     drawRect(
-                        Brush.horizontalGradient(listOf(Palette.grey, Palette.purple, Palette.grey), startX = x - size.width / 3, endX = x + size.width / 3),
+                        Brush.horizontalGradient(listOf(colors.grey, colors.purple, colors.grey), startX = x - size.width / 3, endX = x + size.width / 3),
                         blendMode = BlendMode.SrcIn,
                     )
                 },

@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -44,13 +45,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.BarKey
-import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.program.Command
 import sh.ahmd.wallflower.screen.InputLine
 import sh.ahmd.wallflower.session.uploadPaths
 import sh.ahmd.wallflower.ui.Mono
 import sh.ahmd.wallflower.ui.Motion
 import sh.ahmd.wallflower.ui.Palette
+import sh.ahmd.wallflower.ui.faceOf
 import sh.ahmd.wallflower.ui.haptics
 
 /**
@@ -129,8 +130,9 @@ internal fun Composer(
     val sticky = rememberStickyKeys(onKey)
     val paths = remember(attachments.dir) { attachments.dir?.let(::uploadPaths) }
     val slash = commands.isNotEmpty()
-    val named = remember(paths, slash) {
-        listOfNotNull(CommandMark.takeIf { slash }, paths?.let(::UploadNames)).reduceOrNull<OutputTransformation, OutputTransformation> { a, b -> Both(a, b) }
+    val colors = Palette
+    val named = remember(paths, slash, colors) {
+        listOfNotNull(CommandMark(colors.purple).takeIf { slash }, paths?.let { UploadNames(it, colors) }).reduceOrNull<OutputTransformation, OutputTransformation> { a, b -> Both(a, b) }
     }
     // A suggestion asked for whole: the program's line has it once it's taken it in.
     val haptics = haptics()
@@ -273,7 +275,7 @@ internal fun Composer(
                     else -> Action.Stop
                 },
                 connected = connected && (stoppable || sent || typing != null || !empty || pending.isNotEmpty()),
-                label = if (typing == null || sendKeys == listOf("Enter")) null else KeyBar.labelOf(sendKeys),
+                label = if (typing == null || sendKeys == listOf("Enter")) null else faceOf(sendKeys),
                 onSend = { enter ->
                     if (onSend(state.text.toString(), enter)) {
                         state.clearText()
@@ -299,11 +301,11 @@ private const val RECALL_WAIT_MS = 60_000L
 /** A command a draft starts with. */
 private val leadingCommand = Regex("^/[^\\s]+\\s*")
 
-/** A command the draft starts with, marked. */
-private object CommandMark : OutputTransformation {
+/** A command the draft starts with, marked in [color]. */
+private class CommandMark(private val color: Color) : OutputTransformation {
     override fun TextFieldBuffer.transformOutput() {
         val m = leadingCommand.find(asCharSequence()) ?: return
-        addStyle(SpanStyle(color = Palette.purple), 0, m.value.trimEnd().length)
+        addStyle(SpanStyle(color = color), 0, m.value.trimEnd().length)
     }
 }
 

@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +58,8 @@ import sh.ahmd.wallflower.session.Status
 // The connection, as the session's screen shows it while it isn't up.
 
 /** How the connection is, as a color: green connected, yellow on its way, orange waiting for the user. */
+@Composable
+@ReadOnlyComposable
 internal fun statusColor(status: Status): Color = when (status) {
     is Status.Connected -> Palette.green
     Status.Connecting, is Status.Disconnected -> Palette.yellow

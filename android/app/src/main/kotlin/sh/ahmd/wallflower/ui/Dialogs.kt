@@ -38,7 +38,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -49,7 +53,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.PopupProperties
 
-enum class Glyph { Plus, Close, Chat, Terminal, Spark, Copy, Check }
+/** wallflower's icons; from [Escape] on, keys'. */
+enum class Glyph {
+    Plus, Close, Chat, Terminal, Spark, Copy, Check, Edit,
+    Escape, Tab, BackTab, Enter, Up, Down, Left, Right, Backspace, Space, Ctrl, Alt, Shift,
+}
 
 /** Line icons, drawn to match the send button rather than pulled from an icon set. */
 @Composable
@@ -58,6 +66,28 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
         val w = 1.8.dp.toPx()
         val c = center
         val r = this.size.minDimension / 2 - w
+        val line = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        fun at(x: Float, y: Float) = Offset(c.x + x * r, c.y + y * r)
+        fun stroke(vararg points: Pair<Float, Float>, closed: Boolean = false) = drawPath(
+            Path().apply {
+                points.forEachIndexed { i, (x, y) ->
+                    val p = at(x, y)
+                    if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
+                }
+                if (closed) close()
+            },
+            color,
+            style = line,
+        )
+        fun up() {
+            stroke(0f to 1f, 0f to -1f)
+            stroke(-0.65f to -0.35f, 0f to -1f, 0.65f to -0.35f)
+        }
+        fun tab() {
+            stroke(-1f to 0f, 0.6f to 0f)
+            stroke(0.05f to -0.55f, 0.6f to 0f, 0.05f to 0.55f)
+            stroke(1f to -0.75f, 1f to 0.75f)
+        }
         when (glyph) {
             Glyph.Plus -> {
                 drawLine(color, Offset(c.x - r, c.y), Offset(c.x + r, c.y), w, StrokeCap.Round)
@@ -103,6 +133,37 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
                 drawLine(color, Offset(c.x - r, c.y + r * 0.05f), Offset(c.x - r * 0.3f, c.y + r * 0.7f), w, StrokeCap.Round)
                 drawLine(color, Offset(c.x - r * 0.3f, c.y + r * 0.7f), Offset(c.x + r, c.y - r * 0.6f), w, StrokeCap.Round)
             }
+            Glyph.Edit -> rotate(-45f, c) {
+                stroke(-1.2f to 0f, -0.7f to -0.32f, 1.1f to -0.32f, 1.1f to 0.32f, -0.7f to 0.32f, closed = true)
+                stroke(0.6f to -0.32f, 0.6f to 0.32f)
+            }
+            Glyph.Escape -> {
+                drawArc(color, 270f, 270f, useCenter = false, topLeft = at(-0.85f, -0.85f), size = Size(r * 1.7f, r * 1.7f), style = line)
+                stroke(0f to 0f, -0.95f to -0.95f)
+                stroke(-0.95f to -0.4f, -0.95f to -0.95f, -0.4f to -0.95f)
+            }
+            Glyph.Tab -> tab()
+            Glyph.BackTab -> scale(-1f, 1f, c) { tab() }
+            Glyph.Enter -> {
+                stroke(0.8f to -0.9f, 0.8f to 0.25f, -0.85f to 0.25f)
+                stroke(-0.3f to -0.3f, -0.85f to 0.25f, -0.3f to 0.8f)
+            }
+            Glyph.Up -> up()
+            Glyph.Down -> rotate(180f, c) { up() }
+            Glyph.Left -> rotate(-90f, c) { up() }
+            Glyph.Right -> rotate(90f, c) { up() }
+            Glyph.Backspace -> {
+                stroke(-1f to 0f, -0.45f to -0.75f, 1f to -0.75f, 1f to 0.75f, -0.45f to 0.75f, closed = true)
+                stroke(-0.02f to -0.3f, 0.58f to 0.3f)
+                stroke(0.58f to -0.3f, -0.02f to 0.3f)
+            }
+            Glyph.Space -> stroke(-1f to -0.15f, -1f to 0.5f, 1f to 0.5f, 1f to -0.15f)
+            Glyph.Ctrl -> stroke(-0.7f to 0.35f, 0f to -0.4f, 0.7f to 0.35f)
+            Glyph.Alt -> {
+                stroke(-1f to -0.6f, -0.35f to -0.6f, 0.35f to 0.6f, 1f to 0.6f)
+                stroke(0.15f to -0.6f, 1f to -0.6f)
+            }
+            Glyph.Shift -> stroke(0f to -1f, 0.9f to -0.05f, 0.42f to -0.05f, 0.42f to 0.85f, -0.42f to 0.85f, -0.42f to -0.05f, -0.9f to -0.05f, closed = true)
             Glyph.Spark -> drawPath(
                 Path().apply {
                     moveTo(c.x, c.y - r)
@@ -118,10 +179,10 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
     }
 }
 
-/** A menu's choice: what it says, in what color and [font], what it's about beneath, and what it does. */
+/** A menu's choice: what it says, in what color (unspecified, the words') and [font], what it's about beneath, and what it does. */
 class MenuAction(
     val label: String,
-    val color: Color = Palette.fg,
+    val color: Color = Color.Unspecified,
     val font: FontFamily? = null,
     val detail: String? = null,
     val onClick: () -> Unit,
@@ -173,7 +234,7 @@ fun PopupMenu(
                         }
                         .padding(horizontal = 12.dp, vertical = 9.dp),
                 ) {
-                    Text(action.label, color = action.color, style = Type.body, fontFamily = action.font)
+                    Text(action.label, color = action.color.takeOrElse { Palette.fg }, style = Type.body, fontFamily = action.font)
                     action.detail?.let { Text(it, color = Palette.grey, style = Type.label) }
                 }
             }

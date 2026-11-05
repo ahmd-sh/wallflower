@@ -51,21 +51,22 @@ internal fun diffCounts(lines: List<DiffLine>): Pair<Int, Int> =
 /** A diff's [lines], unwrapped and scrolling sideways together, changed ones tinted edge to edge. */
 @Composable
 internal fun DiffView(lines: List<DiffLine>, modifier: Modifier = Modifier) {
-    val text = remember(lines) {
+    val colors = Palette
+    val text = remember(lines, colors) {
         buildAnnotatedString {
             lines.forEachIndexed { i, line ->
                 if (i > 0) append('\n')
                 when (line.kind) {
                     DiffLine.Kind.Added -> {
-                        withStyle(SpanStyle(color = Palette.green)) { append("+ ") }
+                        withStyle(SpanStyle(color = colors.green)) { append("+ ") }
                         append(line.text)
                     }
                     DiffLine.Kind.Removed -> {
-                        withStyle(SpanStyle(color = Palette.red)) { append("- ") }
+                        withStyle(SpanStyle(color = colors.red)) { append("- ") }
                         append(line.text)
                     }
-                    DiffLine.Kind.Context -> withStyle(SpanStyle(color = Palette.grey)) { append("  " + line.text) }
-                    DiffLine.Kind.Hunk, DiffLine.Kind.Note -> withStyle(SpanStyle(color = Palette.dim)) { append(line.text) }
+                    DiffLine.Kind.Context -> withStyle(SpanStyle(color = colors.grey)) { append("  " + line.text) }
+                    DiffLine.Kind.Hunk, DiffLine.Kind.Note -> withStyle(SpanStyle(color = colors.dim)) { append(line.text) }
                 }
             }
         }
@@ -87,8 +88,8 @@ internal fun DiffView(lines: List<DiffLine>, modifier: Modifier = Modifier) {
                 val l = layout ?: return@drawBehind
                 lines.forEachIndexed { i, line ->
                     val tint = when (line.kind) {
-                        DiffLine.Kind.Added -> Palette.bgGreen
-                        DiffLine.Kind.Removed -> Palette.bgRed
+                        DiffLine.Kind.Added -> colors.bgGreen
+                        DiffLine.Kind.Removed -> colors.bgRed
                         else -> return@forEachIndexed
                     }
                     if (i < l.lineCount) drawRect(tint, Offset(0f, l.getLineTop(i)), Size(size.width, l.getLineBottom(i) - l.getLineTop(i)))

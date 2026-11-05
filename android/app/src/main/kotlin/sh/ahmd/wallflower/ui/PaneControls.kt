@@ -60,6 +60,7 @@ internal fun PaneDots(count: Int, position: () -> Float, onClick: () -> Unit) {
     }
     val dot = 6.dp
     val gap = 5.dp
+    val colors = Palette
     Canvas(
         Modifier
             .padding(8.dp)
@@ -71,18 +72,18 @@ internal fun PaneDots(count: Int, position: () -> Float, onClick: () -> Unit) {
         val d = dot.toPx()
         val step = d + gap.toPx()
         val r = CornerRadius(d / 2)
-        for (i in 0 until count) drawRoundRect(Palette.bg3, Offset(i * step, 0f), Size(d, d), r)
+        for (i in 0 until count) drawRoundRect(colors.bg3, Offset(i * step, 0f), Size(d, d), r)
         val pos = at.value.mod(n)
         val i = floor(pos).toInt().coerceIn(0, count - 1)
         val f = pos - floor(pos)
         if (i == count - 1 && f > 0f) {
             // Round the end: the light leaves the last dot as it comes back at the first.
-            drawRoundRect(Palette.fg, Offset(i * step, 0f), Size(d, d), r, alpha = 1f - f)
-            drawRoundRect(Palette.fg, Offset(0f, 0f), Size(d, d), r, alpha = f)
+            drawRoundRect(colors.fg, Offset(i * step, 0f), Size(d, d), r, alpha = 1f - f)
+            drawRoundRect(colors.fg, Offset(0f, 0f), Size(d, d), r, alpha = f)
         } else {
             val left = i * step + step * (f * 2f - 1f).coerceIn(0f, 1f)
             val right = i * step + d + step * (f * 2f).coerceIn(0f, 1f)
-            drawRoundRect(Palette.fg, Offset(left, 0f), Size(right - left, d), r)
+            drawRoundRect(colors.fg, Offset(left, 0f), Size(right - left, d), r)
         }
     }
 }

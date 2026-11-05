@@ -3,16 +3,19 @@ package sh.ahmd.wallflower
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.hardware.biometrics.BiometricManager.Authenticators
 import android.hardware.biometrics.BiometricPrompt
 import android.os.Bundle
 import android.os.CancellationSignal
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalView
@@ -22,6 +25,7 @@ import sh.ahmd.wallflower.ui.Haptics
 import sh.ahmd.wallflower.ui.LocalHaptics
 import sh.ahmd.wallflower.ui.WallflowerRoot
 import sh.ahmd.wallflower.ui.WallflowerTheme
+import sh.ahmd.wallflower.ui.colorsOf
 
 class MainActivity : ComponentActivity() {
     private companion object {
@@ -35,10 +39,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val look by model.settings.look.flow.collectAsStateWithLifecycle()
+            val scheme by model.settings.scheme.flow.collectAsStateWithLifecycle()
+            val colors = colorsOf(scheme)
+            LaunchedEffect(colors.light) { bars(colors.light) }
             val view = LocalView.current
             val haptics = remember(view) { Haptics(view, model.settings.haptics.flow) }
             CompositionLocalProvider(LocalHaptics provides haptics) {
-                WallflowerTheme(look) {
+                WallflowerTheme(look, colors) {
                     WallflowerRoot(model, ::unlock) {
                         model.disconnect()
                         finish()
@@ -47,6 +54,12 @@ class MainActivity : ComponentActivity() {
             }
         }
         opened(intent)
+    }
+
+    /** The system bars' icons dark over a [light] theme, light over a dark one. */
+    private fun bars(light: Boolean) {
+        val style = if (light) SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT) else SystemBarStyle.dark(Color.TRANSPARENT)
+        enableEdgeToEdge(style, style)
     }
 
     override fun onNewIntent(intent: Intent) {

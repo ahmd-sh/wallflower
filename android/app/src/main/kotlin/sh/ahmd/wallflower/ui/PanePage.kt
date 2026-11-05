@@ -46,11 +46,13 @@ internal fun PanePage(
     onRecalled: () -> Unit = {},
     tab: String? = null,
 ) = Box(Modifier.fillMaxSize()) {
+    val theme = Palette.terminal
     AndroidView(
         modifier = Modifier.fillMaxSize().padding(horizontal = PAGE_PADDING).clipToBounds(),
         factory = { ctx -> TerminalView(ctx).apply { this.onGridSize = onGridSize } },
         update = {
             it.terminal = terminal
+            it.theme = theme
             it.settleHeight = settleHeight
             it.paused = covered || reading != null
             it.onSwipe = swipe?.let { s -> s::drag }

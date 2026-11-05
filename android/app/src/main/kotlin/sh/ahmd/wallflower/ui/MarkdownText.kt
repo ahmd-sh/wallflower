@@ -127,10 +127,11 @@ private fun bodyStyle() = TextStyle(
 @Composable
 private fun inline(text: String): AnnotatedString {
     val font = words
-    return remember(text, font) { styled(text, font) }
+    val colors = Palette
+    return remember(text, font, colors) { styled(text, font, colors) }
 }
 
-private fun styled(text: String, words: FontFamily): AnnotatedString = buildAnnotatedString {
+private fun styled(text: String, words: FontFamily, colors: Colors): AnnotatedString = buildAnnotatedString {
     for (span in Markdown.inline(text)) {
         val style = SpanStyle(
             fontWeight = if (span.bold) FontWeight.SemiBold else null,
@@ -138,12 +139,12 @@ private fun styled(text: String, words: FontFamily): AnnotatedString = buildAnno
             textDecoration = if (span.strike) TextDecoration.LineThrough else null,
             fontFamily = if (span.code) Mono else words,
             fontSize = if (span.code) 0.9.em else TextUnit.Unspecified,
-            color = if (span.code) Palette.orange else Color.Unspecified,
-            background = if (span.code) Palette.bg2 else Color.Unspecified,
+            color = if (span.code) colors.orange else Color.Unspecified,
+            background = if (span.code) colors.bg2 else Color.Unspecified,
         )
         val link = span.link
         if (link != null) {
-            withLink(LinkAnnotation.Url(link, TextLinkStyles(SpanStyle(color = Palette.blue, textDecoration = TextDecoration.Underline)))) {
+            withLink(LinkAnnotation.Url(link, TextLinkStyles(SpanStyle(color = colors.blue, textDecoration = TextDecoration.Underline)))) {
                 withStyle(style) { append(span.text) }
             }
         } else {

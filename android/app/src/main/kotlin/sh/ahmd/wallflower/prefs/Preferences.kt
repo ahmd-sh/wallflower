@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.asStateFlow
 /** How wallflower's own words look: in the terminal's font with [x] marks, or Bricolage Grotesque with checkboxes. */
 enum class Look { Terminal, Grotesque }
 
+/** The colors wallflower and its terminal are in: a known theme, or the phone's own (Material You). */
+enum class Scheme { EverforestDarkHard, GruvboxDark, CatppuccinMocha, CatppuccinLatte, TokyoNight, Nord, MaterialYou }
+
 /** A setting kept on the phone: [flow] to watch it, [set] when the user changes it. */
 class Pref<T> internal constructor(initial: T, private val save: (T) -> Unit) {
     private val state = MutableStateFlow(initial)
@@ -23,6 +26,8 @@ class Pref<T> internal constructor(initial: T, private val save: (T) -> Unit) {
 /** What the user chose about how wallflower looks and behaves, kept on the phone. */
 class Preferences(private val prefs: SharedPreferences) {
     val look = pref(LOOK, Look.Grotesque, { Look.entries.firstOrNull { l -> l.name == getString(LOOK, null) } }, { putString(LOOK, it.name) })
+
+    val scheme = pref(SCHEME, Scheme.EverforestDarkHard, { Scheme.entries.firstOrNull { s -> s.name == getString(SCHEME, null) } }, { putString(SCHEME, it.name) })
 
     /** Whether touches answer with haptics (and the phone's touch feedback is on). */
     val haptics = boolean(HAPTICS, true)
@@ -51,6 +56,7 @@ class Preferences(private val prefs: SharedPreferences) {
 
     private companion object {
         const val LOOK = "look"
+        const val SCHEME = "scheme"
         const val HAPTICS = "haptics"
         const val ASK_PANE = "confirm_close_pane"
         const val ASK_WINDOW = "confirm_close_window"

@@ -65,9 +65,13 @@ class TerminalView(context: Context) : View(context) {
 
     var theme: Theme = Theme.EverforestDarkHard
         set(value) {
+            if (field == value) return
             field = value
+            background = value.background // until a frame brings the terminal's own, or with no terminal
+            foreground = value.foreground
             forceFull = true
             requestFrame()
+            invalidate()
         }
 
     /**

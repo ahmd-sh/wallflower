@@ -1,8 +1,9 @@
 package sh.ahmd.wallflower.ui.composer
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -10,7 +11,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,18 +30,21 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import sh.ahmd.wallflower.BarKey
 import sh.ahmd.wallflower.KeyBar
-import sh.ahmd.wallflower.ui.Mono
+import sh.ahmd.wallflower.ui.Glyph
+import sh.ahmd.wallflower.ui.GlyphIcon
+import sh.ahmd.wallflower.ui.HeldName
 import sh.ahmd.wallflower.ui.Palette
 import sh.ahmd.wallflower.ui.Pill
+import sh.ahmd.wallflower.ui.faceOf
 import sh.ahmd.wallflower.ui.haptics
+import sh.ahmd.wallflower.ui.onLetGo
 
-/** The key bar: its keys, scrolling sideways, then ✎ to edit them. */
+/** The key bar: its keys, scrolling sideways, then a pencil to edit them. Held, each says what it is. */
 @Composable
 internal fun KeyRow(keys: List<BarKey>, armed: BarKey?, onKey: (BarKey) -> Unit, onEdit: () -> Unit, modifier: Modifier) {
     val list = rememberLazyListState()
@@ -67,24 +70,21 @@ internal fun KeyRow(keys: List<BarKey>, armed: BarKey?, onKey: (BarKey) -> Unit,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         items(keys) { KeyChip(it, armed == it, onKey) }
-        item {
-            Text(
-                "✎",
-                color = Palette.grey,
-                fontFamily = Mono,
-                fontSize = 14.sp,
-                modifier = Modifier.clip(CircleShape).clickable(onClick = onEdit).padding(horizontal = 10.dp, vertical = 8.dp),
-            )
-        }
+        item { EditKeys(onEdit) }
     }
 }
 
-/** Sends on tap; keys like the arrows repeat while held. A sticky key toggles, and feels like it. */
+/**
+ * Sends on tap; keys like the arrows repeat while held. A sticky key
+ * toggles, and feels like it. Held, a key says what it sends, and one that
+ * doesn't repeat doesn't send.
+ */
 @Composable
 private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
     val haptics = haptics()
     val scope = rememberCoroutineScope()
     var pressed by remember { mutableStateOf(false) }
+    var held by remember { mutableStateOf(false) }
     val repeats = key.keys.size == 1 && key.keys[0] in KeyBar.repeating
     val isArmed by rememberUpdatedState(armed)
     val fire = { again: Boolean ->
@@ -95,35 +95,63 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
         }
         onKey(key)
     }
-    Pill(
-        key.label,
-        on = armed,
-        pressed = pressed,
-        modifier = Modifier.height(36.dp),
-        input = Modifier.pointerInput(key) {
+    Box {
+        Pill(
+            faceOf(key),
+            on = armed,
+            pressed = pressed,
+            modifier = Modifier.height(36.dp),
+            input = Modifier.pointerInput(key) {
+                val longPress = viewConfiguration.longPressTimeoutMillis
                 detectTapGestures(onPress = {
                     pressed = true
-                    var repeated = false
-                    val repeat = if (repeats) {
-                        scope.launch {
-                            delay(REPEAT_AFTER_MS)
-                            fire(false)
-                            repeated = true
-                            while (isActive) {
-                                delay(REPEAT_EVERY_MS)
-                                fire(true)
-                            }
+                    val hold = scope.launch {
+                        delay(if (repeats) REPEAT_AFTER_MS else longPress)
+                        held = true
+                        if (!repeats) {
+                            haptics.hold()
+                            return@launch
                         }
-                    } else {
-                        null
+                        fire(false)
+                        while (isActive) {
+                            delay(REPEAT_EVERY_MS)
+                            fire(true)
+                        }
                     }
                     val released = tryAwaitRelease() // false if the row scrolled instead
-                    repeat?.cancel()
+                    hold.cancel()
                     pressed = false
-                    if (released && !repeated) fire(false)
+                    if (released && !held) fire(false)
+                    held = false
                 })
             },
-    )
+        )
+        if (held) HeldName(KeyBar.nameOf(key))
+    }
+}
+
+/** The pencil that opens the bar's keys for editing. */
+@Composable
+private fun EditKeys(onEdit: () -> Unit) {
+    val haptics = haptics()
+    var held by remember { mutableStateOf(false) }
+    Box(
+        Modifier
+            .clip(CircleShape)
+            .onLetGo { held = false }
+            .combinedClickable(
+                hapticFeedbackEnabled = false, // its own feel, which heeds the setting
+                onLongClick = {
+                    haptics.hold()
+                    held = true
+                },
+                onClick = onEdit,
+            )
+            .padding(10.dp),
+    ) {
+        GlyphIcon(Glyph.Edit, Palette.grey)
+        if (held) HeldName("edit keys")
+    }
 }
 
 private const val REPEAT_AFTER_MS = 400L

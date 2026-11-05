@@ -1,13 +1,19 @@
 package sh.ahmd.wallflower.ui
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
@@ -16,29 +22,45 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import sh.ahmd.wallflower.prefs.Look
 import sh.ahmd.wallflower.terminal.R
+import sh.ahmd.wallflower.terminal.Theme
 
-/** Everforest Dark Hard, matching the terminal theme. */
-object Palette {
-    val bg0 = Color(0xFF1E2326)
-    val bg1 = Color(0xFF272E33)
-    val bg2 = Color(0xFF2E383C)
-    val bg3 = Color(0xFF374145)
-    val bg4 = Color(0xFF414B50)
+/**
+ * wallflower's colors in one theme, named after Everforest's: backgrounds
+ * from the page ([bg0]) up, words from [fg] down to [dim], accents, and the
+ * [terminal]'s colors to match. [light] for a light theme.
+ */
+@Immutable
+class Colors(
+    val bg0: Color,
+    val bg1: Color,
+    val bg2: Color,
+    val bg3: Color,
+    val bg4: Color,
+    val fg: Color,
+    val grey: Color,
+    val dim: Color,
+    val green: Color,
+    val orange: Color,
+    val yellow: Color,
+    val red: Color,
+    val aqua: Color,
+    val blue: Color,
+    val purple: Color,
+    val terminal: Theme,
+    val light: Boolean = false,
+    /** Behind a diff's added lines. */
+    val bgGreen: Color = lerp(bg1, green, 0.2f),
+    /** Behind its removed ones. */
+    val bgRed: Color = lerp(bg1, red, 0.2f),
+) {
     /** Borders and rules between things, whatever the theme. */
-    val border = bg4
-    val fg = Color(0xFFD3C6AA)
-    val grey = Color(0xFF859289)
-    val dim = Color(0xFF5C6A72)
-    val green = Color(0xFFA7C080)
-    val orange = Color(0xFFE69875)
-    val yellow = Color(0xFFDBBC7F)
-    val red = Color(0xFFE67E80)
-    val aqua = Color(0xFF83C092)
-    val blue = Color(0xFF7FBBB3)
-    val purple = Color(0xFFD699B6)
-    val bgGreen = Color(0xFF3C4841)
-    val bgRed = Color(0xFF4C3743)
+    val border: Color get() = bg4
 }
+
+val LocalPalette = staticCompositionLocalOf { Themes.EverforestDarkHard }
+
+/** The colors of the theme the user picked. */
+val Palette: Colors @Composable @ReadOnlyComposable get() = LocalPalette.current
 
 val Mono = FontFamily(
     Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
@@ -62,27 +84,13 @@ internal val words: FontFamily @Composable get() = if (grotesque) Grotesque else
 @Composable
 internal fun wordSize(mono: TextUnit, sans: TextUnit): TextUnit = if (grotesque) sans else mono
 
-/** Material components (menus, dialogs) in the same colors and fonts. */
+/** The [colors] and [look] for everything inside, Material components (menus, dialogs) too. */
 @Composable
-fun WallflowerTheme(look: Look = Look.Grotesque, content: @Composable () -> Unit) {
+fun WallflowerTheme(look: Look = Look.Grotesque, colors: Colors = Themes.EverforestDarkHard, content: @Composable () -> Unit) {
     val base = Typography()
     fun TextStyle.words() = copy(fontFamily = if (look == Look.Grotesque) Grotesque else Mono, letterSpacing = 0.sp)
     MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Palette.green,
-            onPrimary = Palette.bg0,
-            secondary = Palette.orange,
-            background = Palette.bg0,
-            onBackground = Palette.fg,
-            surface = Palette.bg1,
-            onSurface = Palette.fg,
-            onSurfaceVariant = Palette.grey,
-            surfaceContainer = Palette.bg2,
-            surfaceContainerHigh = Palette.bg2,
-            surfaceContainerHighest = Palette.bg3,
-            outline = Palette.bg3,
-            error = Palette.red,
-        ),
+        colorScheme = remember(colors) { colors.material() },
         typography = Typography(
             titleLarge = base.titleLarge.words(),
             titleMedium = base.titleMedium.words(),
@@ -92,6 +100,24 @@ fun WallflowerTheme(look: Look = Look.Grotesque, content: @Composable () -> Unit
         ),
     ) {
         // Text outside Material components keeps the plain style it was designed with.
-        CompositionLocalProvider(LocalTextStyle provides TextStyle.Default, LocalLook provides look, content = content)
+        CompositionLocalProvider(LocalTextStyle provides TextStyle.Default, LocalLook provides look, LocalPalette provides colors, content = content)
     }
 }
+
+/** Material components (menus, dialogs) in the same colors. */
+private fun Colors.material(): ColorScheme = (if (light) lightColorScheme() else darkColorScheme()).copy(
+    primary = green,
+    onPrimary = bg0,
+    surfaceTint = green,
+    secondary = orange,
+    background = bg0,
+    onBackground = fg,
+    surface = bg1,
+    onSurface = fg,
+    onSurfaceVariant = grey,
+    surfaceContainer = bg2,
+    surfaceContainerHigh = bg2,
+    surfaceContainerHighest = bg3,
+    outline = bg3,
+    error = red,
+)

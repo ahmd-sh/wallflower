@@ -1,6 +1,7 @@
 package sh.ahmd.wallflower.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -32,8 +33,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,6 +47,7 @@ import sh.ahmd.wallflower.KeyBarStore
 import sh.ahmd.wallflower.KeyProfile
 import sh.ahmd.wallflower.prefs.Look
 import sh.ahmd.wallflower.prefs.Preferences
+import sh.ahmd.wallflower.prefs.Scheme
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.protocol.Mux
 import sh.ahmd.wallflower.session.Host
@@ -81,6 +85,9 @@ fun SettingsScreen(
             Chip("bricolage", look == Look.Grotesque, Grotesque) { settings.look.set(Look.Grotesque) }
         }
         Body("The terminal, what you type for it, keys and values stay in the terminal font.")
+        val scheme by settings.scheme.flow.collectAsStateWithLifecycle()
+        ThemePicker(scheme) { settings.scheme.set(it) }
+        Body("The terminal takes the theme's colors too. Material You's come from the wallpaper, light or dark with the phone.")
         val feel by settings.haptics.flow.collectAsStateWithLifecycle()
         Toggle("haptics for swipes, switches and sends", feel) { settings.haptics.set(it) }
 
@@ -142,6 +149,56 @@ fun SettingsScreen(
     }
 }
 
+/** The themes, two to a row, each in its own colors. */
+@Composable
+private fun ThemePicker(picked: Scheme, onPick: (Scheme) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (row in Scheme.entries.chunked(2)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (s in row) ThemeChoice(s.label, colorsOf(s), s == picked, Modifier.weight(1f)) { onPick(s) }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** A theme as a swatch: its page, its words and its accents. */
+@Composable
+private fun ThemeChoice(name: String, colors: Colors, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val haptics = haptics()
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .background(colors.bg0)
+            .border(if (selected) 2.dp else 1.dp, if (selected) Palette.orange else Palette.border, shape)
+            .clickable {
+                if (!selected) haptics.tick()
+                onClick()
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(name, color = colors.fg, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            for (c in listOf(colors.red, colors.orange, colors.yellow, colors.green, colors.blue, colors.purple)) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(c))
+            }
+        }
+    }
+}
+
+private val Scheme.label
+    get() = when (this) {
+        Scheme.EverforestDarkHard -> "everforest"
+        Scheme.GruvboxDark -> "gruvbox"
+        Scheme.CatppuccinMocha -> "catppuccin mocha"
+        Scheme.CatppuccinLatte -> "catppuccin latte"
+        Scheme.TokyoNight -> "tokyo night"
+        Scheme.Nord -> "nord"
+        Scheme.MaterialYou -> "material you"
+    }
+
 @Composable
 private fun ProfileRow(profile: KeyProfile, programs: String, focused: Boolean, onClick: () -> Unit) {
     Column(
@@ -160,7 +217,19 @@ private fun ProfileRow(profile: KeyProfile, programs: String, focused: Boolean, 
             Text(programs, color = Palette.grey, fontFamily = Mono, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 12.dp))
             Text("›", color = Palette.grey, fontFamily = Mono, fontSize = 14.sp)
         }
-        Text(profile.keys.joinToString("  ") { it.label }, color = Palette.dim, fontFamily = Mono, fontSize = 12.sp, maxLines = 1)
+        Text(
+            buildAnnotatedString {
+                profile.keys.forEachIndexed { i, k ->
+                    if (i > 0) append("  ")
+                    append(faceOf(k))
+                }
+            },
+            color = Palette.dim,
+            fontFamily = Mono,
+            fontSize = 12.sp,
+            maxLines = 1,
+            inlineContent = glyphs(Palette.dim),
+        )
     }
 }
 
@@ -217,9 +286,9 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, program
         }
 
         Section("keys")
-        Body("Tap one to move or remove it.")
+        Body("Tap one to move or remove it; hold one to see what it sends.")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            profile.keys.forEachIndexed { i, k -> Chip(k.label, selected == i) { selected = if (selected == i) null else i } }
+            profile.keys.forEachIndexed { i, k -> KeyChoice(faceOf(k), KeyBar.nameOf(k), selected == i) { selected = if (selected == i) null else i } }
         }
         selected?.takeIf { it < profile.keys.size }?.let { i ->
             fun move(to: Int) {
@@ -241,20 +310,20 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, program
         Section("stop")
         Body("What the send button sends when the mobile view's box is empty.")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (keys in stops) Chip(KeyBar.labelOf(keys), profile.stop == keys) { save(profile.copy(stop = keys)) }
+            for (keys in stops) KeyChoice(faceOf(keys), KeyBar.nameOf(keys), profile.stop == keys) { save(profile.copy(stop = keys)) }
         }
 
         Section("send button")
         Body("What it presses in the terminal, where the keyboard types straight into the pane.")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (keys in presses) Chip(KeyBar.labelOf(keys), profile.sendKeys() == keys) { save(profile.copy(send = keys)) }
+            for (keys in presses) KeyChoice(faceOf(keys), KeyBar.nameOf(keys), profile.sendKeys() == keys) { save(profile.copy(send = keys)) }
         }
 
         Section("return key")
-        Body("What the keyboard's return key presses there. ^j and ⌥⏎ start a new line in apps that take several, as Claude Code does; a shell runs the line.")
+        Body("What the keyboard's return key presses there. ctrl j and alt enter start a new line in apps that take several, as Claude Code does; a shell runs the line.")
         val program = Programs.of(profile.programs.firstOrNull().orEmpty())
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (keys in presses) Chip(KeyBar.labelOf(keys), profile.returnKeys(program) == keys) { save(profile.copy(returnKey = keys)) }
+            for (keys in presses) KeyChoice(faceOf(keys), KeyBar.nameOf(keys), profile.returnKeys(program) == keys) { save(profile.copy(returnKey = keys)) }
         }
 
         Section("clear")
@@ -267,13 +336,13 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, program
 
         Section("add")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (k in KeyBar.common.filter { bindings || !it.bindings }) Chip(k.label, false) { save(profile.copy(keys = profile.keys + k)) }
+            for (k in KeyBar.common.filter { bindings || !it.bindings }) KeyChoice(faceOf(k), KeyBar.nameOf(k), false) { save(profile.copy(keys = profile.keys + k)) }
         }
 
         Section("custom")
         Body(
-            "Key names, space-separated; anything else is typed as is (Escape :w Enter). C- is ctrl, M- alt (⌥) and S- shift, " +
-                "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is ⇧tab, BSpace ⌫, DC delete, IC insert; F1 to F12 work too. Tap one to add it.",
+            "Key names, space-separated; anything else is typed as is (Escape :w Enter). C- is ctrl, M- alt and S- shift, " +
+                "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is shift tab, BSpace backspace, DC delete, IC insert; F1 to F12 work too. Tap one to add it.",
         )
         var label by remember(ref) { mutableStateOf("") }
         var sends by remember(ref) { mutableStateOf("") }
