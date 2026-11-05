@@ -71,6 +71,7 @@ internal fun Rule(modifier: Modifier = Modifier, color: Color = Palette.bg2) =
     Box(modifier.fillMaxWidth().height(1.dp).background(color))
 
 /** A small control floating over a pane, as the mobile view toggle and the pane dots are. */
+@Composable
 internal fun Modifier.chrome() = this
     .clip(RoundedCornerShape(8.dp))
     .background(Palette.bg1)

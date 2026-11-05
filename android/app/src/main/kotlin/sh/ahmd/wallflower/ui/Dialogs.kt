@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -127,10 +128,10 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
     }
 }
 
-/** A menu's choice: what it says, in what color and [font], what it's about beneath, and what it does. */
+/** A menu's choice: what it says, in what color (unspecified, the words') and [font], what it's about beneath, and what it does. */
 class MenuAction(
     val label: String,
-    val color: Color = Palette.fg,
+    val color: Color = Color.Unspecified,
     val font: FontFamily? = null,
     val detail: String? = null,
     val onClick: () -> Unit,
@@ -182,7 +183,7 @@ fun PopupMenu(
                         }
                         .padding(horizontal = 12.dp, vertical = 9.dp),
                 ) {
-                    Text(action.label, color = action.color, style = Type.body, fontFamily = action.font)
+                    Text(action.label, color = action.color.takeOrElse { Palette.fg }, style = Type.body, fontFamily = action.font)
                     action.detail?.let { Text(it, color = Palette.grey, style = Type.label) }
                 }
             }

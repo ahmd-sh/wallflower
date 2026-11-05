@@ -1,6 +1,7 @@
 package sh.ahmd.wallflower.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,6 +46,7 @@ import sh.ahmd.wallflower.KeyBarStore
 import sh.ahmd.wallflower.KeyProfile
 import sh.ahmd.wallflower.prefs.Look
 import sh.ahmd.wallflower.prefs.Preferences
+import sh.ahmd.wallflower.prefs.Scheme
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.protocol.Mux
 import sh.ahmd.wallflower.session.Host
@@ -81,6 +84,9 @@ fun SettingsScreen(
             Chip("bricolage", look == Look.Grotesque, Grotesque) { settings.look.set(Look.Grotesque) }
         }
         Body("The terminal, what you type for it, keys and values stay in the terminal font.")
+        val scheme by settings.scheme.flow.collectAsStateWithLifecycle()
+        ThemePicker(scheme) { settings.scheme.set(it) }
+        Body("The terminal takes the theme's colors too. Material You's come from the wallpaper, light or dark with the phone.")
         val feel by settings.haptics.flow.collectAsStateWithLifecycle()
         Toggle("haptics for swipes, switches and sends", feel) { settings.haptics.set(it) }
 
@@ -138,6 +144,56 @@ fun SettingsScreen(
         }
     }
 }
+
+/** The themes, two to a row, each in its own colors. */
+@Composable
+private fun ThemePicker(picked: Scheme, onPick: (Scheme) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (row in Scheme.entries.chunked(2)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (s in row) ThemeChoice(s.label, colorsOf(s), s == picked, Modifier.weight(1f)) { onPick(s) }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** A theme as a swatch: its page, its words and its accents. */
+@Composable
+private fun ThemeChoice(name: String, colors: Colors, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val haptics = haptics()
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .background(colors.bg0)
+            .border(if (selected) 2.dp else 1.dp, if (selected) Palette.orange else Palette.border, shape)
+            .clickable {
+                if (!selected) haptics.tick()
+                onClick()
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(name, color = colors.fg, fontFamily = words, fontSize = wordSize(12.sp, 14.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            for (c in listOf(colors.red, colors.orange, colors.yellow, colors.green, colors.blue, colors.purple)) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(c))
+            }
+        }
+    }
+}
+
+private val Scheme.label
+    get() = when (this) {
+        Scheme.EverforestDarkHard -> "everforest"
+        Scheme.GruvboxDark -> "gruvbox"
+        Scheme.CatppuccinMocha -> "catppuccin mocha"
+        Scheme.CatppuccinLatte -> "catppuccin latte"
+        Scheme.TokyoNight -> "tokyo night"
+        Scheme.Nord -> "nord"
+        Scheme.MaterialYou -> "material you"
+    }
 
 @Composable
 private fun ProfileRow(profile: KeyProfile, programs: String, focused: Boolean, onClick: () -> Unit) {

@@ -55,6 +55,7 @@ import sh.ahmd.wallflower.program.Command
 import sh.ahmd.wallflower.ui.Glyph
 import sh.ahmd.wallflower.ui.GlyphIcon
 import sh.ahmd.wallflower.ui.MenuAction
+import sh.ahmd.wallflower.ui.Colors
 import sh.ahmd.wallflower.ui.Mono
 import sh.ahmd.wallflower.ui.Palette
 import sh.ahmd.wallflower.ui.PopupMenu
@@ -234,8 +235,8 @@ private fun Remove(modifier: Modifier, onClick: () -> Unit) {
     ) { GlyphIcon(Glyph.Close, Palette.fg, size = 9.dp) }
 }
 
-/** An upload's path in the box shows as its name, marked as a file. */
-internal class UploadNames(private val paths: Regex) : OutputTransformation {
+/** An upload's path in the box shows as its name, marked as a file in [colors]. */
+internal class UploadNames(private val paths: Regex, private val colors: Colors) : OutputTransformation {
     override fun TextFieldBuffer.transformOutput() {
         val found = paths.findAll(asCharSequence().toString()).toList()
         var shift = 0
@@ -247,7 +248,7 @@ internal class UploadNames(private val paths: Regex) : OutputTransformation {
             names += start until start + name.length
             shift += name.length - m.value.length
         }
-        for (r in names) addStyle(SpanStyle(color = Palette.aqua, background = Palette.bg2), r.first, r.last + 1)
+        for (r in names) addStyle(SpanStyle(color = colors.aqua, background = colors.bg2), r.first, r.last + 1)
     }
 }
 

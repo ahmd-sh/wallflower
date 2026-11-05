@@ -84,12 +84,13 @@ internal fun TabBar(
     val at = remember { Animatable(index.coerceAtLeast(0).toFloat()) }
     LaunchedEffect(index) { if (index >= 0) at.animateTo(index.toFloat(), Motion.spatial()) }
     var menu by remember { mutableStateOf<String?>(null) }
+    val colors = Palette
     Row(
         Modifier
             .fillMaxWidth()
             .drawBehind {
                 val line = 1.dp.toPx()
-                drawRect(Palette.border, Offset(0f, size.height - line), Size(size.width, line))
+                drawRect(colors.border, Offset(0f, size.height - line), Size(size.width, line))
             }
             .padding(vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -107,7 +108,7 @@ internal fun TabBar(
                     val radius = CornerRadius(8.dp.toPx())
                     fun span(i: Int) = info.visibleItemsInfo.firstOrNull { it.index == i }?.let { (start + it.offset) to it.size.toFloat() }
                     for (item in info.visibleItemsInfo) {
-                        drawRoundRect(Palette.bg1, Offset(start + item.offset, 0f), Size(item.size.toFloat(), size.height), radius)
+                        drawRoundRect(colors.bg1, Offset(start + item.offset, 0f), Size(item.size.toFloat(), size.height), radius)
                     }
                     if (index < 0) return@drawBehind
                     val v = at.value
@@ -119,7 +120,7 @@ internal fun TabBar(
                     } else {
                         a ?: b ?: return@drawBehind
                     }
-                    drawRoundRect(Palette.bg3, Offset(x, 0f), Size(w, size.height), radius)
+                    drawRoundRect(colors.bg3, Offset(x, 0f), Size(w, size.height), radius)
                 },
             contentPadding = PaddingValues(horizontal = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),

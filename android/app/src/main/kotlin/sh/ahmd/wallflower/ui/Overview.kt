@@ -121,10 +121,11 @@ internal fun PaneOverview(
 ) {
     val panes = window.panes.sortedBy { it.index }
     val grid = rememberLazyGridState(initialFirstVisibleItemIndex = panes.indexOfFirst { it.id == shown }.coerceAtLeast(0))
+    val backdrop = Palette.bg0
     LazyVerticalGrid(
         state = grid,
         columns = GridCells.Adaptive(minSize = 160.dp),
-        modifier = Modifier.fillMaxSize().drawBehind { drawRect(Palette.bg0, alpha = progress()) },
+        modifier = Modifier.fillMaxSize().drawBehind { drawRect(backdrop, alpha = progress()) },
         contentPadding = PaddingValues(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -170,6 +171,7 @@ private fun PaneCard(
     modifier: Modifier,
 ) {
     val shape = RoundedCornerShape(CARD_CORNER)
+    val theme = Palette.terminal
     DisposableEffect(pane.id) { onDispose { cards.remove(pane.id) } }
     Column(
         modifier
@@ -201,7 +203,10 @@ private fun PaneCard(
                     .graphicsLayer { alpha = if (zoomed) 1f - handoff(progress()) else 1f },
                 factory = { ctx -> TerminalView(ctx) },
                 onRelease = { v -> v.terminal = null },
-                update = { v -> v.terminal = terminal },
+                update = { v ->
+                    v.terminal = terminal
+                    v.theme = theme
+                },
             )
             Box(Modifier.matchParentSize().clickable(onClick = onClick)) // the card takes the tap, not the terminal
         }
