@@ -49,13 +49,15 @@ a line, on its stdin and stdout. It's told:
   what you're sent promptly; messages that pile up unread are dropped.
   `activity` is `working`, `waiting` (for the user to answer something) or
   `idle`; `since` is Unix milliseconds.
-- `{"read": {"id": "%1", "tty": …, "command": …}}`: send what's in the pane,
-  then whatever changes, until `{"stop": "%1"}`:
-  `{"pane": "%1", "update": {"reset": true, "entries": [...], "context": 1234, "title": "fix the tests"}}`.
+- `{"read": {"id": "%1", "tty": …, "command": …}, "n": 3}`: send what's in
+  the pane, then whatever changes, until `{"stop": "%1"}`, each message with
+  the read's `n`, so what's left of an earlier read of the pane isn't taken
+  for this one's:
+  `{"pane": "%1", "n": 3, "update": {"reset": true, "entries": [...], "context": 1234, "title": "fix the tests"}}`.
   With `reset`, its entries replace any before (`more`: there were earlier
   ones); without, they're new, or replace those with their ids. `context`
   and `title` are optional. When there's nothing more to read, say why:
-  `{"pane": "%1", "end": "it exited"}`.
+  `{"pane": "%1", "n": 3, "end": "it exited"}`.
 
 Entries are as the protocol has them (`docs/protocol.md`, `entries`): `id`,
 `from` (`user` or `program`), `kind` (`said`, `step`, `thought`, `picture`,

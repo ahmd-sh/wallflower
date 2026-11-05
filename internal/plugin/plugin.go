@@ -35,6 +35,8 @@ type Source struct {
 	run     *running
 	started time.Time
 	closed  bool
+	panes   map[string]*sync.Mutex // held while each pane is read
+	reads   int                    // reads asked for, numbering each
 }
 
 // running is the program while it runs.
@@ -44,15 +46,22 @@ type running struct {
 	out     chan []byte // lines on their way to it
 	mu      sync.Mutex
 	found   map[string]mobileview.Found // what it said last
-	readers map[string]func(message)    // by pane, while it's read
+	readers map[string]reader           // by pane, while it's read
 	done    chan struct{}
 }
 
+// A reader takes what the program says of the read it numbered n.
+type reader struct {
+	n    int
+	take func(message)
+}
+
 // message is a line the program writes: which panes it reads, or what's
-// in one, or that there's no more of it.
+// in a pane for the read numbered N, or that there's no more of it.
 type message struct {
 	Found  map[string]found `json:"found"`
 	Pane   string           `json:"pane"`
+	N      int              `json:"n"`
 	Update *update          `json:"update"`
 	End    *string          `json:"end"`
 }
@@ -122,13 +131,21 @@ func (s *Source) Find(panes []mobileview.Pane) map[string]mobileview.Found {
 // Read has the program send what's in the pane until ctx is done, or it
 // says there's no more.
 func (s *Source) Read(ctx context.Context, p mobileview.Pane, send func(mobileview.Update)) error {
+	// One read of a pane at a time: the last one's stop goes before this one's read.
+	reading := s.pane(p.ID)
+	reading.Lock()
+	defer reading.Unlock()
 	r := s.running()
 	if r == nil {
 		return errors.New("the plugin isn't running")
 	}
 	ended := make(chan string, 1)
+	s.mu.Lock()
+	s.reads++
+	n := s.reads
+	s.mu.Unlock()
 	r.mu.Lock()
-	r.readers[p.ID] = func(m message) {
+	r.readers[p.ID] = reader{n, func(m message) {
 		switch {
 		case m.End != nil:
 			select {
@@ -138,7 +155,7 @@ func (s *Source) Read(ctx context.Context, p mobileview.Pane, send func(mobilevi
 		case m.Update != nil:
 			send(updateOf(*m.Update))
 		}
-	}
+	}}
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
@@ -146,7 +163,7 @@ func (s *Source) Read(ctx context.Context, p mobileview.Pane, send func(mobilevi
 		r.mu.Unlock()
 		r.send(map[string]any{"stop": p.ID})
 	}()
-	r.send(map[string]any{"read": paneOf(p)})
+	r.send(map[string]any{"read": paneOf(p), "n": n})
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -155,6 +172,18 @@ func (s *Source) Read(ctx context.Context, p mobileview.Pane, send func(mobilevi
 	case <-r.done:
 		return errors.New("the plugin stopped")
 	}
+}
+
+func (s *Source) pane(id string) *sync.Mutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.panes == nil {
+		s.panes = map[string]*sync.Mutex{}
+	}
+	if s.panes[id] == nil {
+		s.panes[id] = &sync.Mutex{}
+	}
+	return s.panes[id]
 }
 
 func updateOf(u update) mobileview.Update {
@@ -197,7 +226,7 @@ func (s *Source) running() *running {
 	if cmd.Start() != nil {
 		return nil
 	}
-	r := &running{cmd: cmd, in: in, out: make(chan []byte, queued), readers: map[string]func(message){}, done: make(chan struct{})}
+	r := &running{cmd: cmd, in: in, out: make(chan []byte, queued), readers: map[string]reader{}, done: make(chan struct{})}
 	go r.listen(out, cmd)
 	go r.write()
 	s.run = r
@@ -239,10 +268,10 @@ func (r *running) listen(out io.Reader, cmd *exec.Cmd) {
 			continue
 		}
 		r.mu.Lock()
-		read := r.readers[m.Pane]
+		read, ok := r.readers[m.Pane]
 		r.mu.Unlock()
-		if read != nil {
-			read(m)
+		if ok && read.n == m.N { // not what's left of an earlier read
+			read.take(m)
 		}
 	}
 }
