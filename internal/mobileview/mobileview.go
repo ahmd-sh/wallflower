@@ -52,13 +52,15 @@ type Entry struct {
 // before (More says there were earlier ones); otherwise they're new, or
 // replace those with their IDs. Context, how many tokens the conversation
 // takes of the program's context (0 for unknown), comes when it changes, if
-// Measured. What the program is doing isn't here: Find says.
+// Measured. Title, the conversation's name, comes when it changes, and with
+// a Reset if it has one. What the program is doing isn't here: Find says.
 type Update struct {
 	Reset    bool
 	More     bool
 	Entries  []Entry
 	Context  int
 	Measured bool
+	Title    string
 }
 
 // A Pane is what a Source is told of a pane.

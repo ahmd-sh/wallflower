@@ -42,7 +42,9 @@ func TestParse(t *testing.T) {
 		{ID: "a2.0", From: "program", Kind: "step", Name: "Bash", Text: "go test ./...", Status: "running"},
 		{ID: "a2.0", From: "program", Kind: "step", Name: "Bash", Text: "go test ./...", Status: "failed", Output: "FAIL x_test.go"},
 		{ID: "a4.0", From: "program", Kind: "said", Text: "**Fixed.** All pass."},
-		{ID: "u5.0", From: "user", Kind: "note", Text: "This session is being continued..."},
+		{ID: "u3.0", From: "user", Kind: "step", Name: "/compact", Status: "done"},
+		{ID: "u3.0", From: "user", Kind: "step", Name: "/compact", Status: "done", Output: "Compacted"},
+		{ID: "u5.0", From: "user", Kind: "note", Text: "Conversation compacted", Output: "This session is being continued..."},
 		{ID: "u6.0", From: "user", Kind: "picture", Mime: "image/png", Data: "iVBORw0KGgo="},
 		{ID: "u6.1", From: "user", Kind: "said", Text: "look"},
 		{ID: "u7.0", From: "user", Kind: "note", Text: "[Request interrupted by user for tool use]"},
@@ -51,6 +53,59 @@ func TestParse(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got\n%+v\nwant\n%+v", got, want)
 	}
+}
+
+func TestCommandsAndTitles(t *testing.T) {
+	p := newParser().(*parser)
+	var got []mobileview.Entry
+	for _, l := range []string{
+		`{"type":"ai-title","aiTitle":"Fix the tests","sessionId":"s"}`,
+		`{"type":"system","subtype":"compact_boundary","uuid":"b","content":"Conversation compacted"}`,
+		`{"type":"user","uuid":"s1","parentUuid":"b","isCompactSummary":true,"message":{"content":"This session is being continued..."}}`,
+		`{"type":"user","uuid":"c0","parentUuid":"s1","isMeta":true,"message":{"content":"<local-command-caveat>The command below was run directly</local-command-caveat>"}}`,
+		`{"type":"user","uuid":"c1","parentUuid":"c0","message":{"content":"<command-name>/compact</command-name>\n            <command-message>compact</command-message>\n            <command-args></command-args>"}}`,
+		`{"type":"user","uuid":"c2","parentUuid":"c1","message":{"content":"<local-command-stdout>\u001b[2mCompacted (ctrl+o to see full summary)\u001b[22m</local-command-stdout>"}}`,
+		`{"type":"user","uuid":"c3","parentUuid":"c2","message":{"content":"<command-name>/add-dir</command-name>\n<command-message>add-dir</command-message>\n<command-args>~/dev/x</command-args>"}}`,
+		`{"type":"user","uuid":"c4","parentUuid":"c3","message":{"content":"<local-command-stdout>Added \u001b[1m~/dev/x\u001b[22m as a working directory</local-command-stdout>"}}`,
+		`{"type":"user","uuid":"c5","parentUuid":"c4","message":{"content":"<bash-input>ls</bash-input>"}}`,
+		`{"type":"user","uuid":"c6","parentUuid":"c5","message":{"content":"<bash-stdout>a\nb</bash-stdout><bash-stderr>ls: c: No such file</bash-stderr>"}}`,
+		`{"type":"system","subtype":"local_command","uuid":"c7","parentUuid":"c6","content":"<command-name>/rename</command-name>\n<command-message>rename</command-message>\n<command-args>tests</command-args>"}`,
+		`{"type":"system","subtype":"local_command","uuid":"c8","parentUuid":"c7","content":"<local-command-stdout>Session renamed to: tests</local-command-stdout>"}`,
+		`{"type":"custom-title","customTitle":"tests","sessionId":"s"}`,
+	} {
+		got = append(got, p.Line([]byte(l))...)
+		if strings.Contains(l, `"ai-title"`) && p.Title() != "Fix the tests" {
+			t.Errorf("title %q, want claude's", p.Title())
+		}
+	}
+	got = collapse(got)
+	want := []mobileview.Entry{
+		{ID: "s1.0", From: "user", Kind: "note", Text: "Conversation compacted", Output: "This session is being continued..."},
+		{ID: "c3.0", From: "user", Kind: "step", Name: "/add-dir", Text: "~/dev/x", Status: "done", Output: "Added ~/dev/x as a working directory"},
+		{ID: "c5.0", From: "user", Kind: "step", Name: "!", Text: "ls", Status: "done", Output: "a\nb\nls: c: No such file"},
+		{ID: "c7.0", From: "user", Kind: "step", Name: "/rename", Text: "tests", Status: "done", Output: "Session renamed to: tests"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got\n%+v\nwant\n%+v", got, want)
+	}
+	if p.Title() != "tests" {
+		t.Errorf("title %q, want the user's", p.Title())
+	}
+}
+
+// collapse keeps each entry's latest state, where it first came.
+func collapse(entries []mobileview.Entry) []mobileview.Entry {
+	var out []mobileview.Entry
+	at := map[string]int{}
+	for _, e := range entries {
+		if i, ok := at[e.ID]; ok {
+			out[i] = e
+		} else {
+			at[e.ID] = len(out)
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func TestBigImagesAndOutputs(t *testing.T) {

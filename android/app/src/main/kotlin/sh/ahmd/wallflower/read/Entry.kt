@@ -47,6 +47,9 @@ sealed interface Entry {
     /** A picture either side shared, [size] bytes, which are asked for when it shows. */
     data class Picture(override val id: String, val by: Party, val mime: String, val size: Int) : Entry
 
-    /** Something that happened rather than was said: an interruption, a compaction. */
-    data class Note(override val id: String, val text: String) : Entry
+    /** A command the user ran ([name]: /compact, or ! for a shell's) with its [args], and what it said back. */
+    data class Command(override val id: String, val name: String, val args: String, val output: String = "", val outputCut: Int = 0) : Entry
+
+    /** Something that happened rather than was said: an interruption, a compaction, with more about it ([detail]) to open. */
+    data class Note(override val id: String, val text: String, val detail: String = "") : Entry
 }

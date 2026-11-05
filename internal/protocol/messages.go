@@ -257,7 +257,8 @@ type Reset struct {
 // entries are new, or replace the ones with their IDs. Error says why there
 // is nothing to read (any more). Context is how many tokens the
 // conversation takes of the program's context, as of its latest reply, when
-// it says and whenever that changes; 0 when it no longer knows.
+// it says and whenever that changes; 0 when it no longer knows. Title is
+// what the conversation is called, with a Reset and whenever it changes.
 type Entries struct {
 	Pane    string  `json:"pane"`
 	Reset   bool    `json:"reset,omitempty"`
@@ -265,6 +266,7 @@ type Entries struct {
 	Entries []Entry `json:"entries,omitempty"`
 	Error   string  `json:"error,omitempty"`
 	Context *int    `json:"context,omitempty"`
+	Title   string  `json:"title,omitempty"`
 }
 
 // Entry is one part of a mobile view: something said, or a step taken.

@@ -51,6 +51,19 @@ func branches(p Parser) int {
 	return 0
 }
 
+// A Titled is a Parser that knows what the conversation is called, as of the
+// lines it has read; "" until it does.
+type Titled interface {
+	Title() string
+}
+
+func titleOf(p Parser) string {
+	if t, ok := p.(Titled); ok {
+		return t.Title()
+	}
+	return ""
+}
+
 func contextOf(p Parser) int {
 	if m, ok := p.(Measure); ok {
 		return m.Context()
@@ -80,7 +93,7 @@ var ErrEnded = errors.New("the conversation ended")
 // then entries as they come, starting over when the program moves to
 // another recording (a cleared conversation) or takes its conversation back
 // to an earlier point (a rewind), and how full its context is, as that
-// changes. recording says where the program's
+// changes, and what it's called. recording says where the program's
 // is now, and false once the program is gone; parser reads one from its
 // start, or from any line. Tail returns when ctx is done, or ErrEnded.
 func Tail(ctx context.Context, recording func() (Recording, bool), parser func() Parser, send func(Update)) error {
@@ -90,9 +103,10 @@ func Tail(ctx context.Context, recording func() (Recording, bool), parser func()
 		p        Parser
 		offset   int64
 		partial  []byte
-		announce bool // say there's a conversation, if its file isn't there yet
-		measured int  // the context last sent
-		branched int  // the parser's branches, as of the entries sent
+		announce bool   // say there's a conversation, if its file isn't there yet
+		measured int    // the context last sent
+		branched int    // the parser's branches, as of the entries sent
+		title    string // the title last sent
 	)
 	defer func() {
 		if f != nil {
@@ -118,10 +132,10 @@ func Tail(ctx context.Context, recording func() (Recording, bool), parser func()
 				var entries []Entry
 				var more bool
 				entries, more, p, offset = recent(f, parser, Recent)
-				partial, announce, measured, branched = nil, false, contextOf(p), branches(p)
-				send(Update{Reset: true, More: more, Entries: entries, Context: measured, Measured: measured != 0})
+				partial, announce, measured, branched, title = nil, false, contextOf(p), branches(p), titleOf(p)
+				send(Update{Reset: true, More: more, Entries: entries, Context: measured, Measured: measured != 0, Title: title})
 			} else if announce {
-				announce, measured = false, 0
+				announce, measured, title = false, 0, ""
 				send(Update{Reset: true})
 			}
 		} else if st, err := f.Stat(); err == nil && st.Size() < offset {
@@ -151,6 +165,10 @@ func Tail(ctx context.Context, recording func() (Recording, bool), parser func()
 		if f != nil && now != measured {
 			measured = now
 			send(Update{Context: now, Measured: true})
+		}
+		if f != nil && titleOf(p) != title {
+			title = titleOf(p)
+			send(Update{Title: title})
 		}
 		select {
 		case <-ctx.Done():

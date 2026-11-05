@@ -236,6 +236,8 @@ data class Entries(
     val error: String? = null,
     /** Tokens the conversation takes of the program's context, when it says; 0 once it no longer knows (just compacted). */
     val context: Int? = null,
+    /** What the conversation is called, with a reset and whenever it changes. */
+    val title: String? = null,
 ) : ServerMessage
 
 /** One part of a mobile view: something said, or a step taken. */

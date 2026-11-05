@@ -7,7 +7,8 @@ package sh.ahmd.wallflower.read
  * program's context, 0 while that's unknown. [rewound]: the user's message
  * a rewind went back to before, which the program doesn't record until the
  * next message; it and what followed aren't [shown] till then. What the
- * program is doing is its pane's ([activityOf]).
+ * program is doing is its pane's ([activityOf]). [title]: what the
+ * conversation is called, if it's named.
  */
 data class Reading(
     val entries: List<Entry> = emptyList(),
@@ -16,6 +17,7 @@ data class Reading(
     val loaded: Boolean = false,
     val context: Int = 0,
     val rewound: String? = null,
+    val title: String? = null,
 ) {
     val shown: List<Entry> get() = rewound?.let { r -> entries.takeWhile { it.id != r } } ?: entries
 

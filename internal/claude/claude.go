@@ -184,11 +184,24 @@ func newParser() mobileview.Parser {
 }
 
 type parser struct {
-	tools    map[string]mobileview.Entry // calls waiting for their result, by tool_use id
-	context  int                         // tokens in context as of the latest reply or compaction
-	next     map[string][]string         // record -> the records going on from it
-	left     map[string]bool             // records a rewind left behind
-	branches int
+	tools     map[string]mobileview.Entry // calls waiting for their result, by tool_use id
+	context   int                         // tokens in context as of the latest reply or compaction
+	next      map[string][]string         // record -> the records going on from it
+	left      map[string]bool             // records a rewind left behind
+	branches  int
+	command   *mobileview.Entry // the user's latest command, until its output
+	compacted bool              // the latest record said was a compaction's summary
+	custom    string            // the title the user gave the conversation
+	named     string            // the title claude gave it
+}
+
+// Title is what the user named the conversation (/rename), or else what
+// claude did.
+func (p *parser) Title() string {
+	if p.custom != "" {
+		return p.custom
+	}
+	return p.named
 }
 
 // Context is what the latest reply's request held, cached or not, and the
@@ -206,6 +219,9 @@ type record struct {
 	IsCompactSummary bool            `json:"isCompactSummary"`
 	PromptSource     string          `json:"promptSource"`
 	Subtype          string          `json:"subtype"`
+	Content          json.RawMessage `json:"content"` // a system record's
+	CustomTitle      string          `json:"customTitle"`
+	AITitle          string          `json:"aiTitle"`
 	ToolUseResult    json.RawMessage `json:"toolUseResult"`
 	Message          struct {
 		Content json.RawMessage `json:"content"`
@@ -260,7 +276,16 @@ func decode(raw json.RawMessage) (c content) {
 
 func (p *parser) Line(b []byte) []mobileview.Entry {
 	var r record
-	if json.Unmarshal(b, &r) != nil || r.IsSidechain || r.UUID == "" {
+	if json.Unmarshal(b, &r) != nil || r.IsSidechain {
+		return nil
+	}
+	switch r.Type {
+	case "custom-title":
+		p.custom = strings.TrimSpace(r.CustomTitle)
+	case "ai-title":
+		p.named = strings.TrimSpace(r.AITitle)
+	}
+	if r.UUID == "" {
 		return nil
 	}
 	talk := !r.IsMeta && (r.Type == "user" || r.Type == "assistant")
@@ -279,8 +304,37 @@ func (p *parser) Line(b []byte) []mobileview.Entry {
 	if r.Subtype == "compact_boundary" {
 		p.context = 0
 	}
+	if r.Type == "system" && r.Subtype == "local_command" {
+		var text string
+		if json.Unmarshal(r.Content, &text) == nil {
+			if e, ok := p.commandOf(r.UUID+".0", strings.TrimSpace(text)); ok {
+				return []mobileview.Entry{e}
+			}
+		}
+		return nil
+	}
 	if !talk {
 		return nil
+	}
+	compacted := p.compacted
+	p.compacted = r.IsCompactSummary
+	if r.IsCompactSummary {
+		e := mobileview.Entry{ID: r.UUID + ".0", From: from(r.Type), Kind: mobileview.Note, Text: "Conversation compacted"}
+		if c.text != nil {
+			e.Output, e.OutputCut = clip(strings.TrimSpace(*c.text))
+		}
+		return []mobileview.Entry{e}
+	}
+	if c.text != nil && r.Type == "user" && tagged(*c.text) {
+		e, ok := p.commandOf(r.UUID+".0", *c.text)
+		if !ok {
+			return nil
+		}
+		if compacted && e.Name == "/compact" {
+			p.command = nil // noted as the compaction it made
+			return nil
+		}
+		return []mobileview.Entry{e}
 	}
 	if c.text != nil {
 		if e, ok := p.said(r, 0, *c.text); ok {
@@ -390,9 +444,9 @@ var (
 	interrupted = regexp.MustCompile(`^\[Request interrupted by user[^\]]*\]$`)
 )
 
-// said is text either side wrote. claude also records slash commands and
-// their output as user text, wrapped in tags; those aren't shown. Nor is what
-// claude tells itself, like a background task finishing, but its summary is.
+// said is text either side wrote. Commands, which claude records as user
+// text in tags, are steps (commandOf). What claude tells itself, like a
+// background task finishing, isn't shown, but its summary is.
 func (p *parser) said(r record, i int, text string) (mobileview.Entry, bool) {
 	who := from(r.Type)
 	text = strings.TrimSpace(text)
@@ -413,9 +467,66 @@ func (p *parser) said(r record, i int, text string) (mobileview.Entry, bool) {
 		return mobileview.Entry{}, false
 	}
 	e := mobileview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), From: who, Kind: mobileview.Said, Text: text}
-	if r.IsCompactSummary || (who == mobileview.User && interrupted.MatchString(text)) {
+	if who == mobileview.User && interrupted.MatchString(text) {
 		e.Kind = mobileview.Note
 	}
+	return e, true
+}
+
+var (
+	commandName = regexp.MustCompile(`(?s)<command-name>(.*?)</command-name>`)
+	commandArgs = regexp.MustCompile(`(?s)<command-args>(.*?)</command-args>`)
+	bashInput   = regexp.MustCompile(`(?s)<bash-input>(.*?)</bash-input>`)
+	stdout      = regexp.MustCompile(`(?s)<(?:local-command|bash)-stdout>(.*?)</(?:local-command|bash)-stdout>`)
+	stderr      = regexp.MustCompile(`(?s)<(?:local-command|bash)-stderr>(.*?)</(?:local-command|bash)-stderr>`)
+)
+
+// tagged is whether text is what claude records of a command, in its tags,
+// rather than something the user said.
+func tagged(text string) bool {
+	text = strings.TrimSpace(text)
+	for _, t := range []string{"<command-", "<local-command-", "<bash-"} {
+		if strings.HasPrefix(text, t) {
+			return true
+		}
+	}
+	return false
+}
+
+// commandOf reads what claude records of a command the user ran, a slash
+// command or one in its shell mode (!), as a step of the user's: the
+// command, then its output, which goes with it.
+func (p *parser) commandOf(id, text string) (mobileview.Entry, bool) {
+	name, args := "", ""
+	if m := commandName.FindStringSubmatch(text); m != nil {
+		name = strings.TrimSpace(m[1])
+		if a := commandArgs.FindStringSubmatch(text); a != nil {
+			args = strings.TrimSpace(a[1])
+		}
+	} else if m := bashInput.FindStringSubmatch(text); m != nil {
+		name, args = "!", strings.TrimSpace(m[1])
+	}
+	if name != "" {
+		e := mobileview.Entry{ID: id, From: mobileview.User, Kind: mobileview.Step, Name: name, Text: args, Status: mobileview.Done}
+		p.command = &e
+		return e, true
+	}
+	out, errs := stdout.FindStringSubmatch(text), stderr.FindStringSubmatch(text)
+	if out == nil && errs == nil {
+		return mobileview.Entry{}, false
+	}
+	if p.command == nil {
+		return mobileview.Entry{}, false // what's left of one read before, or the noted compaction's
+	}
+	var parts []string
+	for _, m := range [][]string{out, errs} {
+		if m != nil && strings.TrimSpace(m[1]) != "" {
+			parts = append(parts, strings.TrimSpace(m[1]))
+		}
+	}
+	e := *p.command
+	e.Output, e.OutputCut = clip(strings.TrimSpace(ansi.ReplaceAllString(strings.Join(parts, "\n"), "")))
+	p.command = nil
 	return e, true
 }
 

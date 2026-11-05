@@ -29,6 +29,25 @@ class ReadingTest {
     }
 
     @Test
+    fun aUsersStepIsACommandANotesOutputItsDetailAndTheTitleStays() {
+        val r = Reading()
+            .apply(
+                Entries(
+                    "%1", reset = true, title = "fix the tests",
+                    entries = listOf(
+                        WireEntry("c", "user", "step", "~/x", name = "/add-dir", status = "done", output = "Added ~/x"),
+                        WireEntry("n", "user", "note", "Conversation compacted", output = "the summary"),
+                    ),
+                ),
+            )
+            .apply(Entries("%1", context = 5))
+        assertEquals(listOf(Entry.Command("c", "/add-dir", "~/x", "Added ~/x"), Entry.Note("n", "Conversation compacted", "the summary")), r.entries)
+        assertEquals("fix the tests", r.title)
+        assertEquals("tests", r.apply(Entries("%1", title = "tests")).title)
+        assertEquals(null, r.apply(Entries("%1", reset = true)).title)
+    }
+
+    @Test
     fun entriesReplaceTheirsByIdOrComeLast() {
         val r = Reading()
             .apply(Entries("%1", reset = true, more = true, entries = listOf(text("a"), WireEntry("t", "program", "step", "ls", name = "Bash", status = "running"))))

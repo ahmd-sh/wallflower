@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -101,7 +102,8 @@ import sh.ahmd.wallflower.screen.Prompt
  * Below it, while the program works, a line says so; when its screen offers
  * a [prompt] (a permission, a question), that's there to answer, and the keys
  * picking an option go to [onKeys], and the option to [onPicked]. Sideways
- * drags go to [swipe], to move between panes as on the terminal.
+ * drags go to [swipe], to move between panes as on the terminal. The
+ * conversation's title, once it has one, sits at the top.
  */
 @Composable
 fun MobileView(
@@ -176,7 +178,7 @@ fun MobileView(
         Crossfade(phase, animationSpec = Motion.effect(), label = "mobile view") { p ->
             when (p) {
                 Phase.Reading -> Hint("reading…")
-                Phase.Empty -> Hint(reading.problem ?: "nothing said yet")
+                Phase.Empty -> Empty(reading.problem)
                 Phase.Shown -> Box(Modifier.fillMaxSize()) {
                     LazyColumn(
                         Modifier.fillMaxSize(),
@@ -246,6 +248,22 @@ fun MobileView(
                 }
             }
         }
+        val title = rememberLast(reading.title)
+        AnimatedVisibility(
+            reading.title != null,
+            modifier = Modifier.align(Alignment.TopStart),
+            enter = fadeIn(Motion.effect()),
+            exit = fadeOut(Motion.effect()),
+        ) {
+            Text(
+                title.orEmpty(),
+                color = Palette.grey,
+                style = Type.label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(8.dp).widthIn(max = 240.dp).chrome().padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
     }
 }
 
@@ -278,7 +296,8 @@ private fun ItemView(
         is Item.Steps -> Steps(item.entries)
         is Item.Said -> when (val e = item.entry) {
             is Entry.Picture -> Picture(e, picture)
-            is Entry.Note -> Note(e.text)
+            is Entry.Note -> Note(e.text, e.detail)
+            is Entry.Command -> Command(e)
             is Entry.Said -> if (e.by == Party.User) Prompt(e.text, onEdit?.let { { it(e) } }) else Reply(e.text, copyable = item.copies(ongoing), beside)
             is Entry.Step, is Entry.Thought -> Unit // folded into steps
         }
@@ -439,18 +458,58 @@ private fun Picture(e: Entry.Picture, fetch: suspend (String) -> ByteArray?) {
     }
 }
 
+/** Something that happened, small and centered; tapped, it opens, with its [detail] if it has one (a compaction's summary). */
 @Composable
-private fun Note(text: String) {
+private fun Note(text: String, detail: String = "") {
     var open by remember { mutableStateOf(false) }
-    Text(
-        text,
-        color = Palette.dim,
-        style = Type.caption,
-        textAlign = TextAlign.Center,
-        maxLines = if (open) Int.MAX_VALUE else 2,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().animateContentSize(Motion.spatial()).clickable { open = !open }.padding(horizontal = 24.dp),
-    )
+    Column(
+        Modifier.fillMaxWidth().animateContentSize(Motion.spatial()).clickable { open = !open }.padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            if (detail.isEmpty() || open) text else "$text · see more",
+            color = Palette.dim,
+            style = Type.caption,
+            textAlign = TextAlign.Center,
+            maxLines = if (open || detail.isNotEmpty()) Int.MAX_VALUE else 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (open && detail.isNotEmpty()) {
+            Text(
+                detail,
+                color = Palette.grey,
+                style = Type.caption,
+                modifier = Modifier.padding(top = 8.dp).clip(RoundedCornerShape(12.dp)).background(Palette.bg1).padding(12.dp),
+            )
+        }
+    }
+}
+
+/** A command the user ran, on their side and marked as one, with what it said back beneath; tapped, that opens if it's long. */
+@Composable
+private fun Command(c: Entry.Command) {
+    var open by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(start = 40.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            listOf(c.name, c.args).filter { it.isNotEmpty() }.joinToString(" "),
+            color = Palette.purple,
+            fontFamily = Mono,
+            fontSize = 13.sp,
+            modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(Palette.bg2).padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+        if (c.output.isNotEmpty()) {
+            Text(
+                c.output + (more(c.outputCut, "character")?.let { "\n$it" } ?: ""),
+                color = Palette.grey,
+                fontFamily = Mono,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                maxLines = if (open) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.animateContentSize(Motion.spatial()).clickable { open = !open }.padding(horizontal = 4.dp),
+            )
+        }
+    }
 }
 
 /** A run of tool calls and thinking, as one line saying what ran; open, a line per step. */
@@ -717,4 +776,14 @@ private fun Waiting() {
 @Composable
 private fun Hint(text: String) = Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
     Text(text, color = Palette.grey, style = Type.body, textAlign = TextAlign.Center)
+}
+
+/** A conversation with nothing in it yet, to start from the composer; or, with a [problem], why there's nothing to show. */
+@Composable
+private fun Empty(problem: String?) = Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        GlyphIcon(Glyph.Chat, Palette.bg4, size = 30.dp)
+        Text(if (problem == null) "a new conversation" else "nothing to show", color = Palette.grey, style = Type.title)
+        Text(problem ?: "what you send below starts it", color = Palette.dim, style = Type.body, textAlign = TextAlign.Center)
+    }
 }

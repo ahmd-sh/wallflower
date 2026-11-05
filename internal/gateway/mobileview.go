@@ -172,7 +172,7 @@ func (g *gateway) picture(pane, id string) {
 // entriesOf is an update as the wire has it; pictures' bytes stay in
 // [pictures], for the client to ask for.
 func entriesOf(pane string, u mobileview.Update, pictures *album) protocol.Entries {
-	e := protocol.Entries{Pane: pane, Reset: u.Reset, More: u.More}
+	e := protocol.Entries{Pane: pane, Reset: u.Reset, More: u.More, Title: u.Title}
 	if u.Measured {
 		n := u.Context
 		e.Context = &n

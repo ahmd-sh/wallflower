@@ -5,19 +5,20 @@ import sh.ahmd.wallflower.protocol.Pane
 
 // The mobile view as the wire has it, into the read model.
 
-/** With [m] applied: a reset replaces everything; otherwise its entries come in, and the context it says replaces what was. */
+/** With [m] applied: a reset replaces everything; otherwise its entries come in, and the context and title it says replace what was. */
 fun Reading.apply(m: Entries): Reading {
     if (m.reset) {
         val entries = m.entries.map(::entryOf)
         return Reading(
             entries.takeLast(Reading.MAX_ENTRIES), m.more || entries.size > Reading.MAX_ENTRIES, m.error,
-            loaded = true, context = m.context ?: 0,
+            loaded = true, context = m.context ?: 0, title = m.title,
         )
     }
     return with(m.entries.map(::entryOf)).copy(
         problem = if (m.entries.isEmpty()) m.error ?: problem else m.error,
         loaded = true,
         context = m.context ?: context,
+        title = m.title ?: title,
     )
 }
 
@@ -34,7 +35,7 @@ private fun partyOf(from: String) = if (from == "user") Party.User else Party.Pr
 /** An entry of a kind this client doesn't know shows as a note of its text. */
 internal fun entryOf(e: sh.ahmd.wallflower.protocol.Entry): Entry = when (e.kind) {
     "said" -> Entry.Said(e.id, partyOf(e.from), e.text)
-    "step" -> Entry.Step(
+    "step" -> if (e.from == "user") Entry.Command(e.id, e.name, e.text, e.output, e.outputCut) else Entry.Step(
         e.id, e.name, e.text, e.output, e.diff,
         when (e.status) {
             "failed" -> Entry.Step.Status.Failed
@@ -46,5 +47,5 @@ internal fun entryOf(e: sh.ahmd.wallflower.protocol.Entry): Entry = when (e.kind
     )
     "thought" -> Entry.Thought(e.id, e.text)
     "picture" -> Entry.Picture(e.id, partyOf(e.from), e.mime, e.size)
-    else -> Entry.Note(e.id, e.text)
+    else -> Entry.Note(e.id, e.text, e.output)
 }
