@@ -47,10 +47,7 @@ internal class PaneActions(
         }
     }
 
-    /** Stops the program, unless it says it's idle, when a stop can mean more (twice, ^C quits Claude Code). */
-    fun stop() {
-        if (activityOf(pane) != Activity.Idle) keys(stopKeys)
-    }
+    fun stop() = keys(stopKeys)
 
     /**
      * Brings the user's [message] back into the program's input line, to edit,

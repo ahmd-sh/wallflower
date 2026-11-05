@@ -259,6 +259,9 @@ class Session(
     /** [pane]'s conversation was rewound to before the user's message [said] matches. */
     fun rewound(pane: String, said: (String) -> Boolean) = reads.rewound(pane, said)
 
+    /** [pane]'s input line holds [line], which may be the user's latest message, taken back. */
+    fun takenBack(pane: String, line: String?) = reads.takenBack(pane, line)
+
     fun keys(pane: String, keys: List<String>, bindings: Boolean = false) = input.keys(pane, keys, bindings)
 
     fun bytes(pane: String, bytes: ByteArray) = input.bytes(pane, bytes)

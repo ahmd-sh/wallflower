@@ -70,7 +70,8 @@ import sh.ahmd.wallflower.ui.haptics
  * asked back to edit ([recalled] changes), once the program puts it back. What's in the box replaces the line
  * when sent, so the box is exactly what runs. The button sends (held: types
  * it in without Enter), enters the app's line when only that has text, or
- * stops.
+ * stops: while the program isn't idle ([stoppable]), or just after sending,
+ * since a stop can mean more to an idle program (^C twice quits Claude Code).
  *
  * + sends photos or files to the Mac ([attachments]); each shows above the
  * box on its way, then its path goes in at the cursor, shown as its name.
@@ -170,6 +171,14 @@ internal fun Composer(
             take(pending)
         }
     }
+    // Just sent, it can be stopped before the program is heard to be working.
+    var sent by remember { mutableStateOf(false) }
+    LaunchedEffect(sent) {
+        if (sent) {
+            delay(SENT_STOPS_MS)
+            sent = false
+        }
+    }
     val whole = remember(paths) { paths?.let(::WholeUploads) }
     val empty by remember(state) { derivedStateOf { state.text.isEmpty() } } // not every keystroke
     // From a pane written for to one typed into, or back, the keyboard stays up for the next.
@@ -263,9 +272,14 @@ internal fun Composer(
                     pending.isNotEmpty() -> Action.Enter
                     else -> Action.Stop
                 },
-                connected = connected && (stoppable || typing != null || !empty || pending.isNotEmpty()),
+                connected = connected && (stoppable || sent || typing != null || !empty || pending.isNotEmpty()),
                 label = if (typing == null || sendKeys == listOf("Enter")) null else KeyBar.labelOf(sendKeys),
-                onSend = { enter -> if (onSend(state.text.toString(), enter)) state.clearText() },
+                onSend = { enter ->
+                    if (onSend(state.text.toString(), enter)) {
+                        state.clearText()
+                        sent = enter
+                    }
+                },
                 onEnter = onEnter,
                 onStop = onStop,
             )
@@ -275,6 +289,9 @@ internal fun Composer(
 
 /** How long a suggestion asked for whole has to come in before what was seen of it does. */
 private const val ACCEPT_WAIT_MS = 1_500L
+
+/** How long after sending the button can stop what's sent, whatever the program was last heard doing. */
+private const val SENT_STOPS_MS = 3_000L
 
 /** How long a message asked back has to come back into the program's line to be taken into the box. */
 private const val RECALL_WAIT_MS = 60_000L

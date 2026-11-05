@@ -248,6 +248,9 @@ private fun TerminalScreen(
         asks = mobileView && activity != Activity.Working, // a prompt while the program works isn't one to answer
         activity,
     )
+    // A message the program puts back in its line stays taken back, whatever the line holds next, till the program records more.
+    val held = screen.line?.text
+    LaunchedEffect(pane?.id, held, mobileView) { if (mobileView && pane != null) session.takenBack(pane.id, held) }
 
     Column(
         Modifier
@@ -322,7 +325,7 @@ private fun TerminalScreen(
         fun Page(p: Pane?, current: Boolean, swipe: Swipe?) = PanePage(
             actions = remember(session, p, bar) { p?.let(::actionsOf) },
             terminal = p?.let { terminals[it.id] },
-            reading = p?.takeIf { it.id in mobileViews }?.let { readings[it.id] ?: Reading() }?.let { if (current) it.takenBack(screen.line?.text) else it },
+            reading = p?.takeIf { it.id in mobileViews }?.let { readings[it.id] ?: Reading() },
             current = current,
             swipe = swipe,
             settleHeight = settleHeight,

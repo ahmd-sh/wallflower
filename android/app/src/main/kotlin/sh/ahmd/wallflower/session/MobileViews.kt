@@ -54,4 +54,7 @@ internal class MobileViews(private val link: Link) {
 
     /** [pane]'s conversation was rewound to before the user's message [said] matches: hidden from there until the program records more. */
     fun rewound(pane: String, said: (String) -> Boolean) = _readings.update { all -> all[pane]?.let { all + (pane to it.rewoundTo(said)) } ?: all }
+
+    /** [pane]'s program has put the user's latest message back in its input [line], if that's what it holds: hidden as [rewound]. */
+    fun takenBack(pane: String, line: String?) = _readings.update { all -> all[pane]?.let { all + (pane to it.takenBack(line)) } ?: all }
 }
