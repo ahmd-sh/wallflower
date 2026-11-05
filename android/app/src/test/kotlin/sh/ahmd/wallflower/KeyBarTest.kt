@@ -2,6 +2,8 @@ package sh.ahmd.wallflower
 
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import sh.ahmd.wallflower.program.Programs
 
@@ -42,6 +44,24 @@ class KeyBarTest {
         assertEquals("esc :w ⏎", KeyBar.labelOf(listOf("Escape", ":w", "Enter")))
         assertEquals("C-", KeyBar.labelOf(listOf("C-")))
         assertEquals("q", KeyBar.labelOf(listOf("q")))
+    }
+
+    @Test
+    fun aHeldKeySaysWhatItSends() {
+        assertEquals("ctrl c", KeyBar.nameOf(BarKey("^c", listOf("C-c"))))
+        assertEquals("ctrl alt left", KeyBar.nameOf(BarKey("^⌥←", listOf("C-M-Left"))))
+        assertEquals("escape :w enter", KeyBar.nameOf(BarKey("save", listOf("Escape", ":w", "Enter"))))
+        assertEquals("shift tab", KeyBar.nameOf(KeyBar.common.first { it.label == "⇧tab" }))
+        assertEquals("ctrl + key", KeyBar.nameOf(KeyBar.common.first { it.label == "ctrl" }))
+        assertEquals("prefix + key", KeyBar.nameOf(KeyBar.common.first { it.label == "pfx" }))
+    }
+
+    @Test
+    fun aLabelTheUserWroteIsTheirs() {
+        assertTrue(KeyBar.common.all { it.ownLabel })
+        assertTrue(BarKey("^⌥←", listOf("C-M-Left")).ownLabel)
+        assertFalse(BarKey("save", listOf("Escape", ":w", "Enter")).ownLabel)
+        assertFalse(BarKey("pfx", listOf("C-f")).ownLabel)
     }
 
     @Test

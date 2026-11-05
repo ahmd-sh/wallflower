@@ -7,6 +7,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,11 +24,15 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -38,9 +43,9 @@ import androidx.compose.ui.unit.sp
 
 // The pieces wallflower's screens are made of.
 
-/** A rounded chip of text, as keys and choices are: lit orange while [on], a step lighter while [pressed]. [input] takes its touches. */
+/** A rounded chip of text (a key's [faceOf] too), as keys and choices are: lit orange while [on], a step lighter while [pressed]. [input] takes its touches. */
 @Composable
-internal fun Pill(label: String, on: Boolean, modifier: Modifier = Modifier, input: Modifier = Modifier, pressed: Boolean = false, font: FontFamily = Mono) {
+internal fun Pill(label: AnnotatedString, on: Boolean, modifier: Modifier = Modifier, input: Modifier = Modifier, pressed: Boolean = false, font: FontFamily = Mono) {
     val background by animateColorAsState(
         when {
             on -> Palette.orange
@@ -57,6 +62,7 @@ internal fun Pill(label: String, on: Boolean, modifier: Modifier = Modifier, inp
         fontFamily = font,
         fontSize = 13.sp,
         maxLines = 1,
+        inlineContent = glyphs(ink),
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
             .background(background)
@@ -156,12 +162,12 @@ internal fun copy(context: Context, text: String) {
     clipboard.setPrimaryClip(ClipData.newPlainText("wallflower", text))
 }
 
-/** A choice among a few, or a key to add: on when [selected]. */
+/** A choice among a few: on when [selected]. */
 @Composable
 internal fun Chip(label: String, selected: Boolean, font: FontFamily = Mono, onClick: () -> Unit) {
     val haptics = haptics()
     Pill(
-        label,
+        AnnotatedString(label),
         on = selected,
         font = font,
         input = Modifier.clickable {
@@ -169,4 +175,30 @@ internal fun Chip(label: String, selected: Boolean, font: FontFamily = Mono, onC
             onClick()
         },
     )
+}
+
+/** A key to pick or add, as its [face]: on when [selected]; held, it says its [name]. */
+@Composable
+internal fun KeyChoice(face: AnnotatedString, name: String, selected: Boolean, onClick: () -> Unit) {
+    val haptics = haptics()
+    var held by remember { mutableStateOf(false) }
+    Box {
+        Pill(
+            face,
+            on = selected,
+            input = Modifier
+                .onLetGo { held = false }
+                .combinedClickable(
+                    hapticFeedbackEnabled = false, // its own feel, which heeds the setting
+                    onLongClick = {
+                        haptics.hold()
+                        held = true
+                    },
+                ) {
+                    if (!selected) haptics.tick()
+                    onClick()
+                },
+        )
+        if (held) HeldName(name)
+    }
 }

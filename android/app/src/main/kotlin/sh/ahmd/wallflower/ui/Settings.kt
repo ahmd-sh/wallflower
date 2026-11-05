@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -213,7 +214,19 @@ private fun ProfileRow(profile: KeyProfile, programs: String, focused: Boolean, 
             Text(programs, color = Palette.grey, fontFamily = Mono, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 12.dp))
             Text("›", color = Palette.grey, fontFamily = Mono, fontSize = 14.sp)
         }
-        Text(profile.keys.joinToString("  ") { it.label }, color = Palette.dim, fontFamily = Mono, fontSize = 12.sp, maxLines = 1)
+        Text(
+            buildAnnotatedString {
+                profile.keys.forEachIndexed { i, k ->
+                    if (i > 0) append("  ")
+                    append(faceOf(k))
+                }
+            },
+            color = Palette.dim,
+            fontFamily = Mono,
+            fontSize = 12.sp,
+            maxLines = 1,
+            inlineContent = glyphs(Palette.dim),
+        )
     }
 }
 
@@ -270,9 +283,9 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, program
         }
 
         Section("keys")
-        Body("Tap one to move or remove it.")
+        Body("Tap one to move or remove it; hold one to see what it sends.")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            profile.keys.forEachIndexed { i, k -> Chip(k.label, selected == i) { selected = if (selected == i) null else i } }
+            profile.keys.forEachIndexed { i, k -> KeyChoice(faceOf(k), KeyBar.nameOf(k), selected == i) { selected = if (selected == i) null else i } }
         }
         selected?.takeIf { it < profile.keys.size }?.let { i ->
             fun move(to: Int) {
@@ -294,20 +307,20 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, program
         Section("stop")
         Body("What the send button sends when the mobile view's box is empty.")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (keys in stops) Chip(KeyBar.labelOf(keys), profile.stop == keys) { save(profile.copy(stop = keys)) }
+            for (keys in stops) KeyChoice(faceOf(keys), KeyBar.nameOf(keys), profile.stop == keys) { save(profile.copy(stop = keys)) }
         }
 
         Section("send button")
         Body("What it presses in the terminal, where the keyboard types straight into the pane.")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (keys in presses) Chip(KeyBar.labelOf(keys), profile.sendKeys() == keys) { save(profile.copy(send = keys)) }
+            for (keys in presses) KeyChoice(faceOf(keys), KeyBar.nameOf(keys), profile.sendKeys() == keys) { save(profile.copy(send = keys)) }
         }
 
         Section("return key")
-        Body("What the keyboard's return key presses there. ^j and ⌥⏎ start a new line in apps that take several, as Claude Code does; a shell runs the line.")
+        Body("What the keyboard's return key presses there. ctrl j and alt enter start a new line in apps that take several, as Claude Code does; a shell runs the line.")
         val program = Programs.of(profile.programs.firstOrNull().orEmpty())
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (keys in presses) Chip(KeyBar.labelOf(keys), profile.returnKeys(program) == keys) { save(profile.copy(returnKey = keys)) }
+            for (keys in presses) KeyChoice(faceOf(keys), KeyBar.nameOf(keys), profile.returnKeys(program) == keys) { save(profile.copy(returnKey = keys)) }
         }
 
         Section("clear")
@@ -320,13 +333,13 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, program
 
         Section("add")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (k in KeyBar.common.filter { bindings || !it.bindings }) Chip(k.label, false) { save(profile.copy(keys = profile.keys + k)) }
+            for (k in KeyBar.common.filter { bindings || !it.bindings }) KeyChoice(faceOf(k), KeyBar.nameOf(k), false) { save(profile.copy(keys = profile.keys + k)) }
         }
 
         Section("custom")
         Body(
-            "Key names, space-separated; anything else is typed as is (Escape :w Enter). C- is ctrl, M- alt (⌥) and S- shift, " +
-                "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is ⇧tab, BSpace ⌫, DC delete, IC insert; F1 to F12 work too. Tap one to add it.",
+            "Key names, space-separated; anything else is typed as is (Escape :w Enter). C- is ctrl, M- alt and S- shift, " +
+                "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is shift tab, BSpace backspace, DC delete, IC insert; F1 to F12 work too. Tap one to add it.",
         )
         var label by remember(ref) { mutableStateOf("") }
         var sends by remember(ref) { mutableStateOf("") }

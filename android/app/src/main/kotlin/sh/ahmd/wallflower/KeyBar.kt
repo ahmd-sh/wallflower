@@ -34,6 +34,9 @@ data class BarKey(
         return BarKey("$label ${next.label}", joined, bindings = bindings || next.bindings)
     }
 
+    /** Whether [label] is the one wallflower gives these keys, rather than one the user wrote. */
+    val ownLabel: Boolean get() = label == KeyBar.labelOf(keys) || KeyBar.common.any { it.label == label && it.keys == keys }
+
     companion object {
         /** A character typed on the keyboard, as a key. */
         fun typed(c: Char) = BarKey(c.toString(), listOf(when (c) { ' ' -> "Space"; '\n' -> "Enter"; else -> c.toString() }))
@@ -101,14 +104,28 @@ data class KeyBar(
 
         /** How [keys] show on a key: ^c, ⌥⏎, ⇧↑, esc :w ⏎. */
         fun labelOf(keys: List<String>): String = keys.joinToString(" ") { key ->
+            val (held, rest) = held(key)
+            held.joinToString("") { MODIFIERS.getValue(it) } + (NAMED[rest] ?: rest)
+        }
+
+        /** What [key] sends, in words; a sticky one, with a key. */
+        fun nameOf(key: BarKey): String = nameOf(key.keys) + if (key.sticky) " + key" else ""
+
+        /** [keys] in words: ctrl c, shift tab, escape :w enter. */
+        fun nameOf(keys: List<String>): String = keys.joinToString(" ") { key ->
+            val (held, rest) = held(key)
+            (held.map { SAID.getValue("$it-") } + (SAID[rest] ?: rest)).joinToString(" ")
+        }
+
+        /** The modifiers held with a key (C, M, S) and the key: C-M-Left is C, M and Left. */
+        fun held(key: String): Pair<List<Char>, String> {
             var rest = key
-            val held = buildString {
-                while (rest.length > 2 && rest[1] == '-' && rest[0] in MODIFIERS) {
-                    append(MODIFIERS.getValue(rest[0]))
-                    rest = rest.drop(2)
-                }
+            val held = ArrayList<Char>()
+            while (rest.length > 2 && rest[1] == '-' && rest[0] in MODIFIERS) {
+                held += rest[0]
+                rest = rest.drop(2)
             }
-            held + (NAMED[rest] ?: rest)
+            return held to rest
         }
 
         private val MODIFIERS = mapOf('C' to "^", 'M' to "⌥", 'S' to "⇧")
@@ -116,6 +133,12 @@ data class KeyBar(
             "Enter" to "⏎", "Escape" to "esc", "Tab" to "tab", "BTab" to "⇧tab", "BSpace" to "⌫", "Space" to "space",
             "Up" to "↑", "Down" to "↓", "Left" to "←", "Right" to "→", "Home" to "home", "End" to "end",
             "PageUp" to "pgup", "PageDown" to "pgdn", "DC" to "del", "IC" to "ins", "prefix" to "pfx",
+        )
+        private val SAID = mapOf(
+            "C-" to "ctrl", "M-" to "alt", "S-" to "shift",
+            "Enter" to "enter", "Escape" to "escape", "Tab" to "tab", "BTab" to "shift tab", "BSpace" to "backspace", "Space" to "space",
+            "Up" to "up", "Down" to "down", "Left" to "left", "Right" to "right", "Home" to "home", "End" to "end",
+            "PageUp" to "page up", "PageDown" to "page down", "DC" to "delete", "IC" to "insert", "prefix" to "prefix",
         )
 
         /** Held down, these repeat. */

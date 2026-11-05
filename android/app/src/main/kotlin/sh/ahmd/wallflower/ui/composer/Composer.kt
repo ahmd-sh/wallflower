@@ -45,13 +45,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.BarKey
-import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.program.Command
 import sh.ahmd.wallflower.screen.InputLine
 import sh.ahmd.wallflower.session.uploadPaths
 import sh.ahmd.wallflower.ui.Mono
 import sh.ahmd.wallflower.ui.Motion
 import sh.ahmd.wallflower.ui.Palette
+import sh.ahmd.wallflower.ui.faceOf
 import sh.ahmd.wallflower.ui.haptics
 
 /**
@@ -250,7 +250,7 @@ internal fun Composer(
                     else -> Action.Stop
                 },
                 connected = connected,
-                label = if (typing == null || sendKeys == listOf("Enter")) null else KeyBar.labelOf(sendKeys),
+                label = if (typing == null || sendKeys == listOf("Enter")) null else faceOf(sendKeys),
                 onSend = { enter -> if (onSend(state.text.toString(), enter)) state.clearText() },
                 onEnter = onEnter,
                 onStop = onStop,

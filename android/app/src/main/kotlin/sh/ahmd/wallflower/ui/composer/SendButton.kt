@@ -24,20 +24,22 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import sh.ahmd.wallflower.ui.Mono
 import sh.ahmd.wallflower.ui.Motion
 import sh.ahmd.wallflower.ui.Palette
+import sh.ahmd.wallflower.ui.glyphs
 import sh.ahmd.wallflower.ui.haptics
 
 /** What the send button does: send the box, run what's typed straight into the pane, enter the app's own line, or stop the app. */
 internal enum class Action { Send, Run, Enter, Stop }
 
-/** Its color follows whether there's anything to send; the mark (or the [label] of the keys it presses) turns into the next one. */
+/** Its color follows whether there's anything to send; the mark (or the [label] of the keys it presses, a [faceOf]) turns into the next one. */
 @Composable
-internal fun SendButton(action: Action, connected: Boolean, label: String?, onSend: (enter: Boolean) -> Unit, onEnter: () -> Unit, onStop: () -> Unit) {
+internal fun SendButton(action: Action, connected: Boolean, label: AnnotatedString?, onSend: (enter: Boolean) -> Unit, onEnter: () -> Unit, onStop: () -> Unit) {
     val haptics = haptics()
     val background by animateColorAsState(
         when {
@@ -91,7 +93,7 @@ internal fun SendButton(action: Action, connected: Boolean, label: String?, onSe
             if (l == null) {
                 Mark(a, { ink })
             } else {
-                Text(l, color = ink, fontFamily = Mono, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(l, color = ink, fontFamily = Mono, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, inlineContent = glyphs(ink))
             }
         }
     }
