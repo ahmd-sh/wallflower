@@ -100,7 +100,7 @@ class Notices(private val context: Context) {
                 if (work.waiting) putString(EXTRA_CHIP_TEXT, "input")
             }
             builder.addExtras(promoted)
-            if (!work.waiting) builder.setWhen(work.since).setShowWhen(true).setUsesChronometer(true)
+            if (!work.waiting && work.since > 0) builder.setWhen(work.since).setShowWhen(true).setUsesChronometer(true)
             return builder.build()
         }
         when (status) {
@@ -160,7 +160,7 @@ class Notices(private val context: Context) {
     }
 }
 
-/** A program at work in [pane]: [waiting] for the user, or working since [since] (Unix milliseconds); [about] is what it calls what it's on, or its window's name. */
+/** A program at work in [pane]: [waiting] for the user, or working since [since] (Unix milliseconds; 0 if it doesn't say); [about] is what it calls what it's on, or its window's name. */
 data class AtWork(val pane: String, val about: String, val waiting: Boolean, val since: Long)
 
 /** Of [state]'s panes, the one to show in the status bar: one waiting for the user first, then the one working longest; null if none is. */
@@ -170,5 +170,5 @@ fun atWork(state: State?): AtWork? {
         ?: all.filter { it.second.activity == Pane.WORKING }.minByOrNull { it.second.since.takeIf { s -> s > 0 } ?: Long.MAX_VALUE }
         ?: return null
     val about = Programs.of(p.program).label(p.title) ?: w.label()
-    return AtWork(p.id, about, p.activity == Pane.WAITING, p.since.takeIf { it > 0 } ?: System.currentTimeMillis())
+    return AtWork(p.id, about, p.activity == Pane.WAITING, p.since.coerceAtLeast(0))
 }
