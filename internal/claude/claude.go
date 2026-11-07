@@ -740,6 +740,10 @@ func (p *parser) commandOf(id, text string) (mobileview.Entry, bool) {
 	} else if m := bashInput.FindStringSubmatch(text); m != nil {
 		name, args = "!", strings.TrimSpace(m[1])
 	}
+	if name == "/clear" {
+		p.command = nil // what starts the new conversation it's at the top of, which is all it says
+		return mobileview.Entry{}, false
+	}
 	if name != "" {
 		e := mobileview.Entry{ID: id, From: mobileview.User, Kind: mobileview.Step, Name: name, Text: args, Status: mobileview.Done}
 		p.command = &e

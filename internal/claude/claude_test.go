@@ -149,6 +149,8 @@ func TestCommandsAndTitles(t *testing.T) {
 		`{"type":"system","subtype":"local_command","uuid":"c7","parentUuid":"c6","content":"<command-name>/rename</command-name>\n<command-message>rename</command-message>\n<command-args>tests</command-args>"}`,
 		`{"type":"system","subtype":"local_command","uuid":"c8","parentUuid":"c7","content":"<local-command-stdout>Session renamed to: tests</local-command-stdout>"}`,
 		`{"type":"custom-title","customTitle":"tests","sessionId":"s"}`,
+		`{"type":"user","uuid":"c9","message":{"content":"<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>"}}`,
+		`{"type":"user","uuid":"c10","parentUuid":"c9","message":{"content":"<local-command-stdout></local-command-stdout>"}}`,
 	} {
 		got = append(got, p.Line([]byte(l))...)
 		if strings.Contains(l, `"ai-title"`) && p.Title() != "Fix the tests" {
