@@ -152,18 +152,15 @@ object Claude : Program {
 
     /**
      * /rewind lists the user's messages, its cursor on (current) below the
-     * latest: up it goes to the message, and Enter asks to confirm, which is
-     * the user's to answer. Of messages that read alike, the nearest.
+     * latest: up goes to the one before, and Enter asks to confirm, which is
+     * the user's to answer. A message reads as its first line, cut short.
      */
-    override fun seek(prompt: Prompt, said: String): List<String>? {
+    override fun walk(prompt: Prompt, said: String): Walk? {
         if (prompt.lines.firstOrNull()?.text != "Rewind" || prompt.quote.isNotEmpty()) return null
-        val target = said.filterNot(Char::isWhitespace)
-        fun said(o: Prompt.Option) = o.scroll == 0 && o.label != "(current)" && quotes(o.label.replace("...", "…").filterNot(Char::isWhitespace), target)
-        val at = prompt.options.firstOrNull { it.current } ?: return null
-        if (said(at)) return listOf("Enter")
-        val above = prompt.options.takeWhile { it !== at }
-        above.lastOrNull(::said)?.let { return prompt.keys(it) }
-        return if (above.any { it.scroll == 0 } || above.any { it.scroll < 0 }) listOf("Up") else null
+        val at = prompt.options.indexOfFirst { it.current }.takeIf { it >= 0 } ?: return null
+        val o = prompt.options[at]
+        val on = o.scroll == 0 && o.label != "(current)" && quotes(o.label.replace("...", "…").filterNot(Char::isWhitespace), said.filterNot(Char::isWhitespace))
+        return Walk(on, up = if (at > 0) listOf("Up") else null, pick = listOf("Enter"))
     }
 
     /** Restoring the conversation from /rewind takes it back to before the message the prompt quotes. */
@@ -185,15 +182,17 @@ object Claude : Program {
         return picked(prompt, restore)
     }
 
-    /** Whether [message] is what Claude quotes as [quote]: its words, cut short with …. */
+    /** Whether [message] is what Claude quotes as [quote]: its words from the start, to the end unless cut short with …. */
     private fun quotes(quote: String, message: String): Boolean {
-        var at = 0
-        for (part in quote.split('…')) {
+        val parts = quote.split('…')
+        if (!message.startsWith(parts.first())) return false
+        var at = parts.first().length
+        for (part in parts.drop(1)) {
             val i = message.indexOf(part, at)
             if (i < 0) return false
             at = i + part.length
         }
-        return true
+        return quote.endsWith('…') || message.endsWith(parts.last()) && (parts.size > 1 || message.length == quote.length)
     }
 
     private val spaces = Regex(" {2,}")

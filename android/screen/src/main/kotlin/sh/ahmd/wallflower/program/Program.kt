@@ -67,12 +67,10 @@ interface Program {
     fun recall(latest: Boolean, working: Boolean): Recall? = null
 
     /**
-     * The keys that take [prompt], opened by [recall]'s command, a step
-     * nearer to bringing back the user's message [said]; null when there's no
-     * step for wallflower to take: it's there, or for the user to answer, or
-     * this isn't that prompt. One step a screen, as each step changes it.
+     * Where [prompt], opened by [recall]'s command, is in walking to the
+     * user's message [said]; null if it isn't the prompt that lists them.
      */
-    fun seek(prompt: Prompt, said: String): List<String>? = null
+    fun walk(prompt: Prompt, said: String): Walk? = null
 
     /** What picking [option] of [prompt] does besides answering it, if wallflower needs to know. */
     fun picked(prompt: Prompt, option: Prompt.Option): Effect? = null
@@ -110,6 +108,13 @@ sealed interface Recall {
 
     data class Command(val text: String) : Recall
 }
+
+/**
+ * A prompt listing the user's messages, walked to one: the cursor's [on]
+ * one that reads as it, the keys that go [up] to the one before (null at the
+ * top), and those that [pick] the one under the cursor.
+ */
+data class Walk(val on: Boolean, val up: List<String>?, val pick: List<String>)
 
 /** A notification as the phone shows it. */
 data class Notice(val title: String?, val body: String)

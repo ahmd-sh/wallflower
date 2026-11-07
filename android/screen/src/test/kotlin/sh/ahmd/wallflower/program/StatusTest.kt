@@ -1,6 +1,7 @@
 package sh.ahmd.wallflower.program
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -45,11 +46,26 @@ class StatusTest {
 
     @Test
     fun editingAMessageWalksRewindsListToIt() {
-        val list = Prompt.read(captured("claude-rewind-list.ansi", 54))!!
-        assertEquals(listOf("Up", "Enter"), Claude.seek(list, "say just: two"))
-        assertEquals(listOf("Enter"), Claude.seek(list, "Use the Write tool to create /private/tmp/claude-502/x/rw.txt containing hi"))
-        assertEquals(listOf("Up"), Claude.seek(list, "say just: one")) // further up, out of sight
-        assertNull(Claude.seek(Prompt.read(captured("claude-rewind-confirm.ansi", 54))!!, "say just: two")) // the user's to confirm
+        val list = Prompt.read(captured("claude-rewind-list.ansi", 54))!! // the cursor on "Use the Write tool to create /private/tmp/c…"
+        assertEquals(Walk(on = true, up = listOf("Up"), pick = listOf("Enter")), Claude.walk(list, "Use the Write tool to create /private/tmp/claude-502/x/rw.txt containing hi"))
+        assertEquals(false, Claude.walk(list, "say just: two")!!.on)
+        assertEquals(false, Claude.walk(list, "create /private/tmp/c")!!.on) // from the start, not somewhere in it
+        val multiline = Prompt.read(captured("claude-rewind-list-multiline.ansi", 54))!!
+        assertEquals(listOf("Up"), Claude.walk(multiline, "1. reply with just the word ok\n2. nothing else")!!.up)
+        assertNull(Claude.walk(Prompt.read(captured("claude-rewind-confirm.ansi", 54))!!, "say just: two")) // the user's to confirm
+    }
+
+    @Test
+    fun aQuoteIsTheMessageFromItsStart() {
+        fun restore(quote: String): (String) -> Boolean {
+            val option = Prompt.Option(1, "Restore conversation", "", null, current = true, muted = false)
+            return (Claude.picked(Prompt(emptyList(), listOf(option), emptyList(), quote), option) as Effect.Rewound).said
+        }
+        assertTrue(restore("yes")("yes"))
+        assertFalse(restore("yes")("yes, and commit"))
+        assertFalse(restore("commit")("let's commit as wip"))
+        assertTrue(restore("let's commit…")("let's commit as wip"))
+        assertTrue(restore("say just: two, then … done")("say just: two, then think, then say done"))
     }
 
     @Test

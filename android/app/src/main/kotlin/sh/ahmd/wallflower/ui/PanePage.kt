@@ -27,7 +27,8 @@ import sh.ahmd.wallflower.terminal.TerminalView
  * [prompt] the pane's screen offers, and what its program says it's doing
  * ([status]), can compact (with its [line]), and animates; its terminal view goes to [onView]. A tap on the terminal
  * goes to [onTap]. A message asked back to edit goes to the program, and
- * [onRecalled] once it's on its way. The conversation's title shows unless
+ * [onRecalled] once it's on its way. Keys from the prompt's card go to
+ * [onPrompt] too. The conversation's title shows unless
  * the [tab] says it already.
  */
 @Composable
@@ -47,6 +48,7 @@ internal fun PanePage(
     onView: (TerminalView) -> Unit,
     onTap: (() -> Unit)?,
     onRecalled: (Entry.Said) -> Unit = {},
+    onPrompt: () -> Unit = {},
     tab: String? = null,
 ) = Box(Modifier.fillMaxSize()) {
     val theme = Palette.terminal
@@ -78,8 +80,14 @@ internal fun PanePage(
             prompt = if (current) prompt else null,
             doing = if (current) status else null,
             nudged = if (current) nudged else 0,
-            onKeys = { keys -> actions.keys(keys) },
-            onPicked = actions::picked,
+            onKeys = { keys ->
+                onPrompt()
+                actions.keys(keys)
+            },
+            onPicked = { prompt, option ->
+                onPrompt()
+                actions.picked(prompt, option)
+            },
             onCompact = if (current && compact != null) ({ compact(line()) }) else null,
             onEdit = if (current) ({ e -> if (actions.recall(e, shown, line())) onRecalled(e) }) else null,
             title = shown.title?.takeIf { it != tab },

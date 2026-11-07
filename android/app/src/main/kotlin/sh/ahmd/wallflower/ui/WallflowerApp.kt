@@ -50,6 +50,8 @@ import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.read.Activity
+import sh.ahmd.wallflower.read.Entry
+import sh.ahmd.wallflower.read.Party
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.activityOf
 import sh.ahmd.wallflower.session.Blocked
@@ -271,16 +273,32 @@ private fun TerminalScreen(
     LaunchedEffect(pane?.id, held, mobileView) { if (mobileView && pane != null) session.takenBack(pane.id, held) }
     var nudged by remember(pane?.id) { mutableLongStateOf(0L) }
     // A message asked back by a command (/rewind) is found in what it opens, up to where the user confirms.
-    var seeking by remember(pane?.id) { mutableStateOf<String?>(null) }
+    var seeking by remember(pane?.id) { mutableStateOf<Seeking?>(null) }
     LaunchedEffect(seeking) {
-        delay(SEEKS_MS)
+        delay(SEEKS_MS) // since its last step
         seeking = null
     }
     LaunchedEffect(screen.prompt, seeking) {
-        val said = seeking ?: return@LaunchedEffect
-        val keys = screen.prompt?.let { actions?.program?.seek(it, said) } ?: return@LaunchedEffect
-        actions?.keys(keys)
-        if ("Enter" in keys) seeking = null
+        val s = seeking ?: return@LaunchedEffect
+        val p = screen.prompt ?: return@LaunchedEffect
+        val walk = actions?.program?.walk(p, s.said)
+        if (walk == null) {
+            if (s.sent != null) seeking = null // the list went: picked, or let go
+            return@LaunchedEffect
+        }
+        if (p.options == s.sent) return@LaunchedEffect // the last step hasn't shown yet
+        val up = walk.up
+        seeking = when {
+            walk.on && s.skip == 0 -> {
+                actions.keys(walk.pick)
+                null
+            }
+            up != null -> {
+                actions.keys(up)
+                s.copy(skip = if (walk.on) s.skip - 1 else s.skip, sent = p.options)
+            }
+            else -> null // at the top without it: the user picks
+        }
     }
     // What a prompt did shows in the line it leaves, a moment after it goes, whoever answered it: a rewind restored at the Mac, say.
     var asked by remember(pane?.id) { mutableStateOf<Prompt?>(null) }
@@ -408,9 +426,12 @@ private fun TerminalScreen(
             onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
             onView = { view = it },
             onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
+            onPrompt = { seeking = null }, // the user's own hand on it
             onRecalled = { e ->
                 recalled = Recalled(e.text, System.nanoTime())
-                seeking = e.text
+                // Newer messages that read the same come first in the list: passed over, as many as there are.
+                val newer = readings[p?.id]?.entries.orEmpty().dropWhile { it.id != e.id }.drop(1)
+                seeking = Seeking(e.text, skip = newer.count { it is Entry.Said && it.by == Party.User && it.text.trim() == e.text.trim() })
             },
             tab = window?.label(),
         )
@@ -598,8 +619,11 @@ private fun TerminalScreen(
 /** How long the connection is down before the screen says so. */
 private const val DOWN_UNSAID_MS = 1_500L
 
-/** How long a message asked back is looked for in what its command opens. */
+/** How long a message asked back is looked for in what its command opens, from the last step taken. */
 private const val SEEKS_MS = 10_000L
+
+/** A message asked back, looked for in what its command opens: [skip] more that read the same first, the options as they were when the last step went ([sent]). */
+private data class Seeking(val said: String, val skip: Int = 0, val sent: List<Prompt.Option>? = null)
 
 /** How soon after a prompt goes the line it leaves says what answering it did. */
 private const val SETTLES_MS = 3_000L
