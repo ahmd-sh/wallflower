@@ -185,13 +185,13 @@ fun MobileView(
         // At the bottom, new entries glide into view; scrolled up to read, the list stays put.
         val atBottom by remember { derivedStateOf { list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset < 8 } }
         val away by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 600 } }
-        // Following the newest until the user drags away, and again once they're back at it: not whether the
+        // Following the newest until the user drags, and again once they've let go at it: not whether the
         // list happens to be at the bottom as things change, which a reply's copy row coming in can move it off.
         var following by remember { mutableStateOf(true) }
         LaunchedEffect(list) {
             list.interactionSource.interactions.collect { if (it is DragInteraction.Start) following = false }
         }
-        LaunchedEffect(list) { snapshotFlow { atBottom }.collect { if (it) following = true } }
+        LaunchedEffect(list) { snapshotFlow { atBottom && !list.isScrollInProgress }.collect { if (it) following = true } }
         LaunchedEffect(items.size, items.lastOrNull(), status, reading.queued.size) { if (following) list.animateScrollToItem(0) }
 
         val phase = when {

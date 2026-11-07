@@ -73,6 +73,7 @@ internal class MobileViews(private val link: Link, private val clock: () -> Long
         val kept = if (m.reset) hidden.all() else emptySet()
         var ended: String? = null
         _readings.update {
+            ended = null
             val was = it[m.pane] ?: Reading()
             var r = was.apply(m)
             if (r.rewound == null && kept.isNotEmpty()) r = r.copy(rewound = r.entries.firstOrNull { e -> e.id in kept && r.takesBack(e.id) }?.id)
@@ -95,6 +96,7 @@ internal class MobileViews(private val link: Link, private val clock: () -> Long
     private fun change(pane: String, how: (Reading) -> Reading) {
         var took: String? = null
         _readings.update { all ->
+            took = null // this pass's, if it's tried again
             val was = all[pane] ?: return@update all
             val now = how(was)
             took = now.rewound?.takeIf { it != was.rewound }
