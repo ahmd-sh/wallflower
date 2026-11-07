@@ -18,6 +18,7 @@ import (
 type phone struct {
 	line        int
 	name        string
+	key         string
 	fingerprint string
 	from        string
 }
@@ -36,7 +37,7 @@ func phones(authorized string) []phone {
 		if len(f) < 2 {
 			continue
 		}
-		out = append(out, phone{line: i + 1, name: strings.Join(f[2:], " "), fingerprint: keyFingerprint(f[1]), from: opts["from"]})
+		out = append(out, phone{line: i + 1, name: strings.Join(f[2:], " "), key: f[1], fingerprint: keyFingerprint(f[1]), from: opts["from"]})
 	}
 	return out
 }
@@ -157,6 +158,10 @@ func revoke(args []string) error {
 	if err := replace(*file, strings.Join(kept, "\n")); err != nil {
 		return err
 	}
+	if strings.Contains(strings.Join(kept, "\n"), p.key) {
+		fmt.Printf("revoked %s %s's wallflower line, but its key is on another line of %s too, which still lets it in\n", orElse(p.name, "(unnamed)"), p.fingerprint, *file)
+		return nil
+	}
 	fmt.Printf("revoked %s %s: it can't connect any more\n", orElse(p.name, "(unnamed)"), p.fingerprint)
 	return nil
 }
@@ -164,6 +169,10 @@ func revoke(args []string) error {
 // replace writes data to file in one step, keeping its mode: a reader sees
 // the old or the new, never part of either.
 func replace(file, data string) error {
+	file, err := filepath.EvalSymlinks(file) // a link stays one, to the file it names
+	if err != nil {
+		return err
+	}
 	st, err := os.Stat(file)
 	if err != nil {
 		return err

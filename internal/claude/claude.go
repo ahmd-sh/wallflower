@@ -313,6 +313,16 @@ type origin struct {
 // peer is whether o is another Claude session.
 func (o *origin) peer() bool { return o != nil && o.Kind == "peer" }
 
+// human is whether r is something a person sent: what they paste that reads
+// as another session's message is still theirs.
+func (r record) human() bool {
+	switch r.PromptSource {
+	case "typed", "queued", "suggestion_accepted":
+		return true
+	}
+	return r.Origin != nil && r.Origin.Kind == "human"
+}
+
 // An attachment is something claude adds to the conversation beside the
 // messages: one sent while it was busy (queued_command), among others.
 type attachment struct {
@@ -435,7 +445,7 @@ func (p *parser) Line(b []byte) []mobileview.Entry {
 		}
 		return []mobileview.Entry{e}
 	}
-	if text, ok := c.first(); ok && r.Type == "user" && (peer || fromAgent(text)) {
+	if text, ok := c.first(); ok && r.Type == "user" && (peer || fromAgent(text) && !r.human()) {
 		if e, ok := agentOf(r.UUID+".0", text, r.Origin); ok {
 			return []mobileview.Entry{e}
 		}
@@ -630,7 +640,7 @@ func (p *parser) taken(id string, a attachment) (mobileview.Entry, bool) {
 		return mobileview.Entry{}, false
 	}
 	switch {
-	case a.Origin.peer() || fromAgent(text):
+	case a.Origin.peer() || fromAgent(text) && (a.Origin == nil || a.Origin.Kind != "human"):
 		return agentOf(id, text, a.Origin)
 	case a.CommandMode == "task-notification" || strings.HasPrefix(strings.TrimSpace(text), "<task-notification>"):
 		return notice(id, text)

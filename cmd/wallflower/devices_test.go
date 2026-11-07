@@ -70,3 +70,20 @@ func TestRevokeTakesOutOnlyThatPhone(t *testing.T) {
 		t.Errorf("left:\n%s", b)
 	}
 }
+
+func TestRevokeKeepsALinkALink(t *testing.T) {
+	file, content := authorizedFile(t)
+	link := filepath.Join(t.TempDir(), "authorized_keys")
+	if err := os.Symlink(file, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := revoke([]string{"-file", link, "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := os.Lstat(link); st.Mode()&os.ModeSymlink == 0 {
+		t.Error("the link became a file")
+	}
+	if b, _ := os.ReadFile(file); string(b) == content || len(phones(string(b))) != 1 {
+		t.Errorf("the file it names:\n%s", b)
+	}
+}
