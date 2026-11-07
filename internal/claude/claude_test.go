@@ -116,6 +116,7 @@ func TestCommandsAndTitles(t *testing.T) {
 	var got []mobileview.Entry
 	for _, l := range []string{
 		`{"type":"ai-title","aiTitle":"Fix the tests","sessionId":"s"}`,
+		`{"type":"user","uuid":"t0","message":{"content":"/compact"}}`,
 		`{"type":"system","subtype":"compact_boundary","uuid":"b","content":"Conversation compacted"}`,
 		`{"type":"user","uuid":"s1","parentUuid":"b","isCompactSummary":true,"message":{"content":"This session is being continued..."}}`,
 		`{"type":"user","uuid":"c0","parentUuid":"s1","isMeta":true,"message":{"content":"<local-command-caveat>The command below was run directly</local-command-caveat>"}}`,
@@ -136,6 +137,7 @@ func TestCommandsAndTitles(t *testing.T) {
 	}
 	got = collapse(got)
 	want := []mobileview.Entry{
+		{ID: "t0.0", From: "user", Kind: "step", Name: "/compact", Status: "done"},
 		{ID: "s1.0", From: "user", Kind: "note", Text: "Conversation compacted", Output: "This session is being continued..."},
 		{ID: "c3.0", From: "user", Kind: "step", Name: "/add-dir", Text: "~/dev/x", Status: "done", Output: "Added ~/dev/x as a working directory"},
 		{ID: "c5.0", From: "user", Kind: "step", Name: "!", Text: "ls", Status: "done", Output: "a\nb\nls: c: No such file"},

@@ -415,6 +415,14 @@ func (p *parser) Line(b []byte) []mobileview.Entry {
 	if text, ok := c.first(); ok && r.Type == "assistant" && r.IsAPIError {
 		return []mobileview.Entry{{ID: r.UUID + ".0", From: mobileview.Program, Kind: mobileview.Note, Text: strings.TrimSpace(text)}}
 	}
+	if c.text != nil && r.Type == "user" && r.PromptSource == "" {
+		// A command as typed, which claude records so before it runs (/compact).
+		if m := typed.FindStringSubmatch(strings.TrimSpace(*c.text)); m != nil {
+			e := mobileview.Entry{ID: r.UUID + ".0", From: mobileview.User, Kind: mobileview.Step, Name: m[1], Text: strings.TrimSpace(m[2]), Status: mobileview.Done}
+			p.command = &e
+			return []mobileview.Entry{e}
+		}
+	}
 	if c.text != nil && r.Type == "user" && tagged(*c.text) {
 		e, ok := p.commandOf(r.UUID+".0", *c.text)
 		if !ok {
@@ -696,6 +704,7 @@ func headline(body string) string {
 }
 
 var (
+	typed       = regexp.MustCompile(`^(/[a-z][\w:-]*)(?:[ \t]+([^\n]*))?$`)
 	commandName = regexp.MustCompile(`(?s)<command-name>(.*?)</command-name>`)
 	commandArgs = regexp.MustCompile(`(?s)<command-args>(.*?)</command-args>`)
 	bashInput   = regexp.MustCompile(`(?s)<bash-input>(.*?)</bash-input>`)
