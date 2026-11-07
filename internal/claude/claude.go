@@ -453,7 +453,7 @@ func (p *parser) Line(b []byte) []mobileview.Entry {
 				out = append(out, mobileview.Entry{ID: id, From: mobileview.Program, Kind: mobileview.Thought, Text: bl.Thinking})
 			}
 		case "tool_use":
-			e := mobileview.Entry{ID: id, From: mobileview.Program, Kind: mobileview.Step, Name: bl.Name, Text: brief(bl.Input), Status: mobileview.Running}
+			e := mobileview.Entry{ID: id, From: mobileview.Program, Kind: mobileview.Step, Name: toolName(bl.Name), Text: brief(bl.Input), Status: mobileview.Running}
 			p.tools[bl.ID] = e
 			out = append(out, e)
 			if plan := planOf(bl); plan != "" {
@@ -469,6 +469,9 @@ func (p *parser) Line(b []byte) []mobileview.Entry {
 				e.Output, e.OutputCut = result(bl.Content)
 				if len(c.blocks) == 1 { // what the record says of the result is this one's
 					e.Diff, e.DiffCut = diff(r.ToolUseResult)
+					if a := answers(r.ToolUseResult); a != "" {
+						e.Output, e.OutputCut = clip(a)
+					}
 				}
 				out = append(out, e)
 			}
@@ -778,12 +781,53 @@ func planOf(b block) string {
 	return strings.TrimSpace(in.Content)
 }
 
+// toolName is a tool's name as it reads: an MCP server's tool by its own
+// name (mcp__playwright__browser_click is browser_click).
+func toolName(name string) string {
+	if rest, ok := strings.CutPrefix(name, "mcp__"); ok {
+		if _, tool, ok := strings.Cut(rest, "__"); ok && tool != "" {
+			return tool
+		}
+	}
+	return name
+}
+
+// answers is what the user answered claude's questions, a line each, from
+// what it records of the question tool's result; "" for any other tool's.
+func answers(raw json.RawMessage) string {
+	var r struct {
+		Questions []struct {
+			Question string `json:"question"`
+		} `json:"questions"`
+		Answers map[string]string `json:"answers"`
+	}
+	if json.Unmarshal(raw, &r) != nil || len(r.Answers) == 0 {
+		return ""
+	}
+	var lines []string
+	for _, q := range r.Questions {
+		if a, ok := r.Answers[q.Question]; ok {
+			lines = append(lines, q.Question+" → "+a)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // briefKeys are tool inputs that say what a call does, best first.
 var briefKeys = []string{"command", "file_path", "path", "pattern", "url", "query", "description", "prompt", "skill", "plan"}
 
 func brief(input json.RawMessage) string {
 	var m map[string]any
 	if json.Unmarshal(input, &m) == nil {
+		// Questions asked, by the first.
+		if qs, ok := m["questions"].([]any); ok && len(qs) > 0 {
+			if q, ok := qs[0].(map[string]any)["question"].(string); ok && q != "" {
+				if len(qs) > 1 {
+					q += fmt.Sprintf(" +%d more", len(qs)-1)
+				}
+				return q
+			}
+		}
 		for _, k := range briefKeys {
 			if s, ok := m[k].(string); ok && s != "" {
 				s, _ = clip(s)

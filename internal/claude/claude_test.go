@@ -111,6 +111,26 @@ func TestAgentsQueuesAndNotices(t *testing.T) {
 	}
 }
 
+func TestQuestionsAndServersTools(t *testing.T) {
+	p := newParser()
+	var got []mobileview.Entry
+	for _, l := range []string{
+		`{"type":"assistant","uuid":"a1","message":{"content":[{"type":"tool_use","id":"t1","name":"AskUserQuestion","input":{"questions":[{"question":"Which fruit?","multiSelect":false,"options":[{"label":"Apple"}]},{"question":"Which colors?","multiSelect":true,"options":[{"label":"Red"}]}]}}]}}`,
+		`{"type":"user","uuid":"u1","parentUuid":"a1","toolUseResult":{"questions":[{"question":"Which fruit?"},{"question":"Which colors?"}],"answers":{"Which fruit?":"Banana","Which colors?":"Red, Blue"}},"message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"Your questions have been answered: ..."}]}}`,
+		`{"type":"assistant","uuid":"a2","parentUuid":"u1","message":{"content":[{"type":"tool_use","id":"t2","name":"mcp__playwright__browser_navigate","input":{"url":"https://example.com"}}]}}`,
+	} {
+		got = append(got, p.Line([]byte(l))...)
+	}
+	want := []mobileview.Entry{
+		{ID: "a1.0", From: "program", Kind: "step", Name: "AskUserQuestion", Text: "Which fruit? +1 more", Status: "running"},
+		{ID: "a1.0", From: "program", Kind: "step", Name: "AskUserQuestion", Text: "Which fruit? +1 more", Status: "done", Output: "Which fruit? → Banana\nWhich colors? → Red, Blue"},
+		{ID: "a2.0", From: "program", Kind: "step", Name: "browser_navigate", Text: "https://example.com", Status: "running"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got\n%+v\nwant\n%+v", got, want)
+	}
+}
+
 func TestCommandsAndTitles(t *testing.T) {
 	p := newParser().(*parser)
 	var got []mobileview.Entry
