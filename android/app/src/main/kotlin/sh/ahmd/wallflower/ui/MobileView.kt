@@ -22,6 +22,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
@@ -116,6 +117,8 @@ fun MobileView(
     modifier: Modifier = Modifier,
     swipe: Swipe? = null,
     prompt: Prompt? = null,
+    /** What the program says it's doing, in its words, while it works. */
+    doing: String? = null,
     onKeys: (List<String>) -> Unit = {},
     onPicked: (Prompt, Prompt.Option) -> Unit = { _, _ -> },
     /** Sends the program its compact command, from the context button; null while it can't. */
@@ -201,6 +204,12 @@ fun MobileView(
                                 ) { context() }
                             }
                         }
+                        // What waits for the program to take it is below its working, as Claude shows it.
+                        reading.queued.asReversed().forEachIndexed { i, text ->
+                            item(key = "queued $i $text") {
+                                Box(Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())) { Queued(text) }
+                            }
+                        }
                         if (status != null) {
                             item(key = "status") {
                                 // One item that changes between them, so a menu that flickers off and on doesn't leave and come back.
@@ -216,7 +225,7 @@ fun MobileView(
                                         Status.Asking -> shown?.let { p ->
                                             PromptCard(p, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }) { picked -> onPicked(p, picked) }
                                         }
-                                        Status.Working -> Working(since)
+                                        Status.Working -> Working(since, doing)
                                         Status.Waiting -> Waiting()
                                     }
                                 }
@@ -298,6 +307,7 @@ private fun ItemView(
         is Item.Said -> when (val e = item.entry) {
             is Entry.Picture -> Picture(e, picture)
             is Entry.Note -> Note(e.text, e.detail)
+            is Entry.Agent -> AgentMessage(e)
             is Entry.Command -> Command(e)
             is Entry.Said -> if (e.by == Party.User) Prompt(e.text, onEdit?.let { { it(e) } }) else Reply(e.text, copyable = item.copies(ongoing), beside)
             is Entry.Step, is Entry.Thought -> Unit // folded into steps
@@ -486,6 +496,64 @@ private fun Note(text: String, detail: String = "") {
     }
 }
 
+/** Something the user sent that waits for the program to take it: theirs, faint, said to be waiting. */
+@Composable
+private fun Queued(text: String) {
+    Column(Modifier.fillMaxWidth().padding(start = 40.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text,
+            color = Palette.grey,
+            fontFamily = words,
+            fontSize = wordSize(14.sp, 15.sp),
+            lineHeight = wordSize(21.sp, 22.sp),
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .clip(RoundedCornerShape(18.dp))
+                .border(1.dp, Palette.bg3, RoundedCornerShape(18.dp))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+        )
+        Text("queued", color = Palette.dim, style = Type.caption, modifier = Modifier.padding(end = 6.dp))
+    }
+}
+
+/**
+ * A message another agent sent the program, on the program's side: who, and
+ * what it's about; tapped, the message itself opens beneath.
+ */
+@Composable
+private fun AgentMessage(e: Entry.Agent) {
+    var open by remember { mutableStateOf(false) }
+    val feel = rememberFold()
+    val opens = e.message.isNotEmpty()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(end = 24.dp)
+            .animateContentSize(Motion.spatial())
+            .onSizeChanged { feel.laidOut(it.height) }
+            .clip(RoundedCornerShape(14.dp))
+            .background(Palette.bg1)
+            .clickable(enabled = opens) {
+                feel.tap()
+                open = !open
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GlyphIcon(Glyph.Spark, Palette.purple, size = 11.dp)
+            Text(e.name, color = Palette.purple, style = Type.label, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 6.dp).weight(1f, fill = false))
+            if (opens) Text(if (open) "  hide" else "  see all", color = Palette.dim, style = Type.caption)
+        }
+        if (!open || !opens) {
+            Text(e.about, color = Palette.fg, style = Type.label, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        } else {
+            SelectionContainer { MarkdownText(e.message + (more(e.cut, "character")?.let { "\n\n$it" } ?: "")) }
+        }
+    }
+}
+
 /** A command the user ran, on their side and marked as one, with what it said back beneath; tapped, that opens if it's long. */
 @Composable
 private fun Command(c: Entry.Command) {
@@ -522,10 +590,14 @@ private fun Steps(steps: List<Entry>) {
     val running = tools.lastOrNull()?.takeIf { it.status == Entry.Step.Status.Running }
     val failed = tools.count { it.status == Entry.Step.Status.Failed }
     val names = tools.map { it.name }.distinct()
-    val summary = buildString {
+    val red = Palette.red
+    val summary = buildAnnotatedString {
         append(if (steps.size == 1) "1 step" else "${steps.size} steps")
-        if (names.isNotEmpty()) append(" · ").append(names.take(3).joinToString(", ")).append(if (names.size > 3) " +${names.size - 3}" else "")
-        if (failed > 0) append(" · $failed failed")
+        if (names.isNotEmpty()) append(" · " + names.take(3).joinToString(", ") + if (names.size > 3) " +${names.size - 3}" else "")
+        if (failed > 0) {
+            append(" · ")
+            withStyle(SpanStyle(color = red)) { append("$failed failed") }
+        }
     }
     Column {
         Row(
@@ -544,7 +616,7 @@ private fun Steps(steps: List<Entry>) {
             if (running != null) Running(Modifier.padding(start = 8.dp))
             Text(
                 summary,
-                color = if (failed > 0) Palette.red else Palette.grey,
+                color = Palette.grey,
                 style = Type.label,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -716,9 +788,9 @@ private fun rememberFold(): Fold {
     return remember(haptics) { Fold(haptics) }
 }
 
-/** The program working on its turn, and for how long; gone when it's done. */
+/** The program working on its turn, as it puts it ([doing]) if it says, and for how long; gone when it's done. */
 @Composable
-private fun Working(since: Long) {
+private fun Working(since: Long, doing: String?) {
     val live = LocalLive.current
     val seconds by produceState(elapsed(since), since, live) {
         while (live) {
@@ -735,7 +807,7 @@ private fun Working(since: Long) {
     Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Running(Modifier)
         Text(
-            "working" + (if (since > 0) " · " + duration(seconds) else ""),
+            (doing?.lowercase() ?: "working") + (if (since > 0) " · " + duration(seconds) else ""),
             style = Type.label,
             modifier = Modifier
                 .padding(start = 8.dp)

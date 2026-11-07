@@ -72,11 +72,12 @@ type found struct {
 }
 
 type update struct {
-	Reset   bool    `json:"reset"`
-	More    bool    `json:"more"`
-	Entries []entry `json:"entries"`
-	Context *int    `json:"context"`
-	Title   string  `json:"title"`
+	Reset   bool      `json:"reset"`
+	More    bool      `json:"more"`
+	Entries []entry   `json:"entries"`
+	Context *int      `json:"context"`
+	Title   string    `json:"title"`
+	Queued  *[]string `json:"queued"`
 }
 
 // entry is a mobileview.Entry as the wire spells it.
@@ -190,6 +191,9 @@ func updateOf(u update) mobileview.Update {
 	out := mobileview.Update{Reset: u.Reset, More: u.More, Title: u.Title}
 	if u.Context != nil {
 		out.Context, out.Measured = *u.Context, true
+	}
+	if u.Queued != nil {
+		out.Queued, out.Requeued = *u.Queued, true
 	}
 	for _, e := range u.Entries {
 		out.Entries = append(out.Entries, mobileview.Entry(e))

@@ -52,4 +52,7 @@ sealed interface Entry {
 
     /** Something that happened rather than was said: an interruption, a compaction, with more about it ([detail]) to open. */
     data class Note(override val id: String, val text: String, val detail: String = "") : Entry
+
+    /** A message another agent sent the program, [name]d: a subagent's report, a teammate's; what it's [about], and the [message], [cut] characters short. */
+    data class Agent(override val id: String, val name: String, val about: String, val message: String = "", val cut: Int = 0) : Entry
 }

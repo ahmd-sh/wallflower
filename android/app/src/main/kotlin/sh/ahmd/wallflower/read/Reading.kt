@@ -9,7 +9,8 @@ package sh.ahmd.wallflower.read
  * next message; it and what followed aren't [shown] till then. What the
  * program is doing is its pane's ([activityOf]). [title]: what the
  * conversation is called, if it's named. [stopped]: when the user last
- * stopped the program, by the session's clock (0: not lately).
+ * stopped the program, by the session's clock (0: not lately). [queued]:
+ * what the user sent that waits for the program to take it.
  */
 data class Reading(
     val entries: List<Entry> = emptyList(),
@@ -20,6 +21,7 @@ data class Reading(
     val rewound: String? = null,
     val title: String? = null,
     val stopped: Long = 0,
+    val queued: List<String> = emptyList(),
 ) {
     val shown: List<Entry> get() = rewound?.let { r -> entries.takeWhile { it.id != r } } ?: entries
 

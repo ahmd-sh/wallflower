@@ -5,13 +5,18 @@ import sh.ahmd.wallflower.protocol.Pane
 
 // The mobile view as the wire has it, into the read model.
 
-/** With [m] applied: a reset replaces everything; otherwise its entries come in, and the context and title it says replace what was. */
+/**
+ * With [m] applied: a reset replaces everything; otherwise its entries come in, and the context and title it says replace what was.
+ * What was [Reading.rewound] stays so through a reset that still has its message: the program records a rewind with the next one.
+ */
 fun Reading.apply(m: Entries): Reading {
     if (m.reset) {
         val entries = m.entries.map(::entryOf)
+        val kept = entries.takeLast(Reading.MAX_ENTRIES)
         return Reading(
-            entries.takeLast(Reading.MAX_ENTRIES), m.more || entries.size > Reading.MAX_ENTRIES, m.error,
-            loaded = true, context = m.context ?: 0, title = m.title,
+            kept, m.more || entries.size > Reading.MAX_ENTRIES, m.error,
+            loaded = true, context = m.context ?: 0, title = m.title, queued = m.queued.orEmpty(),
+            rewound = rewound?.takeIf { r -> kept.any { it.id == r } },
         )
     }
     return with(m.entries.map(::entryOf)).copy(
@@ -19,6 +24,7 @@ fun Reading.apply(m: Entries): Reading {
         loaded = true,
         context = m.context ?: context,
         title = m.title ?: title,
+        queued = m.queued ?: queued,
     )
 }
 
@@ -47,5 +53,6 @@ internal fun entryOf(e: sh.ahmd.wallflower.protocol.Entry): Entry = when (e.kind
     )
     "thought" -> Entry.Thought(e.id, e.text)
     "picture" -> Entry.Picture(e.id, partyOf(e.from), e.mime, e.size)
+    "note" -> if (e.name.isNotEmpty()) Entry.Agent(e.id, e.name, e.text, e.output, e.outputCut) else Entry.Note(e.id, e.text, e.output)
     else -> Entry.Note(e.id, e.text, e.output)
 }

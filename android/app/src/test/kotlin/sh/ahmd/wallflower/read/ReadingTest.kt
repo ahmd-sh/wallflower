@@ -93,7 +93,7 @@ class ReadingTest {
     }
 
     @Test
-    fun rewoundItHidesTheMessageQuotedAndWhatFollowedUntilAReset() {
+    fun rewoundItHidesTheMessageQuotedAndWhatFollowed() {
         val said = WireEntry("u2", "user", "said", "Use the Write tool to create /private/tmp/claude-502/rw.txt containing hi")
         var r = Reading().apply(Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "said", "one"), text("a1"), said, text("a2"))))
         val all = r
@@ -101,7 +101,7 @@ class ReadingTest {
         assertEquals(listOf("u1", "a1"), r.shown.map { it.id })
         assertEquals(listOf("u1", "a1"), r.apply(Entries("%1", context = 5)).shown.map { it.id })
         assertEquals(listOf("u1", "a1"), r.rewoundTo(quoting("…create /private/tmp/claude…")).shown.map { it.id })
-        assertEquals(listOf("u1", "a1", "u2", "a2"), r.apply(Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "said", "one"), text("a1"), said, text("a2")))).shown.map { it.id })
+        assertEquals(listOf("u1", "a1"), r.apply(Entries("%1", reset = true, entries = listOf(WireEntry("u1", "user", "said", "one"), text("a1"), said, text("a2")))).shown.map { it.id })
         assertEquals(4, all.rewoundTo(quoting("something else")).shown.size)
     }
 
@@ -151,5 +151,30 @@ class ReadingTest {
         assertEquals(listOf("a", "b"), more.entries.map { it.id })
         assertEquals(0, more.apply(Entries("%1", context = 0)).context)
         assertEquals(0, more.apply(Entries("%1", reset = true)).context)
+    }
+
+    @Test
+    fun anotherAgentsMessageIsTheirsByName() {
+        val r = Reading().apply(Entries("%1", reset = true, entries = listOf(WireEntry("t1", "program", "note", "Server done", name = "satchel-server", output = "Tests pass."))))
+        assertEquals(listOf(Entry.Agent("t1", "satchel-server", "Server done", "Tests pass.")), r.entries)
+        assertEquals(listOf(Entry.Note("n1", "Compacted")), Reading().apply(Entries("%1", reset = true, entries = listOf(WireEntry("n1", "program", "note", "Compacted")))).entries)
+    }
+
+    @Test
+    fun whatsQueuedStaysTillItChanges() {
+        val r = Reading().apply(Entries("%1", reset = true, entries = listOf(text("a")), queued = listOf("and then")))
+        assertEquals(listOf("and then"), r.queued)
+        assertEquals(listOf("and then"), r.apply(Entries("%1", entries = listOf(text("b")))).queued)
+        assertEquals(emptyList<String>(), r.apply(Entries("%1", queued = emptyList())).queued)
+        assertEquals(emptyList<String>(), r.apply(Entries("%1", reset = true)).queued)
+    }
+
+    @Test
+    fun rewoundStaysThroughAResetThatStillHasItsMessage() {
+        val said = listOf(text("a"), WireEntry("u1", "user", "said", "fix it"), text("b"))
+        val r = Reading().apply(Entries("%1", reset = true, entries = said)).rewoundTo { it == "fix it" }
+        assertEquals(listOf("a"), r.apply(Entries("%1", reset = true, entries = said)).shown.map { it.id }) // reconnected
+        val next = listOf(text("a"), WireEntry("u2", "user", "said", "fix it properly"))
+        assertEquals(listOf("a", "u2"), r.apply(Entries("%1", reset = true, entries = next)).shown.map { it.id }) // the next message took it back
     }
 }

@@ -260,6 +260,8 @@ data class Entries(
     val context: Int? = null,
     /** What the conversation is called, with a reset and whenever it changes. */
     val title: String? = null,
+    /** What the user sent that waits for the program to take it, oldest first, when that changes; empty once nothing waits. */
+    val queued: List<String>? = null,
 ) : ServerMessage
 
 /** One part of a mobile view: something said, or a step taken. */

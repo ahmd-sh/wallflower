@@ -55,12 +55,13 @@ a line, on its stdin and stdout. It's told:
   for this one's:
   `{"pane": "%1", "n": 3, "update": {"reset": true, "entries": [...], "context": 1234, "title": "fix the tests"}}`.
   With `reset`, its entries replace any before (`more`: there were earlier
-  ones); without, they're new, or replace those with their ids. `context`
-  and `title` are optional. When there's nothing more to read, say why:
+  ones); without, they're new, or replace those with their ids. `context`,
+  `title` and `queued` (what the user sent that waits for the program, as
+  a list of text; `[]` once nothing does) are optional. When there's nothing more to read, say why:
   `{"pane": "%1", "n": 3, "end": "it exited"}`.
 
 Entries are as the protocol has them (`docs/protocol.md`, `entries`): `id`,
 `from` (`user` or `program`), `kind` (`said`, `step`, `thought`, `picture`,
-`note`) and its fields; a picture's bytes go in `data`, base64, with its
+`note`; a note with a `name` is another agent's message) and its fields; a picture's bytes go in `data`, base64, with its
 `mime`. Lines that don't parse are skipped. If the program stops, it's
 started again a few seconds later.
