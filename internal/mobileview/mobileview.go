@@ -53,7 +53,9 @@ type Entry struct {
 // replace those with their IDs. Context, how many tokens the conversation
 // takes of the program's context (0 for unknown), comes when it changes, if
 // Measured. Title, the conversation's name, comes when it changes, and with
-// a Reset if it has one. What the program is doing isn't here: Find says.
+// a Reset if it has one. Queued, what the user sent that waits for the
+// program to take it, comes when that changes (Requeued), and with a Reset
+// if anything waits. What the program is doing isn't here: Find says.
 type Update struct {
 	Reset    bool
 	More     bool
@@ -61,6 +63,8 @@ type Update struct {
 	Context  int
 	Measured bool
 	Title    string
+	Queued   []string
+	Requeued bool
 }
 
 // A Pane is what a Source is told of a pane.

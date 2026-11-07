@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -44,22 +45,27 @@ func (f *fake) set(pid int, path string) {
 func newParser() Parser { return &fakeParser{} }
 
 // fakeParser reads {"id","text"} lines as entries, {"ctx"} lines as how full
-// the context is, and {"back"} lines as the conversation going back to before
-// that entry.
+// the context is, {"back"} lines as the conversation going back to before
+// that entry, and {"queue"} lines as what waits for it.
 type fakeParser struct {
 	ctx      int
 	read     []string
 	left     map[string]bool
 	branches int
+	queue    []string
 }
 
 func (p *fakeParser) Line(b []byte) []Entry {
 	var e struct {
 		ID, Text, Back string
 		Ctx            int
+		Queue          *[]string
 	}
 	if json.Unmarshal(b, &e) != nil {
 		return nil
+	}
+	if e.Queue != nil {
+		p.queue = *e.Queue
 	}
 	if e.Ctx > 0 {
 		p.ctx = e.Ctx
@@ -83,6 +89,8 @@ func (p *fakeParser) Line(b []byte) []Entry {
 }
 
 func (p *fakeParser) Context() int { return p.ctx }
+
+func (p *fakeParser) Queued() []string { return p.queue }
 
 func (p *fakeParser) Branches() int { return p.branches }
 
@@ -176,6 +184,22 @@ func TestFollow(t *testing.T) {
 	src.set(7, "")
 	if err := <-done; !errors.Is(err, ErrEnded) {
 		t.Fatalf("ended: %v", err)
+	}
+}
+
+func TestFollowTheQueue(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "one.jsonl")
+	appendTo(t, path, line("a", "busy")+`{"queue":["and then"]}`+"\n")
+	got, _ := follow(t, &fake{running: map[int]Recording{7: {Path: path}}}, 7)
+	if e := next(t, got); !e.Reset || !e.Requeued || !reflect.DeepEqual(e.Queued, []string{"and then"}) {
+		t.Fatalf("first: %+v", e)
+	}
+	appendTo(t, path, `{"queue":[]}`+"\n"+line("b", "and then"))
+	if e := next(t, got); texts(e) != "b=and then" {
+		t.Fatalf("taken: %+v", e)
+	}
+	if e := next(t, got); !e.Requeued || len(e.Queued) != 0 {
+		t.Fatalf("emptied: %+v", e)
 	}
 }
 

@@ -171,6 +171,10 @@ func entriesOf(pane string, u mobileview.Update, pictures *album) protocol.Entri
 		n := u.Context
 		e.Context = &n
 	}
+	if u.Requeued {
+		q := append([]string{}, u.Queued...)
+		e.Queued = &q
+	}
 	for _, x := range u.Entries {
 		w := protocol.Entry{
 			ID: x.ID, From: x.From, Kind: x.Kind, Text: x.Text, Name: x.Name, Status: x.Status,

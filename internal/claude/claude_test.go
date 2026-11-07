@@ -48,10 +48,66 @@ func TestParse(t *testing.T) {
 		{ID: "u6.0", From: "user", Kind: "picture", Mime: "image/png", Data: "iVBORw0KGgo="},
 		{ID: "u6.1", From: "user", Kind: "said", Text: "look"},
 		{ID: "u7.0", From: "user", Kind: "note", Text: "[Request interrupted by user for tool use]"},
-		{ID: "u8.0", From: "user", Kind: "note", Text: `Background command "Sleep" completed (exit code 0)`},
+		{ID: "u8.0", From: "program", Kind: "note", Text: `Background command "Sleep" completed (exit code 0)`},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+func TestAgentsQueuesAndNotices(t *testing.T) {
+	p := newParser().(*parser)
+	var got []mobileview.Entry
+	queues := map[int][]string{}
+	for i, l := range []string{
+		`{"type":"user","uuid":"t1","parentUuid":"x","promptId":"p","message":{"role":"user","content":"Another Claude session sent a message:\n<teammate-message teammate_id=\"satchel-server\" color=\"blue\" summary=\"Satchel Go server done, report\">\nSatchel is done: tests pass.\n\nI smoke-tested it.\n</teammate-message>"}}`,
+		`{"type":"user","uuid":"t2","parentUuid":"t1","message":{"role":"user","content":"Another Claude session sent a message:\n<teammate-message teammate_id=\"reuse\" color=\"blue\">\n{\"type\":\"idle_notification\",\"from\":\"reuse\",\"idleReason\":\"available\"}\n</teammate-message>"}}`,
+		`{"type":"user","uuid":"t3","parentUuid":"t2","message":{"role":"user","content":"Another Claude session sent a message:\n<teammate-message teammate_id=\"simplification\" color=\"yellow\">\n{\"type\":\"idle_notification\",\"from\":\"simplification\",\"result\":\"## Findings\\nOne copy too many.\"}\n</teammate-message>"}}`,
+		`{"type":"user","uuid":"h1","parentUuid":"t3","isMeta":true,"promptSource":"system","origin":{"kind":"peer","from":"a27","name":"general-purpose","handback":true},"message":{"role":"user","content":"Another Claude session sent a message:\n<agent-message from=\"a27\">\n[Subagent hand-back] The text below is the final report of a subagent. The report follows:\n  # Terminal engines\n  \n  Use libghostty.\n</agent-message>"}}`,
+		`{"type":"queue-operation","operation":"enqueue","content":"also say pear at the end"}`,
+		`{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<summary>Agent \"x\" finished</summary>\n</task-notification>"}`,
+		`{"type":"queue-operation","operation":"enqueue","content":"and then stop"}`,
+		`{"type":"queue-operation","operation":"remove","content":"also say pear at the end"}`,
+		`{"type":"attachment","uuid":"q1","parentUuid":"h1","attachment":{"type":"queued_command","prompt":"also say pear at the end","commandMode":"prompt","origin":{"kind":"human"}}}`,
+		`{"type":"queue-operation","operation":"remove","content":"<task-notification>\n<summary>Agent \"x\" finished</summary>\n</task-notification>"}`,
+		`{"type":"attachment","uuid":"q2","parentUuid":"q1","attachment":{"type":"queued_command","prompt":"<task-notification>\n<summary>Agent \"x\" finished</summary>\n</task-notification>","commandMode":"task-notification","origin":{"kind":"task-notification"}}}`,
+		`{"type":"attachment","uuid":"q3","parentUuid":"q2","attachment":{"type":"queued_command","prompt":"<agent-message from=\"a08\">\n[Subagent hand-back] Framed. The report follows:\n  Done.\n</agent-message>","commandMode":"prompt","origin":{"kind":"peer","from":"a08"}}}`,
+		`{"type":"attachment","uuid":"q4","parentUuid":"q3","attachment":{"type":"total_tokens_reminder"}}`,
+		`{"type":"queue-operation","operation":"dequeue"}`,
+		`{"type":"user","uuid":"u1","parentUuid":"q4","promptSource":"queued","origin":{"kind":"human"},"message":{"role":"user","content":"and then stop"}}`,
+		`{"type":"system","subtype":"away_summary","uuid":"s1","parentUuid":"u1","content":"I fixed the tests. Next, try it."}`,
+		`{"type":"system","subtype":"informational","uuid":"s2","parentUuid":"s1","level":"warning","content":"Unknown command: /mdp. Did you mean /mcp?"}`,
+		`{"type":"system","subtype":"turn_duration","uuid":"s3","parentUuid":"s2","durationMs":1200}`,
+		`{"type":"assistant","uuid":"e1","parentUuid":"s3","isApiErrorMessage":true,"message":{"role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"API Error: 529 overloaded"}]}}`,
+	} {
+		got = append(got, p.Line([]byte(l))...)
+		queues[i] = p.Queued()
+	}
+	want := []mobileview.Entry{
+		{ID: "t1.0", From: "program", Kind: "note", Name: "satchel-server", Text: "Satchel Go server done, report", Output: "Satchel is done: tests pass.\n\nI smoke-tested it."},
+		{ID: "t3.0", From: "program", Kind: "note", Name: "simplification", Text: "Findings", Output: "## Findings\nOne copy too many."},
+		{ID: "h1.0", From: "program", Kind: "note", Name: "general-purpose", Text: "Terminal engines", Output: "# Terminal engines\n\nUse libghostty."},
+		{ID: "q1.0", From: "user", Kind: "said", Text: "also say pear at the end"},
+		{ID: "q2.0", From: "program", Kind: "note", Text: `Agent "x" finished`},
+		{ID: "q3.0", From: "program", Kind: "note", Name: "a08", Text: "Done."},
+		{ID: "u1.0", From: "user", Kind: "said", Text: "and then stop"},
+		{ID: "s2.0", From: "program", Kind: "note", Text: "Unknown command: /mdp. Did you mean /mcp?"},
+		{ID: "e1.0", From: "program", Kind: "note", Text: "API Error: 529 overloaded"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got\n%+v\nwant\n%+v", got, want)
+	}
+	if q := queues[6]; !reflect.DeepEqual(q, []string{"also say pear at the end", "and then stop"}) {
+		t.Errorf("queued, three in: %q", q)
+	}
+	if q := queues[8]; !reflect.DeepEqual(q, []string{"and then stop"}) {
+		t.Errorf("queued, the first taken: %q", q)
+	}
+	if q := queues[14]; len(q) != 0 {
+		t.Errorf("queued at the end: %q", q)
+	}
+	if p.Branches() != 0 {
+		t.Errorf("%d branches: messages from elsewhere aren't the conversation taken back", p.Branches())
 	}
 }
 

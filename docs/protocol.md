@@ -101,7 +101,7 @@ them at once takes it all as a paste, Enter and all.
 | `hello` | `v`, `mux`, `uploads`?, `machine`?, `programs`? | the multiplexer, see below; the directory uploads are saved in; the machine's name, as its owner calls it (a Mac's Computer Name); the phone halves of the user's plugins, see below. Again after a switch |
 | `state` | `session`, `name`, `windows` | everything in the session, see below |
 | `reset` | `pane`, `cols`, `rows` | recreate the pane's terminal at this size; the next data frame repaints it |
-| `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `context`?, `title`? | a pane's mobile view, see below |
+| `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `context`?, `title`?, `queued`? | a pane's mobile view, see below |
 | `error` | `message` | a message failed |
 | `pong` | `id` | |
 | `uploaded` | `id`, `path`?, `error`? | where an upload was saved, or why it wasn't |
@@ -157,7 +157,11 @@ context, as of its latest reply, sent when it says and whenever it changes;
 0 when it no longer knows (just after a compaction, until the next reply).
 `title` is what the conversation is called (Claude Code: the name given with
 `/rename`, else the one it made up), with a `reset` if it has one, and
-whenever it changes.
+whenever it changes. `queued` is what the user sent while the program was
+busy that it hasn't taken yet, oldest first, with a `reset` if anything
+waits and whenever that changes (`[]` once nothing does). Taken, a message
+arrives as an entry of the user's where the program took it, mid-turn or
+next.
 
 What the program is asking isn't in the mobile view: it's on the pane's
 screen, and answers are keys, as typed.
@@ -170,7 +174,7 @@ An entry is `id`, `from` (`user` or `program`), `kind` and, by kind:
 | `thought` | `text` | |
 | `step` | `name`, `text`, `status`, `output`?, `output_cut`?, `diff`?, `diff_cut`? | `text` is what the step was asked, in brief; `status` is `running`, `done` or `failed`; `output` is trimmed, `output_cut` characters short; `diff` is the change it made to a file, as unified diff hunks (`@@ -a,b +c,d @@`, then lines starting ` `, `-` or `+`), `diff_cut` lines short. From the `user`, it's a command they ran: `name` is the command (`/compact`, or `!` for a shell command), `text` its arguments |
 | `picture` | `mime`, `size` | its bytes, `size` of them, come when asked for with `picture`; the gateway keeps a mobile view's recent pictures |
-| `note` | `text`, `output`? | an event rather than something said: an interruption, a compacted conversation; `output` is more about it, to show when asked (a compaction's summary) |
+| `note` | `text`, `name`?, `output`? | an event rather than something said: an interruption, a compacted conversation, a notice; `output` is more about it, to show when asked (a compaction's summary). With a `name`, it's a message from another agent (a subagent or teammate) by that name: `text` what it's about, `output` the message |
 
 A client shows an entry of a kind it doesn't know as a note of its `text`.
 

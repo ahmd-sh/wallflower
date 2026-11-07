@@ -193,6 +193,45 @@ type parser struct {
 	compacted bool              // the latest record said was a compaction's summary
 	custom    string            // the title the user gave the conversation
 	named     string            // the title claude gave it
+	queue     []string          // what was sent while claude was busy, not yet taken, oldest first
+}
+
+// Queued is what the user sent while claude was busy that it hasn't taken
+// yet, oldest first. Claude queues its own notices the same way; those
+// aren't the user's, so they aren't here.
+func (p *parser) Queued() []string {
+	var out []string
+	for _, q := range p.queue {
+		if t := strings.TrimSpace(pasted.ReplaceAllString(q, "")); t != "" && !tagged(t) && !fromAgent(t) && !strings.HasPrefix(t, "<task-notification>") {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// queued follows claude's queue: a message goes on it, and comes off as it's
+// taken at the end of a turn (dequeue) or into the turn going on, or back
+// into the prompt box to edit (remove).
+func (p *parser) queued(op string, raw json.RawMessage) {
+	var text string
+	json.Unmarshal(raw, &text)
+	switch op {
+	case "enqueue":
+		p.queue = append(p.queue, text)
+	case "dequeue":
+		if len(p.queue) > 0 {
+			p.queue = p.queue[1:]
+		}
+	case "remove":
+		for i, q := range p.queue {
+			if q == text {
+				p.queue = append(p.queue[:i:i], p.queue[i+1:]...)
+				break
+			}
+		}
+	case "clear", "popAll":
+		p.queue = nil
+	}
 }
 
 // Title is what the user named the conversation (/rename), or else what
@@ -219,9 +258,13 @@ type record struct {
 	IsCompactSummary bool            `json:"isCompactSummary"`
 	PromptSource     string          `json:"promptSource"`
 	Subtype          string          `json:"subtype"`
-	Content          json.RawMessage `json:"content"` // a system record's
+	Content          json.RawMessage `json:"content"` // a system record's, or a queue operation's
 	CustomTitle      string          `json:"customTitle"`
 	AITitle          string          `json:"aiTitle"`
+	Operation        string          `json:"operation"` // a queue operation's
+	IsAPIError       bool            `json:"isApiErrorMessage"`
+	Origin           *origin         `json:"origin"`
+	Attachment       *attachment     `json:"attachment"`
 	ToolUseResult    json.RawMessage `json:"toolUseResult"`
 	Message          struct {
 		Content json.RawMessage `json:"content"`
@@ -232,6 +275,25 @@ type record struct {
 			OutputTokens             int `json:"output_tokens"`
 		} `json:"usage"`
 	} `json:"message"`
+}
+
+// origin is where a message to claude came from, as it says: a person, a
+// task's notice, or another session (a peer: a subagent or teammate).
+type origin struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+}
+
+// peer is whether o is another Claude session.
+func (o *origin) peer() bool { return o != nil && o.Kind == "peer" }
+
+// An attachment is something claude adds to the conversation beside the
+// messages: one sent while it was busy (queued_command), among others.
+type attachment struct {
+	Type        string          `json:"type"`
+	Prompt      json.RawMessage `json:"prompt"`
+	CommandMode string          `json:"commandMode"` // prompt, or task-notification
+	Origin      *origin         `json:"origin"`
 }
 
 type block struct {
@@ -284,17 +346,36 @@ func (p *parser) Line(b []byte) []mobileview.Entry {
 		p.custom = strings.TrimSpace(r.CustomTitle)
 	case "ai-title":
 		p.named = strings.TrimSpace(r.AITitle)
+	case "queue-operation":
+		p.queued(r.Operation, r.Content)
 	}
 	if r.UUID == "" {
 		return nil
 	}
-	talk := !r.IsMeta && (r.Type == "user" || r.Type == "assistant")
+	// Another session's message is recorded as the user's, and a subagent's as meta.
+	peer := r.Type == "user" && r.Origin.peer()
+	talk := (!r.IsMeta || peer) && (r.Type == "user" || r.Type == "assistant")
 	var c content
 	if talk {
 		c = decode(r.Message.Content)
 	}
 	if p.place(r, c); p.left[r.UUID] {
 		return nil
+	}
+	if a := r.Attachment; r.Type == "attachment" && a != nil && a.Type == "queued_command" {
+		if e, ok := p.taken(r.UUID+".0", *a); ok {
+			return []mobileview.Entry{e}
+		}
+		return nil
+	}
+	if r.Type == "system" {
+		var text string
+		json.Unmarshal(r.Content, &text)
+		text = strings.TrimSpace(text)
+		// Its notices, as an unknown command; not its recaps, which retell the turn the view shows.
+		if r.Subtype == "informational" && text != "" {
+			return []mobileview.Entry{{ID: r.UUID + ".0", From: mobileview.Program, Kind: mobileview.Note, Text: text}}
+		}
 	}
 	if u := r.Message.Usage; r.Type == "assistant" && u != nil {
 		if n := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens + u.OutputTokens; n > 0 {
@@ -324,6 +405,15 @@ func (p *parser) Line(b []byte) []mobileview.Entry {
 			e.Output, e.OutputCut = clip(strings.TrimSpace(*c.text))
 		}
 		return []mobileview.Entry{e}
+	}
+	if text, ok := c.first(); ok && r.Type == "user" && (peer || fromAgent(text)) {
+		if e, ok := agentOf(r.UUID+".0", text, r.Origin); ok {
+			return []mobileview.Entry{e}
+		}
+		return nil
+	}
+	if text, ok := c.first(); ok && r.Type == "assistant" && r.IsAPIError {
+		return []mobileview.Entry{{ID: r.UUID + ".0", From: mobileview.Program, Kind: mobileview.Note, Text: strings.TrimSpace(text)}}
 	}
 	if c.text != nil && r.Type == "user" && tagged(*c.text) {
 		e, ok := p.commandOf(r.UUID+".0", *c.text)
@@ -391,7 +481,7 @@ func (p *parser) place(r record, c content) {
 	switch {
 	case p.left[r.ParentUUID]:
 		p.left[r.UUID] = true
-	case r.Type == "user" && c.prompt() && len(p.next[r.ParentUUID]) > 0:
+	case r.Type == "user" && c.prompt() && r.PromptSource != "system" && !r.Origin.peer() && len(p.next[r.ParentUUID]) > 0:
 		gone := append([]string(nil), p.next[r.ParentUUID]...)
 		for len(gone) > 0 {
 			id := gone[len(gone)-1]
@@ -407,6 +497,19 @@ func (p *parser) place(r record, c content) {
 	if r.ParentUUID != "" {
 		p.next[r.ParentUUID] = append(p.next[r.ParentUUID], r.UUID)
 	}
+}
+
+// first is a message's text, or its first block of text.
+func (c content) first() (string, bool) {
+	if c.text != nil {
+		return *c.text, true
+	}
+	for _, b := range c.blocks {
+		if b.Type == "text" {
+			return b.Text, true
+		}
+	}
+	return "", false
 }
 
 // prompt is whether a user's message is something they sent, rather than a
@@ -455,11 +558,7 @@ func (p *parser) said(r record, i int, text string) (mobileview.Entry, bool) {
 			return mobileview.Entry{}, false
 		}
 		if r.PromptSource == "system" {
-			m := summary.FindStringSubmatch(text)
-			if m == nil || strings.TrimSpace(m[1]) == "" {
-				return mobileview.Entry{}, false
-			}
-			return mobileview.Entry{ID: fmt.Sprintf("%s.%d", r.UUID, i), From: who, Kind: mobileview.Note, Text: strings.TrimSpace(m[1])}, true
+			return notice(fmt.Sprintf("%s.%d", r.UUID, i), text)
 		}
 		text = strings.TrimSpace(pasted.ReplaceAllString(text, ""))
 	}
@@ -471,6 +570,129 @@ func (p *parser) said(r record, i int, text string) (mobileview.Entry, bool) {
 		e.Kind = mobileview.Note
 	}
 	return e, true
+}
+
+// notice is what claude tells itself, as a background task finishing, by
+// its summary; nothing if it has none.
+func notice(id, text string) (mobileview.Entry, bool) {
+	m := summary.FindStringSubmatch(text)
+	if m == nil || strings.TrimSpace(m[1]) == "" {
+		return mobileview.Entry{}, false
+	}
+	return mobileview.Entry{ID: id, From: mobileview.Program, Kind: mobileview.Note, Text: strings.TrimSpace(m[1])}, true
+}
+
+// taken is a message claude took into the turn it was on, having queued it
+// while busy: the user's, a task's notice, or another session's.
+func (p *parser) taken(id string, a attachment) (mobileview.Entry, bool) {
+	text, ok := decode(a.Prompt).first()
+	if !ok {
+		return mobileview.Entry{}, false
+	}
+	switch {
+	case a.Origin.peer() || fromAgent(text):
+		return agentOf(id, text, a.Origin)
+	case a.CommandMode == "task-notification" || strings.HasPrefix(strings.TrimSpace(text), "<task-notification>"):
+		return notice(id, text)
+	case a.CommandMode == "prompt":
+		if text = strings.TrimSpace(pasted.ReplaceAllString(text, "")); text != "" {
+			return mobileview.Entry{ID: id, From: mobileview.User, Kind: mobileview.Said, Text: text}, true
+		}
+	}
+	return mobileview.Entry{}, false
+}
+
+const anotherSession = "Another Claude session sent a message:"
+
+var (
+	teammate     = regexp.MustCompile(`(?s)^<teammate-message\b([^>]*)>(.*?)(?:</teammate-message>)?$`)
+	agentMessage = regexp.MustCompile(`(?s)^<agent-message\b([^>]*)>(.*?)(?:</agent-message>)?$`)
+	attribute    = regexp.MustCompile(`([\w-]+)="([^"]*)"`)
+	heading      = regexp.MustCompile(`^[#>*_\s-]+`)
+)
+
+// fromAgent is whether text is another Claude session's message to this
+// one, which claude records as the user's.
+func fromAgent(text string) bool {
+	text = strings.TrimSpace(text)
+	return strings.HasPrefix(text, anotherSession) || strings.HasPrefix(text, "<teammate-message") || strings.HasPrefix(text, "<agent-message")
+}
+
+// agentOf is another Claude session's message, a teammate's or a subagent's
+// report, as a note of theirs: who sent it, what it's about, and the report
+// to open. A teammate gone idle with nothing to say is nothing.
+func agentOf(id, text string, o *origin) (mobileview.Entry, bool) {
+	text = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), anotherSession))
+	name, about, body := "", "", text
+	if m := teammate.FindStringSubmatch(text); m != nil {
+		attrs := attributes(m[1])
+		name, about, body = attrs["teammate_id"], attrs["summary"], m[2]
+	} else if m := agentMessage.FindStringSubmatch(text); m != nil {
+		name, body = attributes(m[1])["from"], m[2]
+	}
+	body = strings.TrimSpace(body)
+	var idle struct {
+		Type   string `json:"type"`
+		Result string `json:"result"`
+	}
+	if strings.HasPrefix(body, "{") && json.Unmarshal([]byte(body), &idle) == nil && idle.Type != "" {
+		if body = strings.TrimSpace(idle.Result); body == "" {
+			return mobileview.Entry{}, false
+		}
+	}
+	body = report(body)
+	if o != nil && o.Name != "" {
+		name = o.Name // a subagent's kind, where its message names it by id
+	}
+	if name == "" {
+		name = "agent"
+	}
+	if about == "" {
+		about = headline(body)
+	}
+	e := mobileview.Entry{ID: id, From: mobileview.Program, Kind: mobileview.Note, Name: name, Text: about}
+	if body != about {
+		e.Output, e.OutputCut = clip(body)
+	}
+	return e, true
+}
+
+func attributes(s string) map[string]string {
+	out := map[string]string{}
+	for _, m := range attribute.FindAllStringSubmatch(s, -1) {
+		out[m[1]] = m[2]
+	}
+	return out
+}
+
+// report is a subagent's report out of the frame claude hands it back in,
+// which indents its every line.
+func report(body string) string {
+	if !strings.HasPrefix(body, "[Subagent hand-back]") {
+		return body
+	}
+	_, rest, ok := strings.Cut(body, "The report follows:")
+	if !ok {
+		return body
+	}
+	lines := strings.Split(strings.Trim(rest, "\n"), "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimPrefix(l, "  ")
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+// headline is the first line of a report, without its markdown marks, kept short.
+func headline(body string) string {
+	for _, l := range strings.Split(body, "\n") {
+		if l = strings.TrimSpace(heading.ReplaceAllString(l, "")); l != "" {
+			if utf8.RuneCountInString(l) > 120 {
+				l = string([]rune(l)[:119]) + "…"
+			}
+			return l
+		}
+	}
+	return ""
 }
 
 var (

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"time"
 )
 
@@ -64,6 +65,19 @@ func titleOf(p Parser) string {
 	return ""
 }
 
+// A Queuer is a Parser of a program that queues what the user sends while
+// it's busy, as of the lines it has read.
+type Queuer interface {
+	Queued() []string
+}
+
+func queuedOf(p Parser) []string {
+	if q, ok := p.(Queuer); ok {
+		return q.Queued()
+	}
+	return nil
+}
+
 func contextOf(p Parser) int {
 	if m, ok := p.(Measure); ok {
 		return m.Context()
@@ -107,6 +121,7 @@ func Tail(ctx context.Context, recording func() (Recording, bool), parser func()
 		measured int    // the context last sent
 		branched int    // the parser's branches, as of the entries sent
 		title    string // the title last sent
+		queued   []string
 	)
 	defer func() {
 		if f != nil {
@@ -132,10 +147,10 @@ func Tail(ctx context.Context, recording func() (Recording, bool), parser func()
 				var entries []Entry
 				var more bool
 				entries, more, p, offset = recent(f, parser, Recent)
-				partial, announce, measured, branched, title = nil, false, contextOf(p), branches(p), titleOf(p)
-				send(Update{Reset: true, More: more, Entries: entries, Context: measured, Measured: measured != 0, Title: title})
+				partial, announce, measured, branched, title, queued = nil, false, contextOf(p), branches(p), titleOf(p), queuedOf(p)
+				send(Update{Reset: true, More: more, Entries: entries, Context: measured, Measured: measured != 0, Title: title, Queued: queued, Requeued: len(queued) > 0})
 			} else if announce {
-				announce, measured, title = false, 0, ""
+				announce, measured, title, queued = false, 0, "", nil
 				send(Update{Reset: true})
 			}
 		} else if st, err := f.Stat(); err == nil && st.Size() < offset {
@@ -169,6 +184,10 @@ func Tail(ctx context.Context, recording func() (Recording, bool), parser func()
 		if f != nil && titleOf(p) != title {
 			title = titleOf(p)
 			send(Update{Title: title})
+		}
+		if f != nil && !slices.Equal(queuedOf(p), queued) {
+			queued = queuedOf(p)
+			send(Update{Queued: queued, Requeued: true})
 		}
 		select {
 		case <-ctx.Done():

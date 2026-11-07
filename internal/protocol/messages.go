@@ -298,6 +298,9 @@ type Entries struct {
 	Error   string  `json:"error,omitempty"`
 	Context *int    `json:"context,omitempty"`
 	Title   string  `json:"title,omitempty"`
+	// Queued is what the user sent that waits for the program to take it,
+	// oldest first, when that changes: empty once nothing waits.
+	Queued *[]string `json:"queued,omitempty"`
 }
 
 // Entry is one part of a mobile view: something said, or a step taken.
