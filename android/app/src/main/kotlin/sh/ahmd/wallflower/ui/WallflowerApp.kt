@@ -529,8 +529,8 @@ private fun TerminalScreen(
                                 actions.type(text)
                             },
                             onSend = send@{ text, enter ->
-                                // A menu on screen would take what's typed as picks, and Enter as its choice: it waits, unless it's for writing in.
-                                val asking = screen.prompt?.takeIf { mobileView }
+                                // A menu the program's waiting on would take what's typed as picks, and Enter as its choice: it waits, unless it's for writing in.
+                                val asking = screen.prompt?.takeIf { mobileView && activity == Activity.Waiting }
                                 if (asking != null && asking.options.none { it.current && it.muted && it.scroll == 0 }) {
                                     haptics.reject()
                                     nudged = System.nanoTime()

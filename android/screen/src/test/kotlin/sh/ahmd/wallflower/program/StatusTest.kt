@@ -51,4 +51,16 @@ class StatusTest {
         assertEquals(listOf("Up"), Claude.seek(list, "say just: one")) // further up, out of sight
         assertNull(Claude.seek(Prompt.read(captured("claude-rewind-confirm.ansi", 54))!!, "say just: two")) // the user's to confirm
     }
+
+    @Test
+    fun aMessageStartingOneIsNoMenuWhileTheBoxIsThere() {
+        assertNull(Claude.prompt(captured("claude-numbered-message.ansi", 54)))
+        // Every menu Claude asks with takes the box's place, so each still reads.
+        for ((name, cols) in listOf(
+            "claude-bash-permission.ansi" to 54, "claude-plan-approval.ansi" to 54, "claude-question.ansi" to 52, "claude-question-review.ansi" to 52,
+            "claude-rewind-list.ansi" to 54, "claude-rewind-confirm.ansi" to 54, "claude-rewind-confirm-nocode.ansi" to 54, "claude-question-write.ansi" to 54,
+        )) {
+            assertTrue(name, Claude.prompt(captured(name, cols)) != null)
+        }
+    }
 }

@@ -89,7 +89,8 @@ object Claude : Program {
         return null
     }
 
-    override fun prompt(screen: Screen): Prompt? = Prompt.read(screen)
+    /** What Claude asks takes its prompt box's place: with the box there, a numbered list on screen is something said (a message starting 1.), not a menu. */
+    override fun prompt(screen: Screen): Prompt? = if (line(screen) != null) null else Prompt.read(screen)
 
     /**
      * Above its prompt box while it works, Claude says what it's doing: a
