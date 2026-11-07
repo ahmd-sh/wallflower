@@ -274,6 +274,7 @@ private fun TerminalScreen(
     var nudged by remember(pane?.id) { mutableLongStateOf(0L) }
     // A message asked back by a command (/rewind) is found in what it opens, up to where the user confirms.
     var seeking by remember(pane?.id) { mutableStateOf<Seeking?>(null) }
+    var editing by remember(pane?.id) { mutableStateOf<String?>(null) } // the message walked to, to edit
     LaunchedEffect(seeking) {
         delay(SEEKS_MS) // since its last step
         seeking = null
@@ -291,6 +292,7 @@ private fun TerminalScreen(
         seeking = when {
             walk.on && s.skip == 0 -> {
                 actions.keys(walk.pick)
+                editing = s.id
                 null
             }
             up != null -> {
@@ -312,8 +314,9 @@ private fun TerminalScreen(
             gone == 0L -> gone = System.currentTimeMillis()
         }
         if (p == null && was != null && held != null && System.currentTimeMillis() - gone < SETTLES_MS) {
-            actions?.settled(was, screen.line)
+            actions?.settled(was, screen.line, editing)
             asked = null
+            editing = null
         }
     }
 
@@ -427,11 +430,12 @@ private fun TerminalScreen(
             onView = { view = it },
             onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
             onPrompt = { seeking = null }, // the user's own hand on it
+            held = editing,
             onRecalled = { e ->
                 recalled = Recalled(e.text, System.nanoTime())
                 // Newer messages that read the same come first in the list: passed over, as many as there are.
                 val newer = readings[p?.id]?.entries.orEmpty().dropWhile { it.id != e.id }.drop(1)
-                seeking = Seeking(e.text, skip = newer.count { it is Entry.Said && it.by == Party.User && it.text.trim() == e.text.trim() })
+                seeking = Seeking(e.id, e.text, skip = newer.count { it is Entry.Said && it.by == Party.User && it.text.trim() == e.text.trim() })
             },
             tab = window?.label(),
         )
@@ -623,7 +627,7 @@ private const val DOWN_UNSAID_MS = 1_500L
 private const val SEEKS_MS = 10_000L
 
 /** A message asked back, looked for in what its command opens: [skip] more that read the same first, the options as they were when the last step went ([sent]). */
-private data class Seeking(val said: String, val skip: Int = 0, val sent: List<Prompt.Option>? = null)
+private data class Seeking(val id: String, val said: String, val skip: Int = 0, val sent: List<Prompt.Option>? = null)
 
 /** How soon after a prompt goes the line it leaves says what answering it did. */
 private const val SETTLES_MS = 3_000L

@@ -112,6 +112,8 @@ class ReadingTest {
         val entries = listOf(WireEntry("u1", "user", "said", "yes"), text("a1"), WireEntry("u2", "user", "said", "yes"), text("a2"))
         val r = Reading().apply(Entries("%1", reset = true, entries = entries)).rewoundTo(quoting("yes"))
         assertEquals(listOf("u1", "a1"), r.shown.map { it.id })
+        // The one held to edit, when it's known, whichever of them it is.
+        assertEquals(emptyList<String>(), Reading().apply(Entries("%1", reset = true, entries = entries)).rewoundTo(quoting("yes"), held = "u1").shown.map { it.id })
     }
 
     @Test
@@ -172,7 +174,7 @@ class ReadingTest {
     @Test
     fun rewoundStaysThroughAResetThatStillHasItsMessage() {
         val said = listOf(text("a"), WireEntry("u1", "user", "said", "fix it"), text("b"))
-        val r = Reading().apply(Entries("%1", reset = true, entries = said)).rewoundTo { it == "fix it" }
+        val r = Reading().apply(Entries("%1", reset = true, entries = said)).rewoundTo({ it == "fix it" })
         assertEquals(listOf("a"), r.apply(Entries("%1", reset = true, entries = said)).shown.map { it.id }) // reconnected
         val next = listOf(text("a"), WireEntry("u2", "user", "said", "fix it properly"))
         assertEquals(listOf("a", "u2"), r.apply(Entries("%1", reset = true, entries = next)).shown.map { it.id }) // the next message took it back

@@ -92,14 +92,15 @@ internal class PaneActions(
     suspend fun picture(id: String): ByteArray? = session.picture(pane.id, id)
 
     /** An option picked from a prompt the pane offered. */
-    fun picked(prompt: Prompt, option: Prompt.Option) = affect(program.picked(prompt, option))
+    fun picked(prompt: Prompt, option: Prompt.Option, held: String? = null) = affect(program.picked(prompt, option), held)
 
     /** A prompt the pane offered has gone, answered here or at the Mac, leaving its input [line] as it is. */
-    fun settled(prompt: Prompt, line: InputLine?) = affect(program.settled(prompt, line))
+    fun settled(prompt: Prompt, line: InputLine?, held: String? = null) = affect(program.settled(prompt, line), held)
 
-    private fun affect(effect: Effect?) {
+    /** What picking did; [held]: the message the user held to edit, if that's what it was for. */
+    private fun affect(effect: Effect?, held: String?) {
         when (effect) {
-            is Effect.Rewound -> session.rewound(pane.id, effect.said)
+            is Effect.Rewound -> session.rewound(pane.id, effect.said, held)
             null -> Unit
         }
     }

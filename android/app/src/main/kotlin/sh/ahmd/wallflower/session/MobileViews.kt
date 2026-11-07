@@ -85,7 +85,7 @@ internal class MobileViews(private val link: Link, private val clock: () -> Long
     }
 
     /** [pane]'s conversation was rewound to before the user's message [said] matches: hidden from there until the program records more. */
-    fun rewound(pane: String, said: (String) -> Boolean) = change(pane) { it.rewoundTo(said) }
+    fun rewound(pane: String, said: (String) -> Boolean, held: String? = null) = change(pane) { it.rewoundTo(said, held) }
 
     /** The user stopped [pane]'s program, which may take their latest message back. */
     fun stopped(pane: String) = change(pane) { it.copy(stopped = clock()) }

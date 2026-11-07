@@ -49,6 +49,7 @@ internal fun PanePage(
     onTap: (() -> Unit)?,
     onRecalled: (Entry.Said) -> Unit = {},
     onPrompt: () -> Unit = {},
+    held: String? = null,
     tab: String? = null,
 ) = Box(Modifier.fillMaxSize()) {
     val theme = Palette.terminal
@@ -86,7 +87,7 @@ internal fun PanePage(
             },
             onPicked = { prompt, option ->
                 onPrompt()
-                actions.picked(prompt, option)
+                actions.picked(prompt, option, held)
             },
             onCompact = if (current && compact != null) ({ compact(line()) }) else null,
             onEdit = if (current) ({ e -> if (actions.recall(e, shown, line())) onRecalled(e) }) else null,

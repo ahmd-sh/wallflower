@@ -26,11 +26,12 @@ data class Reading(
     val shown: List<Entry> get() = rewound?.let { r -> entries.takeWhile { it.id != r } } ?: entries
 
     /**
-     * Rewound to before the user's message that [said] matches. Of messages it could be, the latest: what was
-     * taken back may partly show till the next message, but nothing still said is hidden.
+     * Rewound to before the user's message that [said] matches: the one [held] to edit, if it's one; else, of
+     * messages it could be, the latest: what was taken back may partly show till the next message, but nothing still said is hidden.
      */
-    fun rewoundTo(said: (String) -> Boolean): Reading {
-        val message = entries.lastOrNull { it is Entry.Said && it.by == Party.User && said(it.text) }
+    fun rewoundTo(said: (String) -> Boolean, held: String? = null): Reading {
+        val matches = entries.filter { it is Entry.Said && it.by == Party.User && said(it.text) }
+        val message = matches.firstOrNull { it.id == held } ?: matches.lastOrNull()
         return message?.let { copy(rewound = it.id) } ?: this
     }
 

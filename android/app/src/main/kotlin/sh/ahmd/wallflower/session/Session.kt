@@ -270,7 +270,7 @@ class Session(
     fun read(panes: Set<String>) = reads.read(panes)
 
     /** [pane]'s conversation was rewound to before the user's message [said] matches. */
-    fun rewound(pane: String, said: (String) -> Boolean) = reads.rewound(pane, said)
+    fun rewound(pane: String, said: (String) -> Boolean, held: String? = null) = reads.rewound(pane, said, held)
 
     /** The user stopped [pane]'s program. */
     fun stopped(pane: String) = reads.stopped(pane)
