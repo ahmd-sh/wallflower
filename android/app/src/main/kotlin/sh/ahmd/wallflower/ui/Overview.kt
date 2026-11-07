@@ -187,14 +187,13 @@ private fun PaneCard(
     ) {
         Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             GlyphIcon(glyphOf(pane.program, pane.command), if (shown) Palette.orange else Palette.grey, size = 14.dp)
-            Text(
-                name,
-                color = Palette.fg,
-                style = Type.label,
-                maxLines = 1,
-                overflow = TextOverflow.MiddleEllipsis,
-                modifier = Modifier.weight(1f).padding(start = 6.dp),
-            )
+            // The directory's own name, then, dimmer, what tells it from another of the same name, cut from its start if it must be.
+            val own = name.substringAfterLast('/').ifEmpty { name }
+            val above = if (name.length > 1 && '/' in name) name.substringBeforeLast('/').ifEmpty { "/" } else ""
+            Text(own, color = Palette.fg, style = Type.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 6.dp).weight(1f, fill = above.isEmpty()))
+            if (above.isNotEmpty()) {
+                Text(above, color = Palette.dim, style = Type.label, maxLines = 1, overflow = TextOverflow.StartEllipsis, modifier = Modifier.padding(start = 6.dp).weight(1f))
+            }
             activityOf(pane)?.takeIf { it != Activity.Idle }?.let { AgentDot(it) }
             Box(Modifier.clip(CircleShape).clickable(onClick = onClose).padding(10.dp)) { GlyphIcon(Glyph.Close, Palette.grey, size = 14.dp) }
         }
