@@ -26,6 +26,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.horizontalScroll
@@ -62,6 +63,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -171,8 +173,14 @@ fun MobileView(
         // At the bottom, new entries glide into view; scrolled up to read, the list stays put.
         val atBottom by remember { derivedStateOf { list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset < 8 } }
         val away by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 600 } }
-        val follow = atBottom
-        LaunchedEffect(items.size, status) { if (follow) list.animateScrollToItem(0) }
+        // Following the newest until the user drags away, and again once they're back at it: not whether the
+        // list happens to be at the bottom as things change, which a reply's copy row coming in can move it off.
+        var following by remember { mutableStateOf(true) }
+        LaunchedEffect(list) {
+            list.interactionSource.interactions.collect { if (it is DragInteraction.Start) following = false }
+        }
+        LaunchedEffect(list) { snapshotFlow { atBottom }.collect { if (it) following = true } }
+        LaunchedEffect(items.size, items.lastOrNull(), status, reading.queued.size) { if (following) list.animateScrollToItem(0) }
 
         val phase = when {
             !reading.loaded -> Phase.Reading
