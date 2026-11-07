@@ -141,4 +141,6 @@ it reaches one only through its seam.
 The phone reaches the Mac over ssh, its key restricted to running
 `wallflower serve` (`wallflower authorize`), usually over Tailscale. The
 boundary is the forced command. A multiplexer adapter or plugin sits
-behind it and doesn't change it.
+behind it and doesn't change it. `wallflower devices` lists the phones
+whose keys can connect, and `wallflower revoke` takes one out; neither
+touches the file's other keys.
