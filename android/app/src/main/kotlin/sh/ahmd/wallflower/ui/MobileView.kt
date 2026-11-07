@@ -121,6 +121,8 @@ fun MobileView(
     prompt: Prompt? = null,
     /** What the program says it's doing, in its words, while it works. */
     doing: String? = null,
+    /** When something sent was held for the prompt to be answered first (System.nanoTime); 0 if it wasn't. */
+    nudged: Long = 0,
     onKeys: (List<String>) -> Unit = {},
     onPicked: (Prompt, Prompt.Option) -> Unit = { _, _ -> },
     /** Sends the program its compact command, from the context button; null while it can't. */
@@ -231,7 +233,7 @@ fun MobileView(
                                 ) { now ->
                                     when (now) {
                                         Status.Asking -> shown?.let { p ->
-                                            PromptCard(p, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }) { picked -> onPicked(p, picked) }
+                                            PromptCard(p, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }, nudged) { picked -> onPicked(p, picked) }
                                         }
                                         Status.Working -> Working(since, doing)
                                         Status.Waiting -> Waiting()

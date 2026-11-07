@@ -26,6 +26,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import sh.ahmd.wallflower.screen.Prompt
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 
 /**
  * Choices the program's screen offers, to answer by touch: what it's about,
@@ -35,8 +38,16 @@ import sh.ahmd.wallflower.screen.Prompt
  * moves on.
  */
 @Composable
-fun PromptCard(prompt: Prompt, onKeys: (List<String>) -> Unit, modifier: Modifier = Modifier, onPick: (Prompt.Option) -> Unit = {}) {
+fun PromptCard(prompt: Prompt, onKeys: (List<String>) -> Unit, modifier: Modifier = Modifier, nudged: Long = 0, onPick: (Prompt.Option) -> Unit = {}) {
     val haptics = haptics()
+    // Something sent while it's open waits: it says so a moment.
+    val held by produceState(false, nudged) {
+        if (nudged != 0L) {
+            value = true
+            delay(HELD_MS)
+            value = false
+        }
+    }
     Box(modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Palette.bg1).padding(10.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             // The first row leaves the corner to esc.
@@ -65,6 +76,7 @@ fun PromptCard(prompt: Prompt, onKeys: (List<String>) -> Unit, modifier: Modifie
             }
             if (prompt.lines.isNotEmpty()) About(prompt.lines, if (prompt.tabs.isEmpty()) ESC_ROOM else 0.dp)
             if (prompt.tabs.isEmpty() && prompt.lines.isEmpty()) Spacer(Modifier.height(18.dp))
+            if (held) Text("answer this first (or esc), then send", color = Palette.orange, fontFamily = words, fontSize = wordSize(12.sp, 13.sp), modifier = Modifier.padding(horizontal = 4.dp))
             Column {
                 prompt.options.forEachIndexed { i, option ->
                     if (i > 0) Rule(Modifier.padding(horizontal = 10.dp))
@@ -95,6 +107,8 @@ fun PromptCard(prompt: Prompt, onKeys: (List<String>) -> Unit, modifier: Modifie
 }
 
 private val ESC_ROOM = 44.dp
+
+private const val HELD_MS = 3_000L
 
 /** What the menu is about: the first and last lines (a title, the question) stand out, boxed rows are code. */
 @Composable

@@ -269,6 +269,7 @@ private fun TerminalScreen(
     // A message the program puts back in its line stays taken back, whatever the line holds next, till the program records more.
     val held = screen.line?.text
     LaunchedEffect(pane?.id, held, mobileView) { if (mobileView && pane != null) session.takenBack(pane.id, held) }
+    var nudged by remember(pane?.id) { mutableLongStateOf(0L) }
     // A message asked back by a command (/rewind) is found in what it opens, up to where the user confirms.
     var seeking by remember(pane?.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(seeking) {
@@ -403,6 +404,7 @@ private fun TerminalScreen(
             prompt = screen.prompt,
             line = { screen.line },
             status = screen.status,
+            nudged = nudged,
             onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
             onView = { view = it },
             onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
@@ -526,7 +528,14 @@ private fun TerminalScreen(
                                 if (screen.line != null) view?.predict(text) // at a prompt, which echoes
                                 actions.type(text)
                             },
-                            onSend = { text, enter ->
+                            onSend = send@{ text, enter ->
+                                // A menu on screen would take what's typed as picks, and Enter as its choice: it waits, unless it's for writing in.
+                                val asking = screen.prompt?.takeIf { mobileView }
+                                if (asking != null && asking.options.none { it.current && it.muted && it.scroll == 0 }) {
+                                    haptics.reject()
+                                    nudged = System.nanoTime()
+                                    return@send false
+                                }
                                 // The box replaces whatever the app's line holds.
                                 val known = screen.line
                                 actions.send(text, enter, known, unseen = mobileView).also { sent ->
