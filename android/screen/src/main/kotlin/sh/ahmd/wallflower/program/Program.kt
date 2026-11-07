@@ -16,6 +16,9 @@ interface Program {
     /** Choices the program offers on its screen, to answer by touch. */
     fun prompt(screen: Screen): Prompt? = null
 
+    /** What the program says on its screen it's doing, in its own words, while it works; null if it doesn't say. */
+    fun status(screen: Screen): String? = null
+
     /**
      * What the program's notification says on the phone: a desktop
      * notification ([title], [body]), or its terminal's bell (no [body]),
@@ -65,6 +68,13 @@ interface Program {
 
     /** What picking [option] of [prompt] does besides answering it, if wallflower needs to know. */
     fun picked(prompt: Prompt, option: Prompt.Option): Effect? = null
+
+    /**
+     * What answering [prompt] did besides, whoever answered it (at the Mac,
+     * say), as the input [line] the program shows once it's gone tells; null
+     * if nothing wallflower needs to know.
+     */
+    fun settled(prompt: Prompt, line: InputLine?): Effect? = null
 
     /**
      * What a tab shows for the program's window, from the terminal title it

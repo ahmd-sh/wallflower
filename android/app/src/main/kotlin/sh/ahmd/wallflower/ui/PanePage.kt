@@ -24,8 +24,8 @@ import sh.ahmd.wallflower.terminal.TerminalView
  * ([reading]), which pauses the terminal underneath, as the cards covering
  * it do. With no pane ([actions] null), an empty terminal that measures the
  * grid until there are panes. [current]: the page on screen, which gets the
- * [prompt] the pane's screen offers, can compact (with its [line]), and
- * animates; its terminal view goes to [onView]. A tap on the terminal
+ * [prompt] the pane's screen offers, and what its program says it's doing
+ * ([status]), can compact (with its [line]), and animates; its terminal view goes to [onView]. A tap on the terminal
  * goes to [onTap]. A message asked back to edit goes to the program, and
  * [onRecalled] once it's on its way. The conversation's title shows unless
  * the [tab] says it already.
@@ -41,6 +41,7 @@ internal fun PanePage(
     covered: Boolean,
     prompt: Prompt?,
     line: () -> InputLine?,
+    status: String? = null,
     onGridSize: (cols: Int, rows: Int, ahead: Boolean) -> Unit,
     onView: (TerminalView) -> Unit,
     onTap: (() -> Unit)?,
@@ -74,6 +75,7 @@ internal fun PanePage(
             picture = actions::picture,
             swipe = swipe,
             prompt = if (current) prompt else null,
+            doing = if (current) status else null,
             onKeys = { keys -> actions.keys(keys) },
             onPicked = actions::picked,
             onCompact = if (current && compact != null) ({ compact(line()) }) else null,

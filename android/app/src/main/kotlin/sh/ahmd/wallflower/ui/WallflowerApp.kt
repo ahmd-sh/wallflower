@@ -65,6 +65,8 @@ import sh.ahmd.wallflower.ui.composer.Attachments
 import sh.ahmd.wallflower.ui.composer.Composer
 import sh.ahmd.wallflower.ui.composer.Recalled
 import sh.ahmd.wallflower.ui.composer.Typing
+import androidx.compose.runtime.mutableLongStateOf
+import sh.ahmd.wallflower.screen.Prompt
 
 private sealed interface Screen {
     data object Terminal : Screen
@@ -267,6 +269,22 @@ private fun TerminalScreen(
     // A message the program puts back in its line stays taken back, whatever the line holds next, till the program records more.
     val held = screen.line?.text
     LaunchedEffect(pane?.id, held, mobileView) { if (mobileView && pane != null) session.takenBack(pane.id, held) }
+    // What a prompt did shows in the line it leaves, a moment after it goes, whoever answered it: a rewind restored at the Mac, say.
+    var asked by remember(pane?.id) { mutableStateOf<Prompt?>(null) }
+    var gone by remember(pane?.id) { mutableLongStateOf(0L) }
+    LaunchedEffect(screen.prompt, held) {
+        val p = screen.prompt
+        val was = asked
+        when {
+            p != null -> { asked = p; gone = 0L }
+            was == null -> Unit
+            gone == 0L -> gone = System.currentTimeMillis()
+        }
+        if (p == null && was != null && held != null && System.currentTimeMillis() - gone < SETTLES_MS) {
+            actions?.settled(was, screen.line)
+            asked = null
+        }
+    }
 
     Column(
         Modifier
@@ -372,6 +390,7 @@ private fun TerminalScreen(
             covered = overview.covering,
             prompt = screen.prompt,
             line = { screen.line },
+            status = screen.status,
             onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
             onView = { view = it },
             onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
@@ -554,3 +573,6 @@ private fun TerminalScreen(
 
 /** How long the connection is down before the screen says so. */
 private const val DOWN_UNSAID_MS = 1_500L
+
+/** How soon after a prompt goes the line it leaves says what answering it did. */
+private const val SETTLES_MS = 3_000L

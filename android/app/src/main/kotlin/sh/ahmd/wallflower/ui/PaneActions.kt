@@ -92,8 +92,13 @@ internal class PaneActions(
     suspend fun picture(id: String): ByteArray? = session.picture(pane.id, id)
 
     /** An option picked from a prompt the pane offered. */
-    fun picked(prompt: Prompt, option: Prompt.Option) {
-        when (val effect = program.picked(prompt, option)) {
+    fun picked(prompt: Prompt, option: Prompt.Option) = affect(program.picked(prompt, option))
+
+    /** A prompt the pane offered has gone, answered here or at the Mac, leaving its input [line] as it is. */
+    fun settled(prompt: Prompt, line: InputLine?) = affect(program.settled(prompt, line))
+
+    private fun affect(effect: Effect?) {
+        when (effect) {
             is Effect.Rewound -> session.rewound(pane.id, effect.said)
             null -> Unit
         }

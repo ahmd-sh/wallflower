@@ -1,9 +1,10 @@
 package sh.ahmd.wallflower.screen
 
+import sh.ahmd.wallflower.screen.Screen.Companion.FAINT
 import sh.ahmd.wallflower.screen.Screen.Companion.HIGHLIGHT
 import sh.ahmd.wallflower.screen.Screen.Companion.MUTED
 
-/** A screen from tmux's capture-pane -e: text, with greys (256-color 240-250, or 8) muted and backgrounds highlighted. */
+/** A screen from tmux's capture-pane -e: text, with greys (256-color 240-250, or 8) muted, backgrounds highlighted, and dim faint. */
 fun captured(name: String, cols: Int): Screen {
     val rows = Screen::class.java.getResource("/$name")!!.readText().trimEnd('\n').split('\n')
     val text = Array(cols * rows.size) { "" }
@@ -13,6 +14,7 @@ fun captured(name: String, cols: Int): Screen {
         var x = 0
         var muted = false
         var lit = false
+        var faint = false
         var i = 0
         while (i < row.length && x < cols) {
             val m = sgr.find(row, i)
@@ -21,7 +23,9 @@ fun captured(name: String, cols: Int): Screen {
                 var k = 0
                 while (k < codes.size) {
                     when (codes[k]) {
-                        "0", "" -> { muted = false; lit = false }
+                        "0", "" -> { muted = false; lit = false; faint = false }
+                        "2" -> faint = true
+                        "22" -> faint = false
                         "39" -> muted = false
                         "49" -> lit = false
                         "7" -> lit = true
@@ -37,7 +41,7 @@ fun captured(name: String, cols: Int): Screen {
             }
             val cp = row.codePointAt(i)
             text[y * cols + x] = if (cp == ' '.code) "" else String(Character.toChars(cp))
-            attrs[y * cols + x] = (if (muted) MUTED else 0) or (if (lit) HIGHLIGHT else 0)
+            attrs[y * cols + x] = (if (muted) MUTED else 0) or (if (lit) HIGHLIGHT else 0) or (if (faint) FAINT else 0)
             x++
             i += Character.charCount(cp)
         }

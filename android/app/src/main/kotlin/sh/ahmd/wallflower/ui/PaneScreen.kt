@@ -17,10 +17,11 @@ import sh.ahmd.wallflower.screen.InputLine
 import sh.ahmd.wallflower.screen.Prompt
 import sh.ahmd.wallflower.terminal.Terminal
 
-/** What the shown pane's screen says: its program's input line, and a prompt to answer while one can be. */
+/** What the shown pane's screen says: its program's input line, what it says it's doing, and a prompt to answer while one can be. */
 @Stable
 internal class PaneScreen {
     var line: InputLine? by mutableStateOf(null)
+    var status: String? by mutableStateOf(null)
     var prompt: Prompt? by mutableStateOf(null)
     val ticks = Channel<Unit>(Channel.CONFLATED)
 
@@ -46,6 +47,7 @@ internal fun rememberPaneScreen(pane: String?, terminal: Terminal?, program: Pro
     LaunchedEffect(asks, activity) { screen.reread() }
     LaunchedEffect(terminal) {
         screen.line = null
+        screen.status = null
         val output = Runnable { screen.reread() }
         terminal?.addListener(output)
         try {
@@ -53,12 +55,13 @@ internal fun rememberPaneScreen(pane: String?, terminal: Terminal?, program: Pro
             for (tick in screen.ticks) {
                 val p = reader
                 val a = asking
-                val (line, prompt) = withContext(Dispatchers.Default) {
+                val read = withContext(Dispatchers.Default) {
                     val s = terminal?.screen()
-                    s?.let(p::line) to s?.takeIf { a }?.let(p::prompt)
+                    Triple(s?.let(p::line), s?.let(p::status), s?.takeIf { a }?.let(p::prompt))
                 }
-                screen.line = line
-                screen.prompt = prompt
+                screen.line = read.first
+                screen.status = read.second
+                screen.prompt = read.third
                 delay(EVERY_MS)
             }
         } finally {

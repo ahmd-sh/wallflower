@@ -82,13 +82,41 @@ object Claude : Program {
                 previous = line
             }
             val text = out.toString().trimEnd()
-            val suggestion = if (text.isEmpty()) ghost.trim().replace(spaces, " ").let { tried.matchEntire(it)?.groupValues?.get(1) ?: it } else ""
+            val faint = ghost.trim().replace(spaces, " ")
+            val suggestion = if (text.isEmpty() && faint !in PLACEHOLDERS) tried.matchEntire(faint)?.groupValues?.get(1) ?: faint else ""
             return InputLine(text, end - y, suggestion)
         }
         return null
     }
 
     override fun prompt(screen: Screen): Prompt? = Prompt.read(screen)
+
+    /**
+     * Above its prompt box while it works, Claude says what it's doing: a
+     * mark that spins, its word for it ("Compacting conversation", or one of
+     * its whims), then how long. What it's queued, and tips, can come between.
+     */
+    override fun status(screen: Screen): String? {
+        val s = screen
+        val box = (s.rows - 2 downTo 1).firstOrNull { y ->
+            (s.text(0, y) == "❯" || s.text(0, y) == "!") && s.text(1, y).isBlank() && rule(s, y - 1)
+        } ?: return null
+        for (y in box - 2 downTo maxOf(0, box - 12)) {
+            if (s.text(0, y) !in SPINS || s.text(1, y).isNotBlank()) continue
+            val row = StringBuilder()
+            for (x in 2 until s.cols) if (!s.spacer(x, y)) row.append(s.text(x, y).ifEmpty { " " })
+            return working.find(row)?.groupValues?.get(1)
+        }
+        return null
+    }
+
+    /** The marks Claude's working line spins through. */
+    private val SPINS = setOf("·", "✢", "✳", "✶", "✻", "✽", "*")
+
+    private val working = Regex("^(\\p{L}[\\p{L} '’-]*)…")
+
+    /** Faint words in an empty box that aren't a suggestion to take. */
+    private val PLACEHOLDERS = setOf("Press up to edit queued messages")
 
     /** Claude's command is its version; its title is the conversation's name, after a mark that spins while it works. */
     override fun label(title: String): String? = title.trimStart { !it.isLetterOrDigit() }.trim().ifEmpty { null }
@@ -130,6 +158,15 @@ object Claude : Program {
     }
 
     private val RESTORES = setOf("Restore conversation", "Restore code and conversation")
+
+    /** Restored, wherever it was picked, the message Claude quoted is back in its box. */
+    override fun settled(prompt: Prompt, line: InputLine?): Effect? {
+        val restore = prompt.options.firstOrNull { it.label in RESTORES } ?: return null
+        val quote = prompt.quote.filterNot(Char::isWhitespace)
+        val text = line?.text?.filterNot(Char::isWhitespace).orEmpty()
+        if (quote.isEmpty() || text.isEmpty() || !quotes(quote, text)) return null
+        return picked(prompt, restore)
+    }
 
     /** Whether [message] is what Claude quotes as [quote]: its words, cut short with …. */
     private fun quotes(quote: String, message: String): Boolean {
