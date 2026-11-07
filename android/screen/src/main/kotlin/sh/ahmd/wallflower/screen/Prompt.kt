@@ -145,7 +145,7 @@ data class Prompt(
                             text.append(c)
                         }
                     }
-                    return Row(text.toString(), cells, BooleanArray(s.cols) { s.muted(it, y) }, BooleanArray(s.cols) { s.highlighted(it, y) })
+                    return Row(text.toString(), cells, BooleanArray(s.cols) { s.muted(it, y) || s.faint(it, y) }, BooleanArray(s.cols) { s.highlighted(it, y) })
                 }
             }
         }

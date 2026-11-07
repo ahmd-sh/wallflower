@@ -355,4 +355,13 @@ class PromptTest {
         assertEquals(listOf("Restore conversation", "Summarize from here", "Summarize up to here", "Never mind"), menu.options.map { it.label })
         assertEquals("reply with just the word guava", menu.quote)
     }
+
+    @Test
+    fun aQuestionsWrittenAnswerUnderTheCursorIsStillTheLesserOption() {
+        val menu = Prompt.read(captured("claude-question-write.ansi", 54))!!
+        val write = menu.options.first { it.label == "Type something." }
+        assertEquals(true, write.current)
+        assertEquals(true, write.muted)
+        assertEquals(false, menu.options.first { it.label == "Summer" }.muted)
+    }
 }

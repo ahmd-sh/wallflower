@@ -179,6 +179,10 @@ private fun Choice(option: Prompt.Option, onClick: () -> Unit) {
             if (option.detail.isNotEmpty()) {
                 Text(option.detail, color = Palette.grey, fontFamily = words, fontSize = wordSize(11.sp, 12.sp), lineHeight = wordSize(15.sp, 16.sp))
             }
+            // A lesser option under the cursor is one to write: what's sent from below goes into it.
+            if (option.current && option.muted && option.scroll == 0) {
+                Text("write your answer below, and send", color = Palette.blue, fontFamily = words, fontSize = wordSize(11.sp, 12.sp), lineHeight = wordSize(15.sp, 16.sp))
+            }
         }
     }
 }
