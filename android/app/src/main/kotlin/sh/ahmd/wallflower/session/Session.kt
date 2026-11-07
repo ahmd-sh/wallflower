@@ -60,6 +60,8 @@ class Session(
     mux: String? = null,
     session: String? = null,
     clock: () -> Long = SystemClock::elapsedRealtime,
+    /** What rewinds took back, kept past the app's life. */
+    hidden: Hidden = Hidden.None,
 ) {
     /** What a new connection asks for: where the phone was last. */
     @Volatile private var askingMux: String? = mux
@@ -67,7 +69,7 @@ class Session(
     private val link: Link = Link(transport, scope, clock, Events())
     private val panes = Terminals(link)
     private val workspace = Workspace(link, panes)
-    private val reads = MobileViews(link, clock)
+    private val reads = MobileViews(link, clock, hidden)
     private val input = Input(link)
     private val transfer = Transfer(link)
 

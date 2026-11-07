@@ -20,6 +20,7 @@ import sh.ahmd.wallflower.session.HardwareKey
 import sh.ahmd.wallflower.session.Host
 import sh.ahmd.wallflower.session.HostKeys
 import sh.ahmd.wallflower.session.Place
+import sh.ahmd.wallflower.session.Hidden
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.SshTransport
 import sh.ahmd.wallflower.session.Status
@@ -35,6 +36,14 @@ class Connection(private val context: Context, private val scope: CoroutineScope
     private val prefs = context.getSharedPreferences("wallflower", Context.MODE_PRIVATE)
     val key = HardwareKey()
     val hostKeys = HostKeys(prefs)
+    private val hidden = object : Hidden {
+        override fun all() = prefs.getString(HIDDEN, "").orEmpty().split('\n').filter { it.isNotEmpty() }.toSet()
+
+        override fun add(id: String) {
+            val kept = (prefs.getString(HIDDEN, "").orEmpty().split('\n').filter { it.isNotEmpty() && it != id } + id).takeLast(KEPT_HIDDEN)
+            prefs.edit().putString(HIDDEN, kept.joinToString("\n")).apply()
+        }
+    }
     val notices = Notices(context)
 
     private val _host = MutableStateFlow(Host.load(prefs))
@@ -80,7 +89,7 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         _session.value?.stop()
         watching?.cancel()
         val transport = if (host.dev) TcpTransport() else SshTransport(host, key, hostKeys)
-        val session = Session(transport, scope, host.mux, host.session)
+        val session = Session(transport, scope, host.mux, host.session, hidden = hidden)
         session.away(away)
         watching = scope.launch {
             launch { session.place.filterNotNull().collect(::remember) }
@@ -154,3 +163,8 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         notices.cancel(pane)
     }
 }
+
+private const val HIDDEN = "hidden"
+
+/** How many taken-back messages are kept hidden past the app's life; only the latest can still be in a view. */
+private const val KEPT_HIDDEN = 20

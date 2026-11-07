@@ -9,8 +9,24 @@ import sh.ahmd.wallflower.protocol.Read
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.apply
 
+/**
+ * Messages a rewind or stop took back, by entry id, kept past the app's life: the program records it only
+ * with the next message, so a view read afresh would show them again.
+ */
+interface Hidden {
+    fun all(): Set<String>
+
+    fun add(id: String)
+
+    object None : Hidden {
+        override fun all() = emptySet<String>()
+
+        override fun add(id: String) = Unit
+    }
+}
+
 /** The mobile views of the panes the phone shows them for, as the gateway sends them. */
-internal class MobileViews(private val link: Link, private val clock: () -> Long) {
+internal class MobileViews(private val link: Link, private val clock: () -> Long, private val hidden: Hidden = Hidden.None) {
     private val _readings = MutableStateFlow<Map<String, Reading>>(emptyMap())
     val readings: StateFlow<Map<String, Reading>> = _readings.asStateFlow()
 
@@ -49,15 +65,31 @@ internal class MobileViews(private val link: Link, private val clock: () -> Long
     }
 
     fun entries(m: Entries) {
-        if (m.pane in wanted) _readings.update { it + (m.pane to (it[m.pane] ?: Reading()).apply(m)) }
+        if (m.pane !in wanted) return
+        val kept = if (m.reset) hidden.all() else emptySet()
+        _readings.update {
+            val r = (it[m.pane] ?: Reading()).apply(m)
+            it + (m.pane to if (r.rewound == null && kept.isNotEmpty()) r.copy(rewound = r.entries.firstOrNull { e -> e.id in kept }?.id) else r)
+        }
     }
 
     /** [pane]'s conversation was rewound to before the user's message [said] matches: hidden from there until the program records more. */
-    fun rewound(pane: String, said: (String) -> Boolean) = _readings.update { all -> all[pane]?.let { all + (pane to it.rewoundTo(said)) } ?: all }
+    fun rewound(pane: String, said: (String) -> Boolean) = change(pane) { it.rewoundTo(said) }
 
     /** The user stopped [pane]'s program, which may take their latest message back. */
-    fun stopped(pane: String) = _readings.update { all -> all[pane]?.let { all + (pane to it.copy(stopped = clock())) } ?: all }
+    fun stopped(pane: String) = change(pane) { it.copy(stopped = clock()) }
 
     /** [pane]'s program has put the user's latest message back in its input [line], if that's what it holds just after a stop: hidden as [rewound]. */
-    fun takenBack(pane: String, line: String?) = _readings.update { all -> all[pane]?.let { all + (pane to it.takenBack(line, clock())) } ?: all }
+    fun takenBack(pane: String, line: String?) = change(pane) { it.takenBack(line, clock()) }
+
+    private fun change(pane: String, how: (Reading) -> Reading) {
+        var took: String? = null
+        _readings.update { all ->
+            val was = all[pane] ?: return@update all
+            val now = how(was)
+            took = now.rewound?.takeIf { it != was.rewound }
+            all + (pane to now)
+        }
+        took?.let(hidden::add)
+    }
 }
