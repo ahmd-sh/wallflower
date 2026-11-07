@@ -41,9 +41,13 @@ class Connection(private val context: Context, private val scope: CoroutineScope
     private val hidden = object : Hidden {
         override fun all() = prefs.getString(HIDDEN, "").orEmpty().split('\n').filter { it.isNotEmpty() }.toSet()
 
-        override fun add(id: String) {
-            val kept = (prefs.getString(HIDDEN, "").orEmpty().split('\n').filter { it.isNotEmpty() && it != id } + id).takeLast(KEPT_HIDDEN)
-            prefs.edit().putString(HIDDEN, kept.joinToString("\n")).apply()
+        override fun add(id: String) = keep { (it - id + id).takeLast(KEPT_HIDDEN) }
+
+        override fun remove(id: String) = keep { it - id }
+
+        private fun keep(how: (List<String>) -> List<String>) {
+            val ids = prefs.getString(HIDDEN, "").orEmpty().split('\n').filter { it.isNotEmpty() }
+            prefs.edit().putString(HIDDEN, how(ids).joinToString("\n")).apply()
         }
     }
     val notices = Notices(context)

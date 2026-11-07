@@ -176,5 +176,8 @@ class ReadingTest {
         assertEquals(listOf("a"), r.apply(Entries("%1", reset = true, entries = said)).shown.map { it.id }) // reconnected
         val next = listOf(text("a"), WireEntry("u2", "user", "said", "fix it properly"))
         assertEquals(listOf("a", "u2"), r.apply(Entries("%1", reset = true, entries = next)).shown.map { it.id }) // the next message took it back
+        // Hidden wrongly (it wasn't taken back after all), a message of the user's after it ends that.
+        val after = said + WireEntry("u3", "user", "said", "and again")
+        assertEquals(listOf("a", "u1", "b", "u3"), r.apply(Entries("%1", reset = true, entries = after)).shown.map { it.id })
     }
 }

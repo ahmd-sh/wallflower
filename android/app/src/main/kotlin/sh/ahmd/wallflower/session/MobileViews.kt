@@ -18,10 +18,14 @@ interface Hidden {
 
     fun add(id: String)
 
+    fun remove(id: String)
+
     object None : Hidden {
         override fun all() = emptySet<String>()
 
         override fun add(id: String) = Unit
+
+        override fun remove(id: String) = Unit
     }
 }
 
@@ -67,10 +71,16 @@ internal class MobileViews(private val link: Link, private val clock: () -> Long
     fun entries(m: Entries) {
         if (m.pane !in wanted) return
         val kept = if (m.reset) hidden.all() else emptySet()
+        var ended: String? = null
         _readings.update {
-            val r = (it[m.pane] ?: Reading()).apply(m)
-            it + (m.pane to if (r.rewound == null && kept.isNotEmpty()) r.copy(rewound = r.entries.firstOrNull { e -> e.id in kept }?.id) else r)
+            val was = it[m.pane] ?: Reading()
+            var r = was.apply(m)
+            if (r.rewound == null && kept.isNotEmpty()) r = r.copy(rewound = r.entries.firstOrNull { e -> e.id in kept && r.takesBack(e.id) }?.id)
+            ended = was.rewound?.takeIf { r.rewound != it }
+            it + (m.pane to r)
         }
+        // The program has recorded more past it: nothing to keep hidden.
+        ended?.let(hidden::remove)
     }
 
     /** [pane]'s conversation was rewound to before the user's message [said] matches: hidden from there until the program records more. */

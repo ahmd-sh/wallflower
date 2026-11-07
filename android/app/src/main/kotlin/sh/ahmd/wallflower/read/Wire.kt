@@ -7,17 +7,16 @@ import sh.ahmd.wallflower.protocol.Pane
 
 /**
  * With [m] applied: a reset replaces everything; otherwise its entries come in, and the context and title it says replace what was.
- * What was [Reading.rewound] stays so through a reset that still has its message: the program records a rewind with the next one.
+ * What was [Reading.rewound] stays so through a reset that still has its message and nothing the user said after: the program records a rewind with the next one.
  */
 fun Reading.apply(m: Entries): Reading {
     if (m.reset) {
         val entries = m.entries.map(::entryOf)
-        val kept = entries.takeLast(Reading.MAX_ENTRIES)
-        return Reading(
-            kept, m.more || entries.size > Reading.MAX_ENTRIES, m.error,
+        val next = Reading(
+            entries.takeLast(Reading.MAX_ENTRIES), m.more || entries.size > Reading.MAX_ENTRIES, m.error,
             loaded = true, context = m.context ?: 0, title = m.title, queued = m.queued.orEmpty(),
-            rewound = rewound?.takeIf { r -> kept.any { it.id == r } },
         )
+        return next.copy(rewound = rewound?.takeIf(next::takesBack))
     }
     return with(m.entries.map(::entryOf)).copy(
         problem = if (m.entries.isEmpty()) m.error ?: problem else m.error,

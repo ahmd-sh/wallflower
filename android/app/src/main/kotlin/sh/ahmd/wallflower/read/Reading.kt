@@ -49,6 +49,12 @@ data class Reading(
 
     private fun bare(text: String) = text.filterNot(Char::isWhitespace)
 
+    /** Whether the entry [id] could still be taken back: it's here, and nothing the user said comes after it, which the program records only past a rewind. */
+    fun takesBack(id: String): Boolean {
+        val at = entries.indexOfFirst { it.id == id }
+        return at >= 0 && entries.subList(at + 1, entries.size).none { it is Entry.Said && it.by == Party.User }
+    }
+
     /**
      * With [new] entries: each replaces the one with its id, or comes last; the oldest go past [MAX_ENTRIES].
      * A message of the user's new among them ends what was [rewound]: the program has recorded more.
