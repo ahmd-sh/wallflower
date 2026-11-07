@@ -66,6 +66,14 @@ interface Program {
      */
     fun recall(latest: Boolean, working: Boolean): Recall? = null
 
+    /**
+     * The keys that take [prompt], opened by [recall]'s command, a step
+     * nearer to bringing back the user's message [said]; null when there's no
+     * step for wallflower to take: it's there, or for the user to answer, or
+     * this isn't that prompt. One step a screen, as each step changes it.
+     */
+    fun seek(prompt: Prompt, said: String): List<String>? = null
+
     /** What picking [option] of [prompt] does besides answering it, if wallflower needs to know. */
     fun picked(prompt: Prompt, option: Prompt.Option): Effect? = null
 

@@ -348,4 +348,11 @@ class PromptTest {
         )
         assertNull(Prompt.read(s))
     }
+
+    @Test
+    fun aRewindConfirmationWithNoCodeChangesQuotesItsMessage() {
+        val menu = Prompt.read(captured("claude-rewind-confirm-nocode.ansi", 54))!!
+        assertEquals(listOf("Restore conversation", "Summarize from here", "Summarize up to here", "Never mind"), menu.options.map { it.label })
+        assertEquals("reply with just the word guava", menu.quote)
+    }
 }

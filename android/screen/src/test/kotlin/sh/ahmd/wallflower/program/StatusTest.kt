@@ -42,4 +42,13 @@ class StatusTest {
         assertNull(Claude.settled(confirm, null))
         assertNull(Claude.settled(confirm.copy(options = confirm.options.filter { it.label.startsWith("Summarize") }), InputLine(message, 3)))
     }
+
+    @Test
+    fun editingAMessageWalksRewindsListToIt() {
+        val list = Prompt.read(captured("claude-rewind-list.ansi", 54))!!
+        assertEquals(listOf("Up", "Enter"), Claude.seek(list, "say just: two"))
+        assertEquals(listOf("Enter"), Claude.seek(list, "Use the Write tool to create /private/tmp/claude-502/x/rw.txt containing hi"))
+        assertEquals(listOf("Up"), Claude.seek(list, "say just: one")) // further up, out of sight
+        assertNull(Claude.seek(Prompt.read(captured("claude-rewind-confirm.ansi", 54))!!, "say just: two")) // the user's to confirm
+    }
 }

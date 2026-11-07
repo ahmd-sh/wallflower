@@ -149,6 +149,22 @@ object Claude : Program {
     override fun recall(latest: Boolean, working: Boolean): Recall =
         if (latest && working) Recall.Keys(listOf("C-c")) else Recall.Command("/rewind")
 
+    /**
+     * /rewind lists the user's messages, its cursor on (current) below the
+     * latest: up it goes to the message, and Enter asks to confirm, which is
+     * the user's to answer. Of messages that read alike, the nearest.
+     */
+    override fun seek(prompt: Prompt, said: String): List<String>? {
+        if (prompt.lines.firstOrNull()?.text != "Rewind" || prompt.quote.isNotEmpty()) return null
+        val target = said.filterNot(Char::isWhitespace)
+        fun said(o: Prompt.Option) = o.scroll == 0 && o.label != "(current)" && quotes(o.label.replace("...", "…").filterNot(Char::isWhitespace), target)
+        val at = prompt.options.firstOrNull { it.current } ?: return null
+        if (said(at)) return listOf("Enter")
+        val above = prompt.options.takeWhile { it !== at }
+        above.lastOrNull(::said)?.let { return prompt.keys(it) }
+        return if (above.any { it.scroll == 0 } || above.any { it.scroll < 0 }) listOf("Up") else null
+    }
+
     /** Restoring the conversation from /rewind takes it back to before the message the prompt quotes. */
     override fun picked(prompt: Prompt, option: Prompt.Option): Effect? {
         if (option.label !in RESTORES) return null

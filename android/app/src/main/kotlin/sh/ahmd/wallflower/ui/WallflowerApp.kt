@@ -269,6 +269,18 @@ private fun TerminalScreen(
     // A message the program puts back in its line stays taken back, whatever the line holds next, till the program records more.
     val held = screen.line?.text
     LaunchedEffect(pane?.id, held, mobileView) { if (mobileView && pane != null) session.takenBack(pane.id, held) }
+    // A message asked back by a command (/rewind) is found in what it opens, up to where the user confirms.
+    var seeking by remember(pane?.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(seeking) {
+        delay(SEEKS_MS)
+        seeking = null
+    }
+    LaunchedEffect(screen.prompt, seeking) {
+        val said = seeking ?: return@LaunchedEffect
+        val keys = screen.prompt?.let { actions?.program?.seek(it, said) } ?: return@LaunchedEffect
+        actions?.keys(keys)
+        if ("Enter" in keys) seeking = null
+    }
     // What a prompt did shows in the line it leaves, a moment after it goes, whoever answered it: a rewind restored at the Mac, say.
     var asked by remember(pane?.id) { mutableStateOf<Prompt?>(null) }
     var gone by remember(pane?.id) { mutableLongStateOf(0L) }
@@ -394,7 +406,10 @@ private fun TerminalScreen(
             onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
             onView = { view = it },
             onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
-            onRecalled = { e -> recalled = Recalled(e.text, System.nanoTime()) },
+            onRecalled = { e ->
+                recalled = Recalled(e.text, System.nanoTime())
+                seeking = e.text
+            },
             tab = window?.label(),
         )
 
@@ -573,6 +588,9 @@ private fun TerminalScreen(
 
 /** How long the connection is down before the screen says so. */
 private const val DOWN_UNSAID_MS = 1_500L
+
+/** How long a message asked back is looked for in what its command opens. */
+private const val SEEKS_MS = 10_000L
 
 /** How soon after a prompt goes the line it leaves says what answering it did. */
 private const val SETTLES_MS = 3_000L
