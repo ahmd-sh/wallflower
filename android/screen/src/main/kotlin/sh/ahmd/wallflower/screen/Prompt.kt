@@ -87,10 +87,14 @@ data class Prompt(
 
         fun read(s: Screen): Prompt? {
             val rows = List(s.rows) { Row.of(s, it) }
+            val last = rows.indexOfLast { rule(it.text) }
             for (y in s.rows - 1 downTo 0) {
                 val m = option.matchEntire(rows[y].text) ?: continue
                 if (m.groupValues[3] != "1") continue
-                block(rows, y)?.let { return it }
+                val (menu, end) = block(rows, y) ?: continue
+                // Numbered rows all above the last rule, with a list to pick from below it, are something said above that list: a message starting 1.
+                if (end <= last) picker(rows)?.let { return it }
+                return menu
             }
             return picker(rows)
         }
@@ -150,8 +154,8 @@ data class Prompt(
             }
         }
 
-        /** The menu whose first option is on row [top], if it is one. */
-        private fun block(screen: List<Row>, top: Int): Prompt? {
+        /** The menu whose first option is on row [top], if it is one, and the row it ends before. */
+        private fun block(screen: List<Row>, top: Int): Pair<Prompt, Int>? {
             val beside = preview(screen, top)
             val rows = if (beside == null) screen else screen.mapIndexed { y, row -> if (y >= top) row.before(beside) else row }
             val first = option.matchEntire(rows[top].text)!!
@@ -214,7 +218,7 @@ data class Prompt(
             }
             if (options.count { it.number != null } < 2 || options.none { it.current }) return null
             val (lines, tabs, quote) = about(rows, top)
-            return Prompt(lines, options, tabs, quote, previewed = beside != null)
+            return Prompt(lines, options, tabs, quote, previewed = beside != null) to y
         }
 
         /** The cell a box beside the menu on row [top] starts at, if there's one: ┌ on its first option's row, └ under it. */

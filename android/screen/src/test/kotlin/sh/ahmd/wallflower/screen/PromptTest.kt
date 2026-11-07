@@ -364,4 +364,13 @@ class PromptTest {
         assertEquals(true, write.muted)
         assertEquals(false, menu.options.first { it.label == "Summer" }.muted)
     }
+
+    @Test
+    fun aRewindListOfAMessageStartingOneIsStillTheList() {
+        val list = Prompt.read(captured("claude-rewind-list-multiline.ansi", 54))!!
+        assertEquals(listOf("↑ 7 more", "1. reply with just the word ok…", "(current)"), list.options.map { it.label })
+        assertEquals(listOf(false, false, true), list.options.map { it.current })
+        val confirm = Prompt.read(captured("claude-rewind-confirm-multiline.ansi", 54))!!
+        assertEquals("1. reply with just the word ok 2. nothing else", confirm.quote)
+    }
 }
