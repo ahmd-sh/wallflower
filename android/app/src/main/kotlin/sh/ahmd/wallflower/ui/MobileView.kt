@@ -1,6 +1,7 @@
 package sh.ahmd.wallflower.ui
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
@@ -161,6 +162,15 @@ fun MobileView(
                 unread = true
             }
         }
+        // Stopped from here, it says so at once, until the program says it's stopped or a few seconds pass.
+        val stopping by produceState(false, reading.stopped) {
+            val left = STOPPING_MS - (SystemClock.elapsedRealtime() - reading.stopped)
+            if (reading.stopped != 0L && left > 0) {
+                value = true
+                delay(left)
+            }
+            value = false
+        }
         val status = when {
             asking != null -> Status.Asking
             activity == Activity.Working -> Status.Working
@@ -235,7 +245,7 @@ fun MobileView(
                                         Status.Asking -> shown?.let { p ->
                                             PromptCard(p, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }, nudged) { picked -> onPicked(p, picked) }
                                         }
-                                        Status.Working -> Working(since, doing)
+                                        Status.Working -> Working(since, if (stopping) "stopping" else doing)
                                         Status.Waiting -> Waiting()
                                     }
                                 }
@@ -296,6 +306,9 @@ private val PICTURE_HEIGHT = 260.dp
 
 /** What was left out, as "… 12 more lines"; null if nothing was. */
 private fun more(n: Int, thing: String) = if (n > 0) "… %,d more %s%s".format(n, thing, if (n == 1) "" else "s") else null
+
+/** How long a stop from the phone says it's stopping before it's for the program to say. */
+private const val STOPPING_MS = 3_000L
 
 /** How long the program can say it's waiting without a menu on screen before that's what it is. */
 private const val UNREAD_MS = 1_200L
