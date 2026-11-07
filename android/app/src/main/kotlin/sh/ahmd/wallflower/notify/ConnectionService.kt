@@ -10,10 +10,13 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import sh.ahmd.wallflower.connection
+import sh.ahmd.wallflower.session.Host
+import sh.ahmd.wallflower.session.Status
 
 /**
  * Keeps the app's process, and so its connection, while the user is away:
@@ -32,14 +35,17 @@ class ConnectionService : Service() {
         val connection = connection
         scope.launch {
             val status = connection.session.flatMapLatest { s -> s?.status ?: flowOf(null) }
-            combine(connection.session, status, connection.host) { s, st, h -> Triple(s, st, h) }.collect { (session, st, host) ->
-                if (session == null) {
+            val work = combine(connection.session.flatMapLatest { s -> s?.state ?: flowOf(null) }, connection.settings.statusBar.flow) { state, on ->
+                if (on) atWork(state) else null
+            }.distinctUntilChanged()
+            combine(connection.session, status, connection.host, work) { s, st, h, w -> Shown(s != null, st, h, w) }.collect { shown ->
+                if (!shown.session) {
                     stopSelf()
                 } else {
                     // Swiped away, it stays away.
                     val manager = getSystemService(NotificationManager::class.java)
                     if (manager.activeNotifications.any { it.id == Notices.CONNECTED }) {
-                        manager.notify(Notices.CONNECTED, connection.notices.connected(host, st))
+                        manager.notify(Notices.CONNECTED, connection.notices.connected(shown.host, shown.status, shown.work))
                     }
                 }
             }
@@ -59,6 +65,8 @@ class ConnectionService : Service() {
         val c = connection
         startForeground(Notices.CONNECTED, c.notices.connected(c.host.value, c.session.value?.status?.value), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
     }
+
+    private data class Shown(val session: Boolean, val status: Status?, val host: Host?, val work: AtWork?)
 
     override fun onDestroy() {
         running = false

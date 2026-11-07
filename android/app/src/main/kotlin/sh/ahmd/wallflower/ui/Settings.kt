@@ -1,5 +1,6 @@
 package sh.ahmd.wallflower.ui
 
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -104,6 +105,10 @@ fun SettingsScreen(
         val askWindows by settings.askClosingWindow.flow.collectAsStateWithLifecycle()
         Toggle("ask before closing a pane", askPanes) { settings.askClosingPane.set(it) }
         Toggle("ask before closing a tab (or its last pane)", askWindows) { settings.askClosingWindow.set(it) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+            val pill by settings.statusBar.flow.collectAsStateWithLifecycle()
+            Toggle("in the status bar while Claude works or needs you (a Live Update)", pill) { settings.statusBar.set(it) }
+        }
 
         Section("plugins")
         val yours = Programs.suppliedIds()

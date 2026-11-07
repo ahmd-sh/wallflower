@@ -16,6 +16,7 @@ import sh.ahmd.wallflower.notify.Notices
 import sh.ahmd.wallflower.program.Program
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.protocol.Notification
+import sh.ahmd.wallflower.prefs.Preferences
 import sh.ahmd.wallflower.session.HardwareKey
 import sh.ahmd.wallflower.session.Host
 import sh.ahmd.wallflower.session.HostKeys
@@ -36,6 +37,7 @@ class Connection(private val context: Context, private val scope: CoroutineScope
     private val prefs = context.getSharedPreferences("wallflower", Context.MODE_PRIVATE)
     val key = HardwareKey()
     val hostKeys = HostKeys(prefs)
+    val settings = Preferences(prefs)
     private val hidden = object : Hidden {
         override fun all() = prefs.getString(HIDDEN, "").orEmpty().split('\n').filter { it.isNotEmpty() }.toSet()
 

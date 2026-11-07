@@ -26,7 +26,7 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     val hostKeys get() = connection.hostKeys
     val drafts = Drafts(prefs, viewModelScope)
     val keyBar = KeyBarStore(prefs)
-    val settings = Preferences(prefs)
+    val settings get() = connection.settings
     val uploads = Uploads(app.contentResolver, prefs, drafts, File(app.cacheDir, "thumbs"), viewModelScope)
 
     val host: StateFlow<Host?> get() = connection.host

@@ -38,6 +38,9 @@ class Preferences(private val prefs: SharedPreferences) {
     /** Whether closing a window (or its last pane) asks first. */
     val askClosingWindow = boolean(ASK_WINDOW, true)
 
+    /** Whether a program working, or needing the user, shows in the status bar while connected (Android 16's Live Updates). */
+    val statusBar = boolean(STATUS_BAR, false)
+
     /** Panes whose program has a mobile view show it rather than the terminal: one switch, for every pane. */
     val mobileView = boolean(MOBILE_VIEW, prefs.getBoolean(OLD_READ_VIEW, false) || prefs.getStringSet(OLD_READ_PANES, null).orEmpty().isNotEmpty())
 
@@ -60,6 +63,7 @@ class Preferences(private val prefs: SharedPreferences) {
         const val HAPTICS = "haptics"
         const val ASK_PANE = "confirm_close_pane"
         const val ASK_WINDOW = "confirm_close_window"
+        const val STATUS_BAR = "status_bar"
         const val MOBILE_VIEW = "mobile_view"
         const val OLD_READ_VIEW = "read_view"
         const val OLD_READ_PANES = "conversation_panes"

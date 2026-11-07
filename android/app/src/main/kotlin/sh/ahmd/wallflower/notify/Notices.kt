@@ -6,10 +6,14 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.Bundle
 import sh.ahmd.wallflower.MainActivity
 import sh.ahmd.wallflower.R
 import sh.ahmd.wallflower.program.Notice
 import sh.ahmd.wallflower.program.Program
+import sh.ahmd.wallflower.program.Programs
+import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.State
 import sh.ahmd.wallflower.session.Blocked
 import sh.ahmd.wallflower.session.Host
@@ -66,14 +70,39 @@ class Notices(private val context: Context) {
     /** What [pane]'s program said has been seen. */
     fun cancel(pane: String) = manager.cancel(pane, FROM_MAC)
 
-    /** The service's, keeping the connection to [host] while the user is away. */
-    fun connected(host: Host?, status: Status?): Notification {
+    /**
+     * The service's, keeping the connection to [host] while the user is away;
+     * while a program's [atWork], about that, promoted to the status bar where
+     * the phone has Live Updates.
+     */
+    fun connected(host: Host?, status: Status?, atWork: AtWork? = null): Notification {
         val mac = host.called
         val builder = Notification.Builder(context, CONNECTION)
             .setSmallIcon(R.drawable.ic_wallflower)
             .setContentIntent(open(null))
             .addAction(Notification.Action.Builder(null, "Disconnect", ConnectionService.disconnect(context)).build())
             .setShowWhen(false)
+        val work = atWork?.takeIf { status is Status.Connected && Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA }
+        if (work != null) {
+            val doing = if (work.waiting) "needs your input" else "working"
+            builder
+                .setContentTitle(work.about)
+                .setContentText("$doing · on $mac")
+                .setContentIntent(open(work.pane))
+                .setOngoing(true)
+                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                .setPublicVersion(
+                    Notification.Builder(context, CONNECTION).setSmallIcon(R.drawable.ic_wallflower).setContentTitle("wallflower").setContentText(doing).build(),
+                )
+            // As extras: the builder's own setters came in a later release of 16 than the Live Updates that read these.
+            val promoted = Bundle().apply {
+                putBoolean(EXTRA_PROMOTED, true)
+                if (work.waiting) putString(EXTRA_CHIP_TEXT, "input")
+            }
+            builder.addExtras(promoted)
+            if (!work.waiting) builder.setWhen(work.since).setShowWhen(true).setUsesChronometer(true)
+            return builder.build()
+        }
         when (status) {
             is Status.Connected -> builder.setContentTitle("Connected to $mac")
             is Status.Disconnected -> builder.setContentTitle("Reconnecting to $mac…")
@@ -126,5 +155,20 @@ class Notices(private val context: Context) {
         private const val FROM_MAC = 3
         private const val MAC = "mac"
         private const val CONNECTION = "connection"
+        private const val EXTRA_PROMOTED = "android.requestPromotedOngoing"
+        private const val EXTRA_CHIP_TEXT = "android.shortCriticalText"
     }
+}
+
+/** A program at work in [pane]: [waiting] for the user, or working since [since] (Unix milliseconds); [about] is what it calls what it's on, or its window's name. */
+data class AtWork(val pane: String, val about: String, val waiting: Boolean, val since: Long)
+
+/** Of [state]'s panes, the one to show in the status bar: one waiting for the user first, then the one working longest; null if none is. */
+fun atWork(state: State?): AtWork? {
+    val all = state?.windows.orEmpty().flatMap { w -> w.panes.map { w to it } }
+    val (w, p) = all.firstOrNull { it.second.activity == Pane.WAITING }
+        ?: all.filter { it.second.activity == Pane.WORKING }.minByOrNull { it.second.since.takeIf { s -> s > 0 } ?: Long.MAX_VALUE }
+        ?: return null
+    val about = Programs.of(p.program).label(p.title) ?: w.label()
+    return AtWork(p.id, about, p.activity == Pane.WAITING, p.since.takeIf { it > 0 } ?: System.currentTimeMillis())
 }
