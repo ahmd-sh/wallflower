@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -194,6 +195,7 @@ type parser struct {
 	custom    string            // the title the user gave the conversation
 	named     string            // the title claude gave it
 	queue     []string          // what was sent while claude was busy, not yet taken, oldest first
+	dequeued  int               // taken off the queue to start a turn with, before the record says which
 }
 
 // Queued is what the user sent while claude was busy that it hasn't taken
@@ -210,8 +212,8 @@ func (p *parser) Queued() []string {
 }
 
 // queued follows claude's queue: a message goes on it, and comes off as it's
-// taken at the end of a turn (dequeue) or into the turn going on, or back
-// into the prompt box to edit (remove).
+// taken into the turn going on, or back into the prompt box to edit
+// (remove), or to start a turn with (dequeue: the record after says which).
 func (p *parser) queued(op string, raw json.RawMessage) {
 	var text string
 	json.Unmarshal(raw, &text)
@@ -219,18 +221,42 @@ func (p *parser) queued(op string, raw json.RawMessage) {
 	case "enqueue":
 		p.queue = append(p.queue, text)
 	case "dequeue":
-		if len(p.queue) > 0 {
-			p.queue = p.queue[1:]
-		}
+		p.dequeued++
 	case "remove":
-		for i, q := range p.queue {
-			if q == text {
-				p.queue = append(p.queue[:i:i], p.queue[i+1:]...)
-				break
-			}
-		}
+		p.unqueue(strings.TrimSpace(text), false)
 	case "clear", "popAll":
-		p.queue = nil
+		p.queue, p.dequeued = nil, 0
+	}
+}
+
+// took follows a message claude started a turn with: after a dequeue, the
+// one taken off its queue. One the user typed means claude was idle, with
+// nothing queued.
+func (p *parser) took(source string, c content) {
+	if source == "typed" || source == "suggestion_accepted" {
+		p.queue, p.dequeued = nil, 0
+		return
+	}
+	if p.dequeued == 0 {
+		return
+	}
+	p.dequeued--
+	text, _ := c.first()
+	p.unqueue(strings.TrimSpace(text), true)
+}
+
+// unqueue takes text off the queue: the same text, else a message queued
+// without any (a picture's), else, if [oldest], the oldest.
+func (p *parser) unqueue(text string, oldest bool) {
+	at := slices.IndexFunc(p.queue, func(q string) bool { return strings.TrimSpace(q) == text })
+	if at < 0 {
+		at = slices.IndexFunc(p.queue, func(q string) bool { return strings.TrimSpace(q) == "" })
+	}
+	if at < 0 && oldest && len(p.queue) > 0 {
+		at = 0
+	}
+	if at >= 0 {
+		p.queue = slices.Delete(p.queue, at, at+1)
 	}
 }
 
@@ -358,6 +384,9 @@ func (p *parser) Line(b []byte) []mobileview.Entry {
 	var c content
 	if talk {
 		c = decode(r.Message.Content)
+	}
+	if talk && r.Type == "user" && c.prompt() {
+		p.took(r.PromptSource, c)
 	}
 	if p.place(r, c); p.left[r.UUID] {
 		return nil

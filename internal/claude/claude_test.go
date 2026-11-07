@@ -111,6 +111,40 @@ func TestAgentsQueuesAndNotices(t *testing.T) {
 	}
 }
 
+func TestTheQueueByWhatsTaken(t *testing.T) {
+	p := newParser().(*parser)
+	for _, l := range []string{
+		`{"type":"user","uuid":"u0","promptSource":"typed","message":{"content":"start"}}`,
+		`{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<summary>A done</summary>\n</task-notification>"}`,
+		`{"type":"queue-operation","operation":"enqueue","content":"first"}`,
+		`{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<summary>D done</summary>\n</task-notification>"}`,
+		`{"type":"queue-operation","operation":"enqueue","content":""}`,
+		`{"type":"queue-operation","operation":"enqueue","content":"second"}`,
+		// Taken out of order: the record after each dequeue says which.
+		`{"type":"queue-operation","operation":"dequeue"}`,
+		`{"type":"user","uuid":"u1","parentUuid":"u0","promptSource":"system","message":{"content":"<task-notification>\n<summary>D done</summary>\n</task-notification>"}}`,
+		`{"type":"queue-operation","operation":"dequeue"}`,
+		`{"type":"user","uuid":"u2","parentUuid":"u1","promptSource":"system","message":{"content":"<task-notification>\n<summary>A done</summary>\n</task-notification>"}}`,
+		// A picture's message is queued without its text, and taken back with it.
+		`{"type":"queue-operation","operation":"remove","content":"look at this"}`,
+	} {
+		p.Line([]byte(l))
+	}
+	if q := p.Queued(); !reflect.DeepEqual(q, []string{"first", "second"}) {
+		t.Fatalf("queued: %q", q)
+	}
+	p.Line([]byte(`{"type":"queue-operation","operation":"dequeue"}`))
+	p.Line([]byte(`{"type":"user","uuid":"u3","parentUuid":"u2","promptSource":"queued","message":{"content":"second"}}`))
+	if q := p.Queued(); !reflect.DeepEqual(q, []string{"first"}) {
+		t.Fatalf("after second: %q", q)
+	}
+	// Typed, claude was idle: nothing's queued, whatever was missed.
+	p.Line([]byte(`{"type":"user","uuid":"u4","parentUuid":"u3","promptSource":"typed","message":{"content":"next"}}`))
+	if q := p.Queued(); len(q) != 0 {
+		t.Fatalf("after typing: %q", q)
+	}
+}
+
 func TestQuestionsAndServersTools(t *testing.T) {
 	p := newParser()
 	var got []mobileview.Entry
