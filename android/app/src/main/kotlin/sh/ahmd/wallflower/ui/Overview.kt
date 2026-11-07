@@ -48,7 +48,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -102,7 +102,8 @@ internal fun rememberOverview(): Overview {
 
 /**
  * Every pane of a window as a card with its live contents, in the session's order,
- * then one to open a new pane. Tap a card to show it, × to close it. Cards
+ * then one to open a new pane. A card is headed by an icon for what the pane
+ * runs and the directory it's in. Tap a card to show it, × to close it. Cards
  * fill as many columns as the screen is wide. They come in with [progress]
  * as the [zoomed] pane shrinks into its card, which says where it is in
  * [cards].
@@ -120,6 +121,7 @@ internal fun PaneOverview(
     onClose: (Pane) -> Unit,
 ) {
     val panes = window.panes.sortedBy { it.index }
+    val names = headerNames(panes)
     val grid = rememberLazyGridState(initialFirstVisibleItemIndex = panes.indexOfFirst { it.id == shown }.coerceAtLeast(0))
     val backdrop = Palette.bg0
     LazyVerticalGrid(
@@ -133,6 +135,7 @@ internal fun PaneOverview(
         items(panes, key = { it.id }) { p ->
             PaneCard(
                 p,
+                name = names.getValue(p.id),
                 shown = p.id == shown,
                 zoomed = p.id == zoomed,
                 progress = progress,
@@ -161,6 +164,7 @@ private fun Modifier.cardIn(progress: () -> Float, zoomed: Boolean) = graphicsLa
 @Composable
 private fun PaneCard(
     pane: Pane,
+    name: String,
     shown: Boolean,
     zoomed: Boolean,
     progress: () -> Float,
@@ -182,8 +186,15 @@ private fun PaneCard(
             .clickable(onClick = onClick),
     ) {
         Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${pane.index}", color = if (shown) Palette.orange else Palette.dim, style = Type.label, fontWeight = FontWeight.Bold)
-            Text(" ${pane.command}", color = Palette.fg, style = Type.label, maxLines = 1, modifier = Modifier.weight(1f))
+            GlyphIcon(glyphOf(pane.program, pane.command), if (shown) Palette.orange else Palette.grey, size = 14.dp)
+            Text(
+                name,
+                color = Palette.fg,
+                style = Type.label,
+                maxLines = 1,
+                overflow = TextOverflow.MiddleEllipsis,
+                modifier = Modifier.weight(1f).padding(start = 6.dp),
+            )
             activityOf(pane)?.takeIf { it != Activity.Idle }?.let { AgentDot(it) }
             Box(Modifier.clip(CircleShape).clickable(onClick = onClose).padding(10.dp)) { GlyphIcon(Glyph.Close, Palette.grey, size = 14.dp) }
         }

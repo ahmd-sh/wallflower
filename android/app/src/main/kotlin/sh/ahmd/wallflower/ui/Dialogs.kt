@@ -53,10 +53,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.PopupProperties
 
-/** wallflower's icons; from [Escape] on, keys'. */
+/** wallflower's icons; from [Escape] on, keys'; from [Hexagon] on, programs' (with [Terminal], [Spark] and [Edit]: see [glyphOf]). */
 enum class Glyph {
     Plus, Close, Chat, Terminal, Spark, Copy, Check, Edit,
     Escape, Tab, BackTab, Enter, Up, Down, Left, Right, Backspace, Space, Ctrl, Alt, Shift,
+    Hexagon, Snake, Branch, Pulse, Globe, Boxes, Folder, Database, Book, Hammer,
 }
 
 /** Line icons, drawn to match the send button rather than pulled from an icon set. */
@@ -75,6 +76,15 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
                     if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
                 }
                 if (closed) close()
+            },
+            color,
+            style = line,
+        )
+        fun curve(vararg points: Pair<Float, Float>) = drawPath(
+            Path().apply {
+                val p = points.map { (x, y) -> at(x, y) }
+                moveTo(p[0].x, p[0].y)
+                for (i in 1 until p.size step 3) cubicTo(p[i].x, p[i].y, p[i + 1].x, p[i + 1].y, p[i + 2].x, p[i + 2].y)
             },
             color,
             style = line,
@@ -175,6 +185,45 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
                 },
                 color,
             )
+            Glyph.Hexagon -> stroke(0f to -1f, 0.87f to -0.5f, 0.87f to 0.5f, 0f to 1f, -0.87f to 0.5f, -0.87f to -0.5f, closed = true)
+            Glyph.Snake -> {
+                curve(0.45f to -0.7f, -0.1f to -1f, -0.85f to -0.7f, -0.6f to -0.2f, -0.4f to 0.2f, 0.65f to 0f, 0.6f to 0.5f, 0.55f to 1f, -0.4f to 1f, -0.9f to 0.75f)
+                drawCircle(color, r * 0.32f, at(0.55f, -0.62f))
+            }
+            Glyph.Branch -> {
+                stroke(-0.67f to -1f, -0.67f to 0.33f)
+                drawCircle(color, r * 0.33f, at(0.67f, -0.67f), style = line)
+                drawCircle(color, r * 0.33f, at(-0.67f, 0.67f), style = line)
+                drawArc(color, 0f, 90f, useCenter = false, topLeft = at(-1.33f, -1.33f), size = Size(r * 2, r * 2), style = line)
+            }
+            Glyph.Pulse -> stroke(-1f to 0f, -0.55f to 0f, -0.25f to -0.8f, 0.25f to 0.8f, 0.55f to 0f, 1f to 0f)
+            Glyph.Globe -> {
+                drawCircle(color, r, c, style = line)
+                drawOval(color, topLeft = at(-0.42f, -1f), size = Size(r * 0.84f, r * 2), style = line)
+                stroke(-1f to 0f, 1f to 0f)
+            }
+            Glyph.Boxes -> {
+                drawRoundRect(color, topLeft = at(-1f, 0f), size = Size(r * 2, r * 0.85f), cornerRadius = CornerRadius(r * 0.15f), style = line)
+                drawRoundRect(color, topLeft = at(-0.5f, -0.85f), size = Size(r, r * 0.85f), cornerRadius = CornerRadius(r * 0.15f), style = line)
+                stroke(0f to 0f, 0f to 0.85f)
+            }
+            Glyph.Folder -> stroke(-1f to 0.75f, -1f to -0.75f, -0.3f to -0.75f, -0.1f to -0.45f, 1f to -0.45f, 1f to 0.75f, closed = true)
+            Glyph.Database -> {
+                val ring = Size(r * 1.7f, r * 0.6f)
+                drawOval(color, topLeft = at(-0.85f, -0.92f), size = ring, style = line)
+                drawArc(color, 0f, 180f, useCenter = false, topLeft = at(-0.85f, -0.3f), size = ring, style = line)
+                drawArc(color, 0f, 180f, useCenter = false, topLeft = at(-0.85f, 0.32f), size = ring, style = line)
+                stroke(-0.85f to -0.62f, -0.85f to 0.62f)
+                stroke(0.85f to -0.62f, 0.85f to 0.62f)
+            }
+            Glyph.Book -> {
+                stroke(0f to -0.55f, -1f to -0.85f, -1f to 0.6f, 0f to 0.85f, closed = true)
+                stroke(0f to -0.55f, 1f to -0.85f, 1f to 0.6f, 0f to 0.85f, closed = true)
+            }
+            Glyph.Hammer -> rotate(45f, c) {
+                stroke(0f to 1.1f, 0f to -0.25f)
+                stroke(-0.6f to -0.85f, 0.6f to -0.85f, 0.6f to -0.25f, -0.6f to -0.25f, closed = true)
+            }
         }
     }
 }
