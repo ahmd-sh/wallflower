@@ -289,33 +289,27 @@ private fun TerminalScreen(
         when (val walk = actions?.program?.walk(p, s.said)) {
             null -> Unit // something between
             is Walk.Listed -> {
-                if (list != null) return@LaunchedEffect // on the way to what a pick asks
-                // Straight to where the conversation has it, and picked, which only asks.
-                val at = nearby(s.newer, walk.last).firstOrNull()
+                // Straight to where the conversation has it, and picked, which only asks; once back from asking about another, close by.
+                if (list != null && !s.back) return@LaunchedEffect // on the way to what a pick asks
+                val at = nearby(s.newer, walk.last).firstOrNull { it !in s.tried }
                 if (at == null) {
                     seeking = null // the list hasn't it: the user picks
                     return@LaunchedEffect
                 }
                 actions.keys(walk.moves(at - walk.back) + walk.pick)
-                seeking = s.copy(list = walk, tried = listOf(at), from = p)
+                seeking = s.copy(list = list ?: walk, tried = s.tried + at, from = p, back = false)
             }
             is Walk.Picked -> {
-                if (list == null) return@LaunchedEffect // not one this asked
+                if (list == null || s.back) return@LaunchedEffect // not one this asked, or on the way back
                 if (walk.on) {
                     editing = s.id
                     seeking = null
                     return@LaunchedEffect
                 }
-                // Not it (the list may count a message differently): back, and close by.
-                val was = s.tried.last()
-                val at = nearby(s.newer, list.last).firstOrNull { it !in s.tried }
-                if (at == null) {
-                    actions.keys(walk.back) // the user picks
-                    seeking = null
-                    return@LaunchedEffect
-                }
-                actions.keys(walk.back + list.moves(at - was) + list.pick)
-                seeking = s.copy(tried = s.tried + at, from = p)
+                // Not it (the list may count a message differently): back to the list, keys alone, since
+                // what comes right after Esc can be taken with it (alt and a key), and then Enter would answer this.
+                actions.keys(walk.back)
+                seeking = if (nearby(s.newer, list.last).any { it !in s.tried }) s.copy(from = p, back = true) else null
             }
         }
     }
@@ -649,7 +643,8 @@ private const val SEEKS_MS = 10_000L
  * A message asked back, looked for in the list its command opens: [id] and
  * what it [said], with [newer] of the user's messages after it. The [list]
  * as it opened; the places in it picked to see what they ask, the latest
- * last ([tried]); the prompt the last keys went [from].
+ * last ([tried]); the prompt the last keys went [from]; and whether they went
+ * [back] to the list, from what picking another asked.
  */
 private data class Seeking(
     val id: String,
@@ -658,6 +653,7 @@ private data class Seeking(
     val list: Walk.Listed? = null,
     val tried: List<Int> = emptyList(),
     val from: Prompt? = null,
+    val back: Boolean = false,
 )
 
 /** Keys that move the list's cursor [by] messages back (forward, if negative). */
