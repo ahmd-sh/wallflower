@@ -25,7 +25,8 @@ read when a connection starts.
   plugins come before the built-in ones, so one can claim a shell's panes.
 - `client`, optional: the phone's half, as data, since the phone loads no
   code. `keys` is the key bar its panes get until you make one in the app
-  (key names as tmux has them: `Escape`, `C-c`, `M-Enter`, `BTab`, `F5`…),
+  (key names as tmux has them: `Escape`, `C-c`, `M-Enter`, `BTab`, `F5`…,
+  and `arrows`, the arrows around enter in one key),
   and what the send button presses to stop it. `commands` are offered by
   the composer's +, and start what you send. `newline` is what the
   keyboard's return key presses, if the program takes several lines; `clear`

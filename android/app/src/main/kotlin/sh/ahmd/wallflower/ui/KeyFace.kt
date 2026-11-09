@@ -31,7 +31,11 @@ import sh.ahmd.wallflower.BarKey
 import sh.ahmd.wallflower.KeyBar
 
 /** How [key] shows: as [faceOf] its keys, unless the user wrote its label. */
-internal fun faceOf(key: BarKey): AnnotatedString = if (key.ownLabel) faceOf(key.keys) else AnnotatedString(key.label)
+internal fun faceOf(key: BarKey): AnnotatedString = when {
+    key.cluster -> buildAnnotatedString { appendInlineContent(Glyph.Arrows.name, key.label) }
+    key.ownLabel -> faceOf(key.keys)
+    else -> AnnotatedString(key.label)
+}
 
 /** [keys] with icons for those that have one (esc, tab, ⏎, the arrows, ctrl…) and the rest as the bar names them. Shown with [glyphs]. */
 internal fun faceOf(keys: List<String>): AnnotatedString = buildAnnotatedString {
@@ -45,7 +49,7 @@ internal fun faceOf(keys: List<String>): AnnotatedString = buildAnnotatedString 
 }
 
 /** The icons in a face, drawn in [color] at the size of its letters. */
-internal fun glyphs(color: Color): Map<String, InlineTextContent> = KEYS.values.associate { g ->
+internal fun glyphs(color: Color): Map<String, InlineTextContent> = (KEYS.values + Glyph.Arrows).associate { g ->
     g.name to InlineTextContent(Placeholder(1.15.em, 1.15.em, PlaceholderVerticalAlign.Center)) { GlyphIcon(g, color, Modifier.fillMaxSize()) }
 }
 
@@ -77,7 +81,7 @@ internal fun HeldName(name: String) {
 }
 
 /** Centered over what it's for, [gap] above it, kept on screen. */
-private class Above(private val gap: Int) : PopupPositionProvider {
+internal class Above(private val gap: Int) : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize) = IntOffset(
         (anchorBounds.center.x - popupContentSize.width / 2).coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
         anchorBounds.top - popupContentSize.height - gap,

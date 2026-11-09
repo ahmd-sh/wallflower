@@ -14,7 +14,9 @@ import sh.ahmd.wallflower.program.Programs
  * names (`Escape`, `C-c`, or literal text). A [sticky] key waits for the next
  * key, from the bar or the keyboard, and goes with it. With [bindings], the
  * multiplexer's key bindings apply, as if typed on a keyboard attached to it;
- * `prefix` is its prefix key.
+ * `prefix` is its prefix key. A [cluster] gathers keys, each its own, in
+ * places around its middle: [keys] up, left, the middle, right, down, and
+ * the corner above right.
  */
 @Serializable
 data class BarKey(
@@ -22,6 +24,7 @@ data class BarKey(
     val keys: List<String>,
     val sticky: Boolean = false,
     val bindings: Boolean = false,
+    val cluster: Boolean = false,
 ) {
     /** This sticky key with the next one: a modifier (`C-`, `M-`) joins it, anything else goes first. */
     fun then(next: BarKey): BarKey {
@@ -87,6 +90,9 @@ data class KeyBar(
             ?: default
 
     companion object {
+        /** The arrows around enter, with backspace above right, in one key; `arrows` by name. */
+        val ARROWS = BarKey("arrows", listOf("Up", "Left", "Enter", "Right", "Down", "BSpace"), cluster = true)
+
         /** Keys offered when editing a bar. */
         val common = listOf(
             "esc" to "Escape", "tab" to "Tab", "⇧tab" to "BTab", "⏎" to "Enter",
@@ -99,6 +105,7 @@ data class KeyBar(
             "y" to "y", "n" to "n", "q" to "q", "1" to "1", "2" to "2", "3" to "3",
             "/" to "/", "|" to "|", "~" to "~", "-" to "-", "`" to "`",
         ).map { (label, key) -> BarKey(label, listOf(key)) } + listOf(
+            ARROWS,
             BarKey("pfx", listOf("prefix"), sticky = true, bindings = true),
             BarKey("ctrl", listOf("C-"), sticky = true),
             BarKey("alt", listOf("M-"), sticky = true),
@@ -111,7 +118,7 @@ data class KeyBar(
         }
 
         /** What [key] sends, in words; a sticky one, with a key. */
-        fun nameOf(key: BarKey): String = nameOf(key.keys) + if (key.sticky) " + key" else ""
+        fun nameOf(key: BarKey): String = if (key.cluster) "arrows, enter, backspace" else nameOf(key.keys) + if (key.sticky) " + key" else ""
 
         /** [keys] in words: ctrl c, shift tab, escape :w enter. */
         fun nameOf(keys: List<String>): String = keys.joinToString(" ") { key ->
@@ -149,13 +156,13 @@ data class KeyBar(
         private fun keys(vararg labels: String) = labels.map { l -> common.first { it.label == l } }
 
         /** A key by name, as the bar shows it. */
-        private fun key(name: String) = common.firstOrNull { !it.sticky && it.keys == listOf(name) } ?: BarKey(labelOf(listOf(name)), listOf(name))
+        private fun key(name: String) = if (name == ARROWS.label) ARROWS else common.firstOrNull { !it.sticky && !it.cluster && it.keys == listOf(name) } ?: BarKey(labelOf(listOf(name)), listOf(name))
 
         val defaults = KeyBar(
             profiles = Programs.builtin.entries.filter { it.value.keyBar != null }
                 .groupBy({ it.value.keyBar!! }, { it.key })
                 .map { (d, ids) -> KeyProfile(d.name, ids, d.keys.map(::key), stop = d.stop) },
-            default = KeyProfile("default", keys = keys("esc", "tab", "⇧tab", "^c", "↑", "↓", "←", "→", "⏎")),
+            default = KeyProfile("default", keys = keys("esc", "tab", "⇧tab", "^c", "arrows")),
         )
     }
 }

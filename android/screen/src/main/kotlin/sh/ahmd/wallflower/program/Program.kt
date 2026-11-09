@@ -95,8 +95,9 @@ interface Program {
 }
 
 /**
- * A key bar a program ships: its [name], its [keys] by wallflower's names,
- * and what the send button presses when there's nothing to send ([stop]).
+ * A key bar a program ships: its [name], its [keys] by wallflower's names
+ * (`arrows`: the arrows around enter, in one key), and what the send button
+ * presses when there's nothing to send ([stop]).
  */
 data class KeyDefaults(val name: String, val keys: List<String>, val stop: List<String> = listOf("C-c"))
 
@@ -148,7 +149,7 @@ class Supplied(
 
 /** The programs wallflower ships, and those the gateway's plugins describe, by the id the gateway names a pane's program by. */
 object Programs {
-    private val shells = KeyDefaults("shell", listOf("Tab", "Up", "Down", "Left", "Right", "C-r", "C-c", "C-d", "Escape"))
+    private val shells = KeyDefaults("shell", listOf("Tab", "arrows", "C-r", "C-c", "C-d", "Escape"))
     private val other = Shell()
 
     val builtin: Map<String, Program> = linkedMapOf(

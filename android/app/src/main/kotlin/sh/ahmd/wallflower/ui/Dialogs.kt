@@ -56,7 +56,7 @@ import androidx.compose.ui.window.PopupProperties
 /** wallflower's icons; from [Escape] on, keys'; from [Hexagon] on, programs' (with [Terminal], [Spark] and [Edit]: see [glyphOf]). */
 enum class Glyph {
     Plus, Close, Chat, Terminal, Spark, Copy, Check, Edit,
-    Escape, Tab, BackTab, Enter, Up, Down, Left, Right, Backspace, Space, Ctrl, Alt, Shift,
+    Escape, Tab, BackTab, Enter, Up, Down, Left, Right, Backspace, Space, Ctrl, Alt, Shift, Arrows,
     Hexagon, Snake, Branch, Pulse, Globe, Boxes, Folder, Database, Book, Hammer,
 }
 
@@ -162,6 +162,15 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
             Glyph.Down -> rotate(180f, c) { up() }
             Glyph.Left -> rotate(-90f, c) { up() }
             Glyph.Right -> rotate(90f, c) { up() }
+            Glyph.Arrows -> {
+                stroke(-1f to 0f, 1f to 0f)
+                stroke(0f to -1f, 0f to 1f)
+                val h = 0.4f
+                stroke(-h to -1f + h, 0f to -1f, h to -1f + h)
+                stroke(-h to 1f - h, 0f to 1f, h to 1f - h)
+                stroke(-1f + h to -h, -1f to 0f, -1f + h to h)
+                stroke(1f - h to -h, 1f to 0f, 1f - h to h)
+            }
             Glyph.Backspace -> {
                 stroke(-1f to 0f, -0.45f to -0.75f, 1f to -0.75f, 1f to 0.75f, -0.45f to 0.75f, closed = true)
                 stroke(-0.02f to -0.3f, 0.58f to 0.3f)

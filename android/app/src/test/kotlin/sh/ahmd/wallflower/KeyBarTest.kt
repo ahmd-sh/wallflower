@@ -33,6 +33,18 @@ class KeyBarTest {
     }
 
     @Test
+    fun theArrowsGoInOneKey() {
+        val shell = bar.profileFor("zsh").keys
+        assertEquals(listOf("tab", "arrows", "^r", "^c", "^d", "esc"), shell.map { it.label })
+        assertTrue(shell[1].cluster)
+        assertEquals(listOf("Up", "Left", "Enter", "Right", "Down", "BSpace"), shell[1].keys)
+        assertEquals("arrows", bar.default.keys.last().label)
+        // A bar saved before there were clusters loads as it was.
+        val saved = Json.decodeFromString<BarKey>("""{"label":"↑","keys":["Up"]}""")
+        assertFalse(saved.cluster)
+    }
+
+    @Test
     fun theFirstMatchWins() {
         val both = bar.copy(profiles = listOf(KeyProfile("a", listOf("zsh"), emptyList()), KeyProfile("b", listOf("zsh"), emptyList())))
         assertEquals("a", both.profileFor("zsh").name)
