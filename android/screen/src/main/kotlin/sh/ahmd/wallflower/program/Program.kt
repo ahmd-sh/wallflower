@@ -46,6 +46,9 @@ interface Program {
     /** What starts a new line of what's being typed without sending it, if the program takes several; a shell runs the line. */
     val newlineKeys: List<String>? get() = null
 
+    /** Whether what's sent while it works waits for it to take later (queued), rather than going to what it's doing. */
+    val queues: Boolean get() = false
+
     /** What the program is sent to compact its conversation, if it can. */
     val compact: String? get() = null
 

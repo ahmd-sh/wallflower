@@ -15,6 +15,8 @@ object Claude : Program {
 
     override val compact = "/compact"
 
+    override val queues = true
+
     override val acceptSuggestion = listOf("Tab")
 
     override val commands = listOf(

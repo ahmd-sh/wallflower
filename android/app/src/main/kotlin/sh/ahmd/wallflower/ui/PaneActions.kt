@@ -70,6 +70,15 @@ internal class PaneActions(
         }
     }
 
+    /**
+     * Whether the pane's at work, so a stop means something: its program
+     * says so, if it says (working, or waiting on the user); else a command
+     * other than its shell runs there, but not one that took the whole
+     * screen (an editor, a pager), whose keys are its own.
+     */
+    val busy: Boolean
+        get() = activityOf(pane)?.let { it != Activity.Idle } ?: (pane.command.trimStart('-').substringAfterLast('/') !in SHELLS && !pane.alt)
+
     /** Whether anything empties its input line. */
     val clears: Boolean get() = clearKeys.isNotEmpty()
 
@@ -105,3 +114,6 @@ internal class PaneActions(
         }
     }
 }
+
+/** Commands that are a shell waiting at its prompt. */
+private val SHELLS = setOf("zsh", "bash", "fish", "sh", "dash", "ksh", "mksh", "tcsh", "csh", "nu", "xonsh", "elvish", "pwsh", "login")

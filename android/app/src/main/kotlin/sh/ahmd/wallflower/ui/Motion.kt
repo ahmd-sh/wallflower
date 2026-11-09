@@ -17,6 +17,9 @@ object Motion {
 
     fun <T> effect(): FiniteAnimationSpec<T> = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
 
+    /** Something that arrives with a little give: past where it stops, and back. */
+    fun <T> bounce(): FiniteAnimationSpec<T> = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium)
+
     /** How long [spatial] takes to move something [distance] pixels, until it's within a pixel of where it stops. */
     fun settleMillis(distance: Float): Long =
         spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow, visibilityThreshold = 1f)

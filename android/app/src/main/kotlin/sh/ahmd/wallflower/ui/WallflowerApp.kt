@@ -533,6 +533,8 @@ private fun TerminalScreen(
                 },
                 {
                     if (pane != null && actions != null) {
+                        // A menu the program's waiting on would take what's typed as picks, and Enter as its choice: what's sent waits, unless it's for writing in.
+                        val holding = screen.prompt?.takeIf { mobileView && activity == Activity.Waiting }?.options?.none { it.current && it.muted && it.scroll == 0 } == true
                         val uploads by model.uploads.items.collectAsStateWithLifecycle()
                         val uploadDir by model.uploads.dir.collectAsStateWithLifecycle()
                         Composer(
@@ -564,16 +566,16 @@ private fun TerminalScreen(
                             commands = actions.program.commands,
                             onAcceptSuggestion = actions.acceptSuggestion,
                             recalled = recalled,
-                            stoppable = activity != Activity.Idle,
+                            stoppable = actions.busy,
+                            queues = activity == Activity.Working && actions.program.queues,
+                            holds = holding,
                             onType = { text ->
                                 view?.scrollToBottom()
                                 if (screen.line != null) view?.predict(text) // at a prompt, which echoes
                                 actions.type(text)
                             },
                             onSend = send@{ text, enter ->
-                                // A menu the program's waiting on would take what's typed as picks, and Enter as its choice: it waits, unless it's for writing in.
-                                val asking = screen.prompt?.takeIf { mobileView && activity == Activity.Waiting }
-                                if (asking != null && asking.options.none { it.current && it.muted && it.scroll == 0 }) {
+                                if (holding) {
                                     haptics.reject()
                                     nudged = System.nanoTime()
                                     return@send false

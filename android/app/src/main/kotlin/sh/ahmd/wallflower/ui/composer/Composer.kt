@@ -70,9 +70,11 @@ import sh.ahmd.wallflower.ui.haptics
  * ([onAcceptSuggestion]), and it comes from there. So does a sent message
  * asked back to edit ([recalled]), once the program puts it back. What's in the box replaces the line
  * when sent, so the box is exactly what runs. The button sends (held: types
- * it in without Enter), enters the app's line when only that has text, or
- * stops: while the program isn't idle ([stoppable]), or just after sending,
- * since a stop can mean more to an idle program (^C twice quits Claude Code).
+ * it in without Enter), or queues it while the program at work [queues] what
+ * it's sent, or [holds] it while an answer comes first; enters the app's
+ * line when only that has text; or stops: while the program's at work
+ * ([stoppable]), or just after sending, since a stop can mean more to an
+ * idle program (^C twice quits Claude Code).
  *
  * + sends photos or files to the Mac ([attachments]); each shows above the
  * box on its way, then its path goes in at the cursor, shown as its name.
@@ -83,7 +85,8 @@ import sh.ahmd.wallflower.ui.haptics
  * With [typing], the keyboard types straight into the pane instead, as a
  * terminal's does ([onType], other keys to [onKey] by name, its return key
  * as [returnKeys]): no box, no +, just the key bar and the button
- * ([onEnter], pressing [sendKeys], which it shows if they aren't Enter).
+ * ([onEnter], pressing [sendKeys], which it shows if they aren't Enter;
+ * or stopping what runs while nothing's typed for it).
  */
 @OptIn(ExperimentalLayoutApi::class) // whether the keyboard is up
 @Composable
@@ -108,6 +111,8 @@ internal fun Composer(
     onAcceptSuggestion: (() -> Unit)? = null,
     recalled: Recalled? = null,
     stoppable: Boolean = true,
+    queues: Boolean = false,
+    holds: Boolean = false,
 ) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -270,12 +275,15 @@ internal fun Composer(
             KeyRow(keys, sticky.armed, sticky::press, onEditKeys, Modifier.weight(1f))
             SendButton(
                 action = when {
-                    typing != null -> Action.Run
+                    typing != null -> if (pending.isEmpty() && stoppable) Action.Stop else Action.Run
+                    !empty && holds -> Action.Hold
+                    !empty && queues -> Action.Queue
                     !empty -> Action.Send
                     pending.isNotEmpty() -> Action.Enter
-                    else -> Action.Stop
+                    stoppable || sent -> Action.Stop
+                    else -> Action.Idle
                 },
-                connected = connected && (stoppable || sent || typing != null || !empty || pending.isNotEmpty()),
+                connected = connected,
                 label = if (typing == null || sendKeys == listOf("Enter")) null else faceOf(sendKeys),
                 onSend = { enter ->
                     if (onSend(state.text.toString(), enter)) {
