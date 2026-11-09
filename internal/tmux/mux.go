@@ -62,7 +62,7 @@ type attached struct {
 	name       string // the control client's, for keys sent through bindings
 	cols, rows int
 	last       *Session        // the latest snapshot
-	zoomed     map[string]bool // windows the phone zoomed -> zoomed before
+	zoomed     map[string]bool // windows the phone zoomed -> false, how they go back
 	events     chan mux.Event
 	done       chan struct{} // closed by Close
 	exit       string        // why tmux detached the client, if it said
@@ -163,7 +163,15 @@ func (t *attached) Resize(cols, rows int) error {
 	return nil
 }
 
-func (t *attached) Away(on bool) error { return t.c.IgnoreSize(on) }
+// Away leaves the windows to the desktop, at its size and without the
+// phone's zoom; showing one again takes it back.
+func (t *attached) Away(on bool) error {
+	if on && len(t.zoomed) > 0 {
+		t.c.SetZoom(t.zoomed)
+		t.zoomed = map[string]bool{}
+	}
+	return t.c.IgnoreSize(on)
+}
 
 func (t *attached) Type(pane string, data []byte) error {
 	t.claim(pane)
@@ -195,11 +203,11 @@ func (t *attached) SelectWindow(window string) error {
 	if t.last == nil {
 		return errors.New("no session yet")
 	}
-	was, err := t.c.Show(t.last.ID, window)
+	zoomed, err := t.c.Show(t.last.ID, window)
 	if err != nil {
 		return err
 	}
-	t.hold(window, was)
+	t.hold(window, zoomed)
 	return nil
 }
 
@@ -207,18 +215,19 @@ func (t *attached) SelectPane(pane string) error { return t.c.SelectPane(pane) }
 
 func (t *attached) Focus(pane string) error {
 	t.claim(pane)
-	window, was, err := t.c.Focus(pane)
+	window, zoomed, err := t.c.Focus(pane)
 	if err != nil {
 		return err
 	}
-	t.hold(window, was)
+	t.hold(window, zoomed)
 	return nil
 }
 
-// hold remembers how a window the phone zoomed was at first, for Close.
+// hold remembers a window if the phone zoomed it, to unzoom when it goes; one
+// the desktop zoomed stays the desktop's.
 func (t *attached) hold(window string, zoomed bool) {
-	if _, seen := t.zoomed[window]; !seen {
-		t.zoomed[window] = zoomed
+	if zoomed {
+		t.zoomed[window] = false
 	}
 }
 

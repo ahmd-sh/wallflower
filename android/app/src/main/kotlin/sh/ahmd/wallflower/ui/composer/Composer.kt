@@ -86,7 +86,8 @@ import sh.ahmd.wallflower.ui.haptics
  * terminal's does ([onType], other keys to [onKey] by name, its return key
  * as [returnKeys]): no box, no +, just the key bar and the button
  * ([onEnter], pressing [sendKeys], which it shows if they aren't Enter;
- * or stopping what runs while nothing's typed for it).
+ * or stopping the pane while it's [working] and nothing's been typed for
+ * it since it last took a line: a REPL's or a remote shell's line can't be read).
  */
 @OptIn(ExperimentalLayoutApi::class) // whether the keyboard is up
 @Composable
@@ -111,6 +112,7 @@ internal fun Composer(
     onAcceptSuggestion: (() -> Unit)? = null,
     recalled: Recalled? = null,
     stoppable: Boolean = true,
+    working: Boolean = false,
     queues: Boolean = false,
     holds: Boolean = false,
 ) {
@@ -132,7 +134,12 @@ internal fun Composer(
     }
     val pending = line?.text.orEmpty()
     val ghost = pending.ifEmpty { line?.suggestion.orEmpty() }
-    val sticky = rememberStickyKeys(onKey)
+    // Typed straight into the pane since it last took a line: the button enters it, rather than stopping what's [working].
+    var typed by remember(typing != null) { mutableStateOf(false) }
+    val sticky = rememberStickyKeys { key ->
+        typed = key.keys.lastOrNull() != "Enter"
+        onKey(key)
+    }
     val paths = remember(attachments.dir) { attachments.dir?.let(::uploadPaths) }
     val slash = commands.isNotEmpty()
     val colors = Palette
@@ -209,7 +216,18 @@ internal fun Composer(
             .clip(RoundedCornerShape(26.dp))
             .background(Palette.bg1)
             .animateContentSize(Motion.spatial())
-            .then(if (typing == null) Modifier else Modifier.typing(typing) { sticky.type(it, returnKeys, onType) })
+            .then(
+                if (typing == null) {
+                    Modifier
+                } else {
+                    Modifier.typing(typing) {
+                        sticky.type(it, returnKeys) { text ->
+                            typed = true
+                            onType(text)
+                        }
+                    }
+                },
+            )
             .padding(top = if (typing == null) 14.dp else 8.dp, bottom = 8.dp),
     ) {
         if (typing == null) {
@@ -273,26 +291,33 @@ internal fun Composer(
                 )
             }
             KeyRow(keys, sticky.armed, sticky::press, onEditKeys, Modifier.weight(1f))
+            val action = when {
+                typing != null -> if (working && !typed && pending.isEmpty()) Action.Stop else Action.Run
+                !empty && holds -> Action.Hold
+                !empty && queues -> Action.Queue
+                !empty -> Action.Send
+                pending.isNotEmpty() -> Action.Enter
+                stoppable || sent -> Action.Stop
+                else -> Action.Idle
+            }
             SendButton(
-                action = when {
-                    typing != null -> if (pending.isEmpty() && stoppable) Action.Stop else Action.Run
-                    !empty && holds -> Action.Hold
-                    !empty && queues -> Action.Queue
-                    !empty -> Action.Send
-                    pending.isNotEmpty() -> Action.Enter
-                    stoppable || sent -> Action.Stop
-                    else -> Action.Idle
-                },
+                action = action,
                 connected = connected,
-                label = if (typing == null || sendKeys == listOf("Enter")) null else faceOf(sendKeys),
+                label = if (action != Action.Run || sendKeys == listOf("Enter")) null else faceOf(sendKeys),
                 onSend = { enter ->
                     if (onSend(state.text.toString(), enter)) {
                         state.clearText()
                         sent = enter
                     }
                 },
-                onEnter = onEnter,
-                onStop = onStop,
+                onEnter = {
+                    typed = false
+                    onEnter()
+                },
+                onStop = {
+                    typed = false
+                    onStop()
+                },
             )
         }
     }

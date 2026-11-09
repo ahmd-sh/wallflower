@@ -151,41 +151,43 @@ func (c *Client) SelectPane(pane string) error {
 }
 
 // Show selects a window in a session, its active pane zoomed if it has
-// others, as Focus leaves one; it says whether the window was zoomed before.
+// others, as Focus leaves one; it says whether that zoomed it.
 func (c *Client) Show(session, window string) (zoomed bool, err error) {
 	if err := check(windowID, window); err != nil {
 		return false, err
 	}
 	r, err := c.Command(fmt.Sprintf("display -p -t %[1]s '#{window_zoomed_flag}' ; select-window -t %[2]s ; "+
-		"if -F -t %[1]s '#{&&:#{!=:#{window_panes},1},#{!=:#{window_zoomed_flag},1}}' 'resize-pane -Z -t %[1]s'", window, Quote(session+":"+window)))
+		"if -F -t %[1]s '#{&&:#{!=:#{window_panes},1},#{!=:#{window_zoomed_flag},1}}' 'resize-pane -Z -t %[1]s' ; "+
+		"display -p -t %[1]s '#{window_zoomed_flag}'", window, Quote(session+":"+window)))
 	if err != nil {
 		return false, err
 	}
 	lines := r.Lines()
-	if len(lines) == 0 {
+	if len(lines) < 2 {
 		return false, errors.New("tmux: no window " + window)
 	}
-	return lines[0] == "1", nil
+	return lines[0] == "0" && lines[1] == "1", nil
 }
 
 // Focus makes a pane its window's active one, zoomed if the window has
 // others; select-pane -Z keeps a zoomed window zoomed on the new pane. It
-// says which window that is, and whether it was zoomed before.
+// says which window that is, and whether that zoomed it.
 func (c *Client) Focus(pane string) (window string, zoomed bool, err error) {
 	if err := check(paneID, pane); err != nil {
 		return "", false, err
 	}
 	r, err := c.Command(fmt.Sprintf("display -p -t %[1]s '#{window_id} #{window_zoomed_flag}' ; select-pane -Z -t %[1]s ; "+
-		"if -F -t %[1]s '#{&&:#{!=:#{window_panes},1},#{!=:#{window_zoomed_flag},1}}' 'resize-pane -Z -t %[1]s'", pane))
+		"if -F -t %[1]s '#{&&:#{!=:#{window_panes},1},#{!=:#{window_zoomed_flag},1}}' 'resize-pane -Z -t %[1]s' ; "+
+		"display -p -t %[1]s '#{window_zoomed_flag}'", pane))
 	if err != nil {
 		return "", false, err
 	}
 	lines := r.Lines()
-	if len(lines) == 0 {
+	if len(lines) < 2 {
 		return "", false, errors.New("tmux: no window for " + pane)
 	}
 	w, flag, _ := strings.Cut(lines[0], " ")
-	return w, flag == "1", nil
+	return w, flag == "0" && lines[1] == "1", nil
 }
 
 // SetZoom zooms or unzooms windows, each to how it's given.

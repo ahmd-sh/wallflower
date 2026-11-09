@@ -93,7 +93,8 @@ internal fun PanePage(
                 actions.picked(prompt, option, held)
             },
             onCompact = if (current && compact != null) ({ compact(line()) }) else null,
-            onEdit = if (current) ({ e -> actions.recall(e, shown, line())?.let { onRecalled(e, it is Recall.Command) } }) else null,
+            // Not while the program asks something, or a message is being found: what asks it back would answer that.
+            onEdit = if (current && prompt == null && !seeking) ({ e -> actions.recall(e, shown, line())?.let { onRecalled(e, it is Recall.Command) } }) else null,
             title = shown.title?.takeIf { it != tab },
             live = current,
         )

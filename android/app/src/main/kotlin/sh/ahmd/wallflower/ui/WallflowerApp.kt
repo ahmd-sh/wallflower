@@ -278,7 +278,7 @@ private fun TerminalScreen(
     var seeking by remember(pane?.id) { mutableStateOf<Seeking?>(null) }
     var editing by remember(pane?.id) { mutableStateOf<String?>(null) } // the message walked to, to edit
     LaunchedEffect(seeking) {
-        delay(SEEKS_MS) // since its last step
+        delay(if (seeking?.back == true) SEEKS_BACK_MS else SEEKS_MS) // since the last keys
         seeking = null
     }
     LaunchedEffect(screen.prompt, seeking) {
@@ -561,6 +561,7 @@ private fun TerminalScreen(
                             onAcceptSuggestion = actions.acceptSuggestion,
                             recalled = recalled,
                             stoppable = actions.busy,
+                            working = activity?.let { it == Activity.Working } ?: actions.busy,
                             queues = activity == Activity.Working && actions.program.queues,
                             holds = holding,
                             onType = { text ->
@@ -638,6 +639,9 @@ private const val DOWN_UNSAID_MS = 1_500L
 
 /** How long a message asked back is looked for in what its command opens, from the last keys sent. */
 private const val SEEKS_MS = 10_000L
+
+/** Or back in its list from another's confirmation: the list can't be read while Claude says the wheel sends arrows, for some seconds. */
+private const val SEEKS_BACK_MS = 20_000L
 
 /**
  * A message asked back, looked for in the list its command opens: [id] and

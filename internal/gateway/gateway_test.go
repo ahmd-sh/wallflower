@@ -369,12 +369,43 @@ func TestShownWindowFillsThePhone(t *testing.T) {
 
 		c.send(protocol.Select{Window: activeWindow(s).ID})
 		c.state("shown pane fills it", func(s protocol.State) bool { p := activePane(s); return p.ID == first && p.Cols == 60 && p.Rows == 20 })
+		c.until("held", func() bool { return c.desk.held() != "" })
+
+		// Away, the desktop has its layout back; back, the phone takes it again.
+		c.send(protocol.Away{On: true})
+		c.until("nothing held while away", func() bool { return c.desk.held() == "" })
+		c.send(protocol.Away{})
+		c.send(protocol.Select{Window: activeWindow(s).ID})
+		c.until("held again", func() bool { return c.desk.held() != "" })
 
 		if err := c.disconnect(); err != nil {
 			t.Fatal(err)
 		}
 		c.until("nothing held after disconnect", func() bool { return c.desk.held() == "" })
 	})
+}
+
+// A window the desktop zoomed itself stays zoomed when the phone that
+// showed it goes, though the phone showed it before.
+func TestTheDesktopsZoomIsItsOwn(t *testing.T) {
+	c := tmuxBackend.connect(t, 60, 20)
+	s := c.state("state", anyState)
+	first := activePane(s).ID
+	c.send(protocol.Select{Window: activeWindow(s).ID}) // one pane: nothing to zoom
+	c.send(protocol.Ping{ID: 1})
+	c.expect("pong", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Pong); return ok })
+	d := c.desk.(*tmuxDesk)
+	d.split(first)
+	d.tmux("resize-pane", "-Z", "-t", first)
+	c.until("zoomed at the desktop", func() bool { return d.held() != "" })
+
+	if err := c.disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if d.held() == "" {
+		t.Error("the desktop's zoom went with the phone")
+	}
 }
 
 // A signal (ssh hangup) cancels the context; what the phone held is still
