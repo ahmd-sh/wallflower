@@ -36,18 +36,22 @@ internal class PaneScreen {
  * [EVERY_MS], as [program] reads it: its input line, and, while [asks]
  * (it can be answered: in the mobile view, the program not working), a
  * prompt. Changes in what the program is doing ([activity]) reread it: it
- * can start asking with its screen already drawn.
+ * can start asking with its screen already drawn. What it says it's doing
+ * holds while its line can't be read.
  */
 @Composable
 internal fun rememberPaneScreen(pane: String?, terminal: Terminal?, program: Program, asks: Boolean, activity: Any?): PaneScreen {
     val screen = remember { PaneScreen() }
     val reader by rememberUpdatedState(program)
     val asking by rememberUpdatedState(asks)
-    LaunchedEffect(pane) { screen.prompt = null } // another pane's; the same pane's new terminal (more history) offers the same
-    LaunchedEffect(asks, activity) { screen.reread() }
-    LaunchedEffect(terminal) {
+    // Another pane's; the same pane's new terminal (repainted, as after a resize) says the same once it's drawn.
+    LaunchedEffect(pane) {
         screen.line = null
         screen.status = null
+        screen.prompt = null
+    }
+    LaunchedEffect(asks, activity) { screen.reread() }
+    LaunchedEffect(terminal) {
         val output = Runnable { screen.reread() }
         terminal?.addListener(output)
         try {
@@ -60,7 +64,8 @@ internal fun rememberPaneScreen(pane: String?, terminal: Terminal?, program: Pro
                     Triple(s?.let(p::line), s?.let(p::status), s?.takeIf { a }?.let(p::prompt))
                 }
                 screen.line = read.first
-                screen.status = read.second
+                // A screen without the program's line is between drawings, or covered by what it asks: it doesn't say it stopped.
+                if (read.first != null || read.second != null) screen.status = read.second
                 screen.prompt = read.third
                 delay(EVERY_MS)
             }
