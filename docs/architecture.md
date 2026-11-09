@@ -30,6 +30,13 @@ by the phone over ssh). It speaks the protocol and relays the session:
 It knows no particular multiplexer or program. What it holds can be rebuilt
 from the multiplexer, so a connection can drop at any time.
 
+sshd runs it in the connection's environment: a bare PATH, maybe no
+locale, and the connection's own variables. None of that is to reach the
+user's sessions. What the gateway starts for them (a multiplexer's server,
+a plugin's program) runs in the environment their login shell sets up
+(`internal/userenv`), and an adapter keeps the connection's variables out
+of the sessions it attaches to and makes.
+
 ## Multiplexer adapters
 
 `internal/mux` is what the gateway needs of a multiplexer:

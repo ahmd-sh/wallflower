@@ -32,7 +32,9 @@ read when a connection starts.
   keyboard's return key presses, if the program takes several lines; `clear`
   empties a row of its input.
 - `view`, optional: a program that reads the panes for a mobile view (a
-  path beside the file can start with `./`).
+  path beside the file can start with `./`). It runs in the environment
+  your login shell sets up, so it's found on that PATH: what `.zprofile`
+  (or `.bash_profile`) adds, not what only `.zshrc` does.
 
 A file that doesn't make a plugin is skipped, and the gateway says why on
 its stderr.

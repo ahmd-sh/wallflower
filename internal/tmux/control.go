@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+
+	"github.com/ahmd-sh/wallflower/internal/userenv"
 )
 
 type Options struct {
@@ -71,10 +73,14 @@ func (e *CommandError) Error() string {
 	return fmt.Sprintf("tmux: %s: %s", e.Command, strings.Join(e.Output, "; "))
 }
 
-// binary finds tmux: $PATH first, then Homebrew's prefixes, since ssh
-// sessions get a minimal PATH.
-func binary() string {
+// binary finds tmux: on the gateway's PATH, then on the user's (sshd's is
+// bare), then where Homebrew puts it, for whoever sets Homebrew up in
+// .zshrc, which only an interactive shell reads.
+var binary = sync.OnceValue(func() string {
 	if p, err := exec.LookPath("tmux"); err == nil {
+		return p
+	}
+	if p, err := userenv.LookPath("tmux", userenv.Environ()); err == nil {
 		return p
 	}
 	for _, p := range []string{"/opt/homebrew/bin/tmux", "/usr/local/bin/tmux"} {
@@ -83,7 +89,7 @@ func binary() string {
 		}
 	}
 	return "tmux"
-}
+})
 
 func socketArgs(socket string) []string {
 	switch {
@@ -97,8 +103,10 @@ func socketArgs(socket string) []string {
 
 func Start(ctx context.Context, opts Options) (*Client, error) {
 	// -u: without a UTF-8 locale (ssh may not pass one) tmux replaces tabs
-	// and non-ASCII in replies with "_".
-	args := append(socketArgs(opts.Socket), "-u", "-C", "attach-session")
+	// and non-ASCII in replies with "_". -E: attaching doesn't hand the
+	// session the ssh connection's variables (update-environment), which
+	// panes made at the Mac would then have.
+	args := append(socketArgs(opts.Socket), "-u", "-C", "attach-session", "-E")
 	if opts.Session != "" {
 		args = append(args, "-t", opts.Session)
 	}

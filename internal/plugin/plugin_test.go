@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -62,8 +63,7 @@ func source(t *testing.T) *Source {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("WALLFLOWER_TEST_PLUGIN", "1")
-	return &Source{Command: []string{self}}
+	return &Source{Command: []string{self}, Env: append(os.Environ(), "WALLFLOWER_TEST_PLUGIN=1")}
 }
 
 // said asks until the program has said, as the gateway asks every moment.
@@ -132,7 +132,7 @@ func TestAPaneReadAgain(t *testing.T) {
 
 // A plugin that doesn't read what it's sent doesn't hold up whoever asks it.
 func TestAStuckPluginHoldsNothingUp(t *testing.T) {
-	s := &Source{Command: []string{"sleep", "30"}}
+	s := &Source{Command: []string{"sleep", "30"}, Env: os.Environ()}
 	defer s.Close()
 	panes := []mobileview.Pane{{ID: "%1", Command: "fake", TTY: strings.Repeat("x", 4096)}}
 	start := time.Now()
@@ -160,11 +160,27 @@ func TestClosedItStops(t *testing.T) {
 }
 
 func TestAProgramThatWontRunFindsNothing(t *testing.T) {
-	s := &Source{Command: []string{"/nonexistent/plugin"}}
+	s := &Source{Command: []string{"/nonexistent/plugin"}, Env: os.Environ()}
 	if got := s.Find([]mobileview.Pane{{ID: "%1", Command: "fake"}}); len(got) != 0 {
 		t.Errorf("found %v", got)
 	}
 	if err := s.Read(context.Background(), mobileview.Pane{ID: "%1"}, func(mobileview.Update) {}); err == nil {
 		t.Error("read with no plugin running")
+	}
+}
+
+func TestTheProgramIsFoundOnItsOwnPath(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(self, filepath.Join(dir, "view-of-mine")); err != nil {
+		t.Fatal(err)
+	}
+	s := &Source{Command: []string{"view-of-mine"}, Env: []string{"PATH=" + dir, "WALLFLOWER_TEST_PLUGIN=1"}}
+	defer s.Close()
+	if f := said(t, s, []mobileview.Pane{{ID: "%1", Command: "fake"}}); f["%1"].Activity != mobileview.Working {
+		t.Errorf("found %v", f)
 	}
 }

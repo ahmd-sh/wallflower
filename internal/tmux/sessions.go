@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ahmd-sh/wallflower/internal/mux"
+	"github.com/ahmd-sh/wallflower/internal/userenv"
 )
 
 // The server's sessions, through the tmux CLI: there's no client to attach
@@ -15,7 +16,13 @@ import (
 
 // tmux runs a tmux command against the server, and says what it printed.
 func (s Server) tmux(args ...string) (string, error) {
+	return s.run(nil, args...)
+}
+
+// run runs a tmux command in env (nil: the gateway's).
+func (s Server) run(env []string, args ...string) (string, error) {
 	cmd := exec.Command(binary(), append(append(socketArgs(s.Socket), "-u"), args...)...)
+	cmd.Env = env
 	if home, err := os.UserHomeDir(); err == nil {
 		cmd.Dir = home
 	}
@@ -52,12 +59,28 @@ func (s Server) Sessions() ([]mux.Listed, error) {
 	return list, nil
 }
 
+// NewSession asks with -E, so the session doesn't take the ssh
+// connection's variables (update-environment), and from where it asks.
 func (s Server) NewSession(name string) (string, error) {
-	args := []string{"new-session", "-d", "-P", "-F", "#{session_id}"}
+	args := []string{"new-session", "-d", "-E", "-P", "-F", "#{session_id}"}
 	if name != "" {
 		args = append(args, "-s", name)
 	}
-	return s.tmux(args...)
+	return s.run(s.asking(), args...)
+}
+
+// asking is where to ask tmux for a pane from outside it. tmux gives the
+// pane the asker's PATH (so that "tmux new vim" runs the vim the asker
+// would): the server's own, then, as if asked from inside tmux. With no
+// server, the command starts one, in the user's environment, not the ssh
+// connection's.
+func (s Server) asking() []string {
+	if out, err := s.tmux("show-environment", "-g", "PATH"); err == nil {
+		if path, ok := strings.CutPrefix(out, "PATH="); ok {
+			return userenv.With(os.Environ(), "PATH", path)
+		}
+	}
+	return userenv.Environ()
 }
 
 func (s Server) RenameSession(session, name string) error {

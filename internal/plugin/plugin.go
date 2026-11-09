@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/mobileview"
+	"github.com/ahmd-sh/wallflower/internal/userenv"
 )
 
 const (
@@ -28,8 +29,11 @@ const (
 
 // A Source is a mobile view read by a program run as Command (its path,
 // then its arguments), started when first asked, and again if it stops.
+// It runs in Env, and is found on its PATH: nil is the user's environment
+// (userenv), not the ssh connection's the gateway has.
 type Source struct {
 	Command []string
+	Env     []string
 
 	mu      sync.Mutex
 	run     *running
@@ -218,7 +222,16 @@ func (s *Source) running() *running {
 		return nil
 	}
 	s.started = time.Now()
-	cmd := exec.Command(s.Command[0], s.Command[1:]...)
+	env := s.Env
+	if env == nil {
+		env = userenv.Environ()
+	}
+	name := s.Command[0]
+	if p, err := userenv.LookPath(name, env); err == nil {
+		name = p
+	}
+	cmd := exec.Command(name, s.Command[1:]...)
+	cmd.Env = env
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil
