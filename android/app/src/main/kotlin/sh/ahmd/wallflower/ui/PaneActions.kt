@@ -54,19 +54,19 @@ internal class PaneActions(
 
     /**
      * Brings the user's [message] back into the program's input line, to edit,
-     * if the program can; true if it's on its way. [line]: what the line holds
+     * if the program can: how, if it's on its way. [line]: what the line holds
      * now, which a command sent for it replaces.
      */
-    fun recall(message: Entry.Said, reading: Reading, line: InputLine?): Boolean {
+    fun recall(message: Entry.Said, reading: Reading, line: InputLine?): Recall? {
         val latest = reading.entries.lastOrNull { it is Entry.Said && it.by == Party.User }?.id == message.id
         return when (val r = program.recall(latest, activityOf(pane) == Activity.Working)) {
             is Recall.Keys -> {
                 session.stopped(pane.id) // as a stop does, the program may take the message back
                 keys(r.keys)
-                true
+                r
             }
-            is Recall.Command -> send(r.text, enter = true, line, unseen = true)
-            null -> false
+            is Recall.Command -> r.takeIf { send(r.text, enter = true, line, unseen = true) }
+            null -> null
         }
     }
 

@@ -67,8 +67,9 @@ interface Program {
     fun recall(latest: Boolean, working: Boolean): Recall? = null
 
     /**
-     * Where [prompt], opened by [recall]'s command, is in walking to the
-     * user's message [said]; null if it isn't the prompt that lists them.
+     * Walking [prompt], opened by [recall]'s command, to the user's message
+     * that [said]: where the list of their messages has its cursor, or
+     * whether what picking one asks is about that message; null if it's neither.
      */
     fun walk(prompt: Prompt, said: String): Walk? = null
 
@@ -109,12 +110,19 @@ sealed interface Recall {
     data class Command(val text: String) : Recall
 }
 
-/**
- * A prompt listing the user's messages, walked to one: the cursor's [on]
- * one that reads as it, the keys that go [up] to the one before (null at the
- * top), and those that [pick] the one under the cursor.
- */
-data class Walk(val on: Boolean, val up: List<String>?, val pick: List<String>)
+/** A prompt on the way to one of the user's messages, from the list of them, oldest first. */
+sealed interface Walk {
+    /**
+     * The list: its cursor on the message with [back] of theirs newer than
+     * it (-1 below the newest), going [last] back at most. The keys that
+     * move the cursor [up] a message (back), or [down], and that [pick] the
+     * one under it.
+     */
+    data class Listed(val back: Int, val last: Int, val up: List<String>, val down: List<String>, val pick: List<String>) : Walk
+
+    /** What picking one asks: whether it's [on] the message walked to, and the keys [back] to the list, its cursor where it was. */
+    data class Picked(val on: Boolean, val back: List<String>) : Walk
+}
 
 /** A notification as the phone shows it. */
 data class Notice(val title: String?, val body: String)

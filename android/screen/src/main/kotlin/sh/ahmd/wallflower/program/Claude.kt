@@ -152,16 +152,27 @@ object Claude : Program {
 
     /**
      * /rewind lists the user's messages, its cursor on (current) below the
-     * latest: up goes to the one before, and Enter asks to confirm, which is
-     * the user's to answer. A message reads as its first line, cut short.
+     * latest, a few at a time, with how many more there are above and below
+     * (↑ / ↓ N more): up goes to the one before, and Enter asks to confirm,
+     * quoting the message, which is the user's to answer; Esc goes back to
+     * the list. (Arrows that come in a burst, it takes for a scroll wheel,
+     * and says so over the list's rule for a while, so the list is walked
+     * by the confirmations it asks.)
      */
     override fun walk(prompt: Prompt, said: String): Walk? {
-        if (prompt.lines.firstOrNull()?.text != "Rewind" || prompt.quote.isNotEmpty()) return null
-        val at = prompt.options.indexOfFirst { it.current }.takeIf { it >= 0 } ?: return null
-        val o = prompt.options[at]
-        val on = o.scroll == 0 && o.label != "(current)" && quotes(o.label.replace("...", "…").filterNot(Char::isWhitespace), said.filterNot(Char::isWhitespace))
-        return Walk(on, up = if (at > 0) listOf("Up") else null, pick = listOf("Enter"))
+        if (prompt.quote.isNotEmpty()) {
+            if (prompt.options.none { it.label in RESTORES }) return null
+            return Walk.Picked(quotes(prompt.quote.filterNot(Char::isWhitespace), said.filterNot(Char::isWhitespace)), back = listOf("Escape"))
+        }
+        if (prompt.lines.firstOrNull()?.text != "Rewind") return null
+        val shown = prompt.options.filter { it.scroll == 0 }
+        val at = shown.indexOfFirst { it.current }.takeIf { it >= 0 } ?: return null
+        fun more(way: Int) = prompt.options.firstOrNull { it.scroll == way }?.let { count.find(it.label)?.value?.toInt() } ?: 0
+        val back = more(1) + shown.size - 1 - at - 1 // past (current), at the foot
+        return Walk.Listed(back, last = back + at + more(-1), up = listOf("Up"), down = listOf("Down"), pick = listOf("Enter"))
     }
+
+    private val count = Regex("\\d+")
 
     /** Restoring the conversation from /rewind takes it back to before the message the prompt quotes. */
     override fun picked(prompt: Prompt, option: Prompt.Option): Effect? {

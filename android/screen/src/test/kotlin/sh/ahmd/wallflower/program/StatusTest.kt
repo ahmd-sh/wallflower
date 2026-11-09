@@ -46,13 +46,25 @@ class StatusTest {
 
     @Test
     fun editingAMessageWalksRewindsListToIt() {
-        val list = Prompt.read(captured("claude-rewind-list.ansi", 54))!! // the cursor on "Use the Write tool to create /private/tmp/c…"
-        assertEquals(Walk(on = true, up = listOf("Up"), pick = listOf("Enter")), Claude.walk(list, "Use the Write tool to create /private/tmp/claude-502/x/rw.txt containing hi"))
-        assertEquals(false, Claude.walk(list, "say just: two")!!.on)
-        assertEquals(false, Claude.walk(list, "create /private/tmp/c")!!.on) // from the start, not somewhere in it
-        val multiline = Prompt.read(captured("claude-rewind-list-multiline.ansi", 54))!!
-        assertEquals(listOf("Up"), Claude.walk(multiline, "1. reply with just the word ok\n2. nothing else")!!.up)
-        assertNull(Claude.walk(Prompt.read(captured("claude-rewind-confirm.ansi", 54))!!, "say just: two")) // the user's to confirm
+        // ↑ 1 more, "say just: two", the cursor on the newest, ↓ 1 more: (current).
+        val list = Prompt.read(captured("claude-rewind-list.ansi", 54))!!
+        assertEquals(Walk.Listed(back = 0, last = 2, up = listOf("Up"), down = listOf("Down"), pick = listOf("Enter")), Claude.walk(list, "say just: two"))
+        // ↑ 7 more, a message, the cursor on (current).
+        val multiline = Claude.walk(Prompt.read(captured("claude-rewind-list-multiline.ansi", 54))!!, "x") as Walk.Listed
+        assertEquals(-1 to 7, multiline.back to multiline.last)
+        // At the top: the oldest, the cursor on the next, ↓ 11 more.
+        val top = Claude.walk(Prompt.read(captured("claude-rewind-list-top.ansi", 54))!!, "x") as Walk.Listed
+        assertEquals(10 to 11, top.back to top.last)
+    }
+
+    @Test
+    fun whatPickingOneAsksSaysWhetherItsTheMessage() {
+        // Its foot (Never mind) below a short pane.
+        val confirm = Prompt.read(captured("claude-rewind-confirm.ansi", 54))!!
+        val message = "Use the Write tool to create /private/tmp/claude-502/-Users-ahmedshaikh-dev-dotfiles/9fb53435-c5d1-4202-adc7-69292faff226/scratchpad/rw.txt containing hi, then say just: done"
+        assertEquals(Walk.Picked(on = true, back = listOf("Escape")), Claude.walk(confirm, message))
+        assertEquals(false, (Claude.walk(confirm, "say just: two") as Walk.Picked).on)
+        assertEquals(false, (Claude.walk(confirm, "create /private/tmp/claude-502") as Walk.Picked).on) // from the start, not somewhere in it
     }
 
     @Test

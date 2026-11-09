@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import sh.ahmd.wallflower.program.Recall
 import sh.ahmd.wallflower.read.Entry
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.activityOf
@@ -26,8 +27,8 @@ import sh.ahmd.wallflower.terminal.TerminalView
  * grid until there are panes. [current]: the page on screen, which gets the
  * [prompt] the pane's screen offers, and what its program says it's doing
  * ([status]), can compact (with its [line]), and animates; its terminal view goes to [onView]. A tap on the terminal
- * goes to [onTap]. A message asked back to edit goes to the program, and
- * [onRecalled] once it's on its way. Keys from the prompt's card go to
+ * goes to [onTap]. While a message asked back is looked for ([seeking]), what it's looked for in isn't asked. A message asked back to edit goes to the program, and
+ * [onRecalled] once it's on its way, [listed] if it's to be found in what the program lists. Keys from the prompt's card go to
  * [onPrompt] too. The conversation's title shows unless
  * the [tab] says it already.
  */
@@ -44,10 +45,11 @@ internal fun PanePage(
     line: () -> InputLine?,
     status: String? = null,
     nudged: Long = 0,
+    seeking: Boolean = false,
     onGridSize: (cols: Int, rows: Int, ahead: Boolean) -> Unit,
     onView: (TerminalView) -> Unit,
     onTap: (() -> Unit)?,
-    onRecalled: (Entry.Said) -> Unit = {},
+    onRecalled: (Entry.Said, listed: Boolean) -> Unit = { _, _ -> },
     onPrompt: () -> Unit = {},
     held: String? = null,
     tab: String? = null,
@@ -81,6 +83,7 @@ internal fun PanePage(
             prompt = if (current) prompt else null,
             doing = if (current) status else null,
             nudged = if (current) nudged else 0,
+            seeking = current && seeking,
             onKeys = { keys ->
                 onPrompt()
                 actions.keys(keys)
@@ -90,7 +93,7 @@ internal fun PanePage(
                 actions.picked(prompt, option, held)
             },
             onCompact = if (current && compact != null) ({ compact(line()) }) else null,
-            onEdit = if (current) ({ e -> if (actions.recall(e, shown, line())) onRecalled(e) }) else null,
+            onEdit = if (current) ({ e -> actions.recall(e, shown, line())?.let { onRecalled(e, it is Recall.Command) } }) else null,
             title = shown.title?.takeIf { it != tab },
             live = current,
         )

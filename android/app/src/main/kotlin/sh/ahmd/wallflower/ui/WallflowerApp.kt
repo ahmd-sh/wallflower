@@ -43,10 +43,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
+import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.program.Programs
+import sh.ahmd.wallflower.program.Walk
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.read.Activity
@@ -282,24 +284,39 @@ private fun TerminalScreen(
     LaunchedEffect(screen.prompt, seeking) {
         val s = seeking ?: return@LaunchedEffect
         val p = screen.prompt ?: return@LaunchedEffect
-        val walk = actions?.program?.walk(p, s.said)
-        if (walk == null) {
-            if (s.sent != null) seeking = null // the list went: picked, or let go
-            return@LaunchedEffect
-        }
-        if (p.options == s.sent) return@LaunchedEffect // the last step hasn't shown yet
-        val up = walk.up
-        seeking = when {
-            walk.on && s.skip == 0 -> {
-                actions.keys(walk.pick)
-                editing = s.id
-                null
+        if (p == s.from) return@LaunchedEffect // what the last keys went from: they haven't shown yet
+        val list = s.list
+        when (val walk = actions?.program?.walk(p, s.said)) {
+            null -> Unit // something between
+            is Walk.Listed -> {
+                if (list != null) return@LaunchedEffect // on the way to what a pick asks
+                // Straight to where the conversation has it, and picked, which only asks.
+                val at = nearby(s.newer, walk.last).firstOrNull()
+                if (at == null) {
+                    seeking = null // the list hasn't it: the user picks
+                    return@LaunchedEffect
+                }
+                actions.keys(walk.moves(at - walk.back) + walk.pick)
+                seeking = s.copy(list = walk, tried = listOf(at), from = p)
             }
-            up != null -> {
-                actions.keys(up)
-                s.copy(skip = if (walk.on) s.skip - 1 else s.skip, sent = p.options)
+            is Walk.Picked -> {
+                if (list == null) return@LaunchedEffect // not one this asked
+                if (walk.on) {
+                    editing = s.id
+                    seeking = null
+                    return@LaunchedEffect
+                }
+                // Not it (the list may count a message differently): back, and close by.
+                val was = s.tried.last()
+                val at = nearby(s.newer, list.last).firstOrNull { it !in s.tried }
+                if (at == null) {
+                    actions.keys(walk.back) // the user picks
+                    seeking = null
+                    return@LaunchedEffect
+                }
+                actions.keys(walk.back + list.moves(at - was) + list.pick)
+                seeking = s.copy(tried = s.tried + at, from = p)
             }
-            else -> null // at the top without it: the user picks
         }
     }
     // What a prompt did shows in the line it leaves, a moment after it goes, whoever answered it: a rewind restored at the Mac, say.
@@ -426,16 +443,16 @@ private fun TerminalScreen(
             line = { screen.line },
             status = screen.status,
             nudged = nudged,
+            seeking = seeking != null,
             onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
             onView = { view = it },
             onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
             onPrompt = { seeking = null }, // the user's own hand on it
             held = editing,
-            onRecalled = { e ->
+            onRecalled = { e, listed ->
                 recalled = Recalled(e.text, System.nanoTime())
-                // Newer messages that read the same come first in the list: passed over, as many as there are.
-                val newer = readings[p?.id]?.entries.orEmpty().dropWhile { it.id != e.id }.drop(1)
-                seeking = Seeking(e.id, e.text, skip = newer.count { it is Entry.Said && it.by == Party.User && it.text.trim() == e.text.trim() })
+                val newer = readings[p?.id]?.shown.orEmpty().dropWhile { it.id != e.id }.drop(1)
+                if (listed) seeking = Seeking(e.id, e.text, newer = newer.count { it is Entry.Said && it.by == Party.User })
             },
             tab = window?.label(),
         )
@@ -523,7 +540,7 @@ private fun TerminalScreen(
                             program = pane.command,
                             keys = bar.profileFor(pane.command, pane.program).keys,
                             connected = status is Status.Connected,
-                            line = screen.line,
+                            line = screen.line.takeIf { seeking == null }, // what's typed to ask a message back isn't the user's
                             attachments = Attachments(
                                 uploads = remember(uploads, pane.id) { uploads.filter { it.pane == pane.id } },
                                 dir = uploadDir,
@@ -623,11 +640,33 @@ private fun TerminalScreen(
 /** How long the connection is down before the screen says so. */
 private const val DOWN_UNSAID_MS = 1_500L
 
-/** How long a message asked back is looked for in what its command opens, from the last step taken. */
+/** How long a message asked back is looked for in what its command opens, from the last keys sent. */
 private const val SEEKS_MS = 10_000L
 
-/** A message asked back, looked for in what its command opens: [skip] more that read the same first, the options as they were when the last step went ([sent]). */
-private data class Seeking(val id: String, val said: String, val skip: Int = 0, val sent: List<Prompt.Option>? = null)
+/**
+ * A message asked back, looked for in the list its command opens: [id] and
+ * what it [said], with [newer] of the user's messages after it. The [list]
+ * as it opened; the places in it picked to see what they ask, the latest
+ * last ([tried]); the prompt the last keys went [from].
+ */
+private data class Seeking(
+    val id: String,
+    val said: String,
+    val newer: Int,
+    val list: Walk.Listed? = null,
+    val tried: List<Int> = emptyList(),
+    val from: Prompt? = null,
+)
+
+/** Keys that move the list's cursor [by] messages back (forward, if negative). */
+private fun Walk.Listed.moves(by: Int): List<String> = List(abs(by)) { if (by > 0) up else down }.flatten()
+
+/** Where to look for a message [at] in a list going [last] back: there, then a step either side, then two, and so on, up to [NEARBY]. */
+internal fun nearby(at: Int, last: Int): List<Int> =
+    (0..NEARBY).flatMap { d -> if (d == 0) listOf(at) else listOf(at - d, at + d) }.filter { it in 0..last }
+
+/** How far from where the conversation has a message the list it's asked back from is looked through. */
+private const val NEARBY = 3
 
 /** How soon after a prompt goes the line it leaves says what answering it did. */
 private const val SETTLES_MS = 3_000L

@@ -124,6 +124,8 @@ fun MobileView(
     doing: String? = null,
     /** When something sent was held for the prompt to be answered first (System.nanoTime); 0 if it wasn't. */
     nudged: Long = 0,
+    /** A message asked back to edit is being found in what the program lists, which isn't the user's to answer yet. */
+    seeking: Boolean = false,
     onKeys: (List<String>) -> Unit = {},
     onPicked: (Prompt, Prompt.Option) -> Unit = { _, _ -> },
     /** Sends the program its compact command, from the context button; null while it can't. */
@@ -172,6 +174,7 @@ fun MobileView(
             value = false
         }
         val status = when {
+            seeking -> Status.Seeking
             asking != null -> Status.Asking
             activity == Activity.Working -> Status.Working
             activity == Activity.Waiting -> if (unread) Status.Waiting else Status.Working
@@ -193,6 +196,13 @@ fun MobileView(
         }
         LaunchedEffect(list) { snapshotFlow { atBottom && !list.isScrollInProgress }.collect { if (it) following = true } }
         LaunchedEffect(items.size, items.lastOrNull(), status, reading.queued.size) { if (following) list.animateScrollToItem(0) }
+        // Editing a message asks the program at the foot, where what it asks comes.
+        val edit = onEdit?.let { e ->
+            { said: Entry.Said ->
+                following = true
+                e(said)
+            }
+        }
 
         val phase = when {
             !reading.loaded -> Phase.Reading
@@ -247,13 +257,14 @@ fun MobileView(
                                         }
                                         Status.Working -> Working(since, if (stopping) "stopping" else doing)
                                         Status.Waiting -> Waiting()
+                                        Status.Seeking -> Working(0, "finding your message")
                                     }
                                 }
                             }
                         }
                         items(items.asReversed(), key = { it.key }, contentType = { it::class }) {
                             Box(Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())) {
-                                ItemView(it, picture, ongoing = status != null && it === newest, beside = context.takeIf { _ -> it === newest }, onEdit = onEdit)
+                                ItemView(it, picture, ongoing = status != null && it === newest, beside = context.takeIf { _ -> it === newest }, onEdit = edit)
                             }
                         }
                         if (reading.more) item(key = "more") { Note("earlier messages are in the terminal") }
@@ -300,7 +311,7 @@ fun MobileView(
 private enum class Phase { Reading, Empty, Shown }
 
 /** What's below the conversation: a menu to answer, the program working, or waiting on something unread. */
-private enum class Status { Asking, Working, Waiting }
+private enum class Status { Asking, Working, Waiting, Seeking }
 
 private val PICTURE_HEIGHT = 260.dp
 
