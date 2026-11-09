@@ -47,6 +47,7 @@ typedef struct {
   uint8_t* scratch;
   size_t scratch_len;
   GhosttyMouseEncoder mouse; // created on first wheel event
+  int32_t cursor_was[4];      // flags, x, y, style, as the last frame had it
 } Term;
 
 static int64_t now_ns(void) {
@@ -359,9 +360,19 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeFrame(JNIEnv* env, jclass cls, j
   ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
   pthread_mutex_unlock(&t->lock);
 
+  GhosttyRenderStateCursor cursor = GHOSTTY_INIT_SIZED(GhosttyRenderStateCursor);
+  ghostty_render_state_get(t->state, GHOSTTY_RENDER_STATE_DATA_CURSOR, &cursor);
+  int32_t cursor_flags = (cursor.visible ? 1 : 0) | (cursor.blinking ? 2 : 0) |
+                         (cursor.wide_tail ? 4 : 0) | (cursor.viewport_has_value ? 8 : 0) |
+                         (cursor.password_input ? 16 : 0) |
+                         (screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE ? 32 : 0);
+  int32_t cursor_now[4] = {cursor_flags, cursor.viewport_x, cursor.viewport_y, (int32_t)cursor.visual_style};
+
   GhosttyRenderStateDirty dirty = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
   ghostty_render_state_get(t->state, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirty);
   if (force) dirty = GHOSTTY_RENDER_STATE_DIRTY_FULL;
+  // Rows are dirty only when cells change: a cursor that moved alone (an arrow at a prompt) is a frame of no rows.
+  if (dirty == GHOSTTY_RENDER_STATE_DIRTY_FALSE && memcmp(cursor_now, t->cursor_was, sizeof cursor_now) != 0) dirty = GHOSTTY_RENDER_STATE_DIRTY_PARTIAL;
   if (dirty == GHOSTTY_RENDER_STATE_DIRTY_FALSE) return 0;
 
   uint16_t cols = 0, rows = 0;
@@ -369,16 +380,11 @@ Java_sh_ahmd_wallflower_terminal_Terminal_nativeFrame(JNIEnv* env, jclass cls, j
   ghostty_render_state_get(t->state, GHOSTTY_RENDER_STATE_DATA_ROWS, &rows);
   GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
   ghostty_render_state_get(t->state, GHOSTTY_RENDER_STATE_DATA_COLORS, &colors);
-  GhosttyRenderStateCursor cursor = GHOSTTY_INIT_SIZED(GhosttyRenderStateCursor);
-  ghostty_render_state_get(t->state, GHOSTTY_RENDER_STATE_DATA_CURSOR, &cursor);
 
   size_t needed = HEADER_INTS + (size_t)rows * (ROW_HEADER_INTS + (size_t)cols * (CELL_INTS + 2 + MAX_GRAPHEME));
   if (o.cap < needed) return -(jint)(needed * sizeof(int32_t));
+  memcpy(t->cursor_was, cursor_now, sizeof cursor_now);
 
-  int32_t cursor_flags = (cursor.visible ? 1 : 0) | (cursor.blinking ? 2 : 0) |
-                         (cursor.wide_tail ? 4 : 0) | (cursor.viewport_has_value ? 8 : 0) |
-                         (cursor.password_input ? 16 : 0) |
-                         (screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE ? 32 : 0);
   put(&o, dirty == GHOSTTY_RENDER_STATE_DIRTY_FULL ? 2 : 1);
   put(&o, cols);
   put(&o, rows);
