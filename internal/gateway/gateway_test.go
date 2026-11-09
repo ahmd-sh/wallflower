@@ -357,6 +357,26 @@ func TestFocus(t *testing.T) {
 	})
 }
 
+// A window the phone shows has its pane fill the phone, as one swiped to
+// does, though the desk split it; that too is given back when it goes.
+func TestShownWindowFillsThePhone(t *testing.T) {
+	each(t, func(t *testing.T, b backend) {
+		c := b.connect(t, 60, 20)
+		s := c.state("state", anyState)
+		first := activePane(s).ID
+		c.desk.split(first)
+		c.state("two panes", func(s protocol.State) bool { return len(activeWindow(s).Panes) == 2 })
+
+		c.send(protocol.Select{Window: activeWindow(s).ID})
+		c.state("shown pane fills it", func(s protocol.State) bool { p := activePane(s); return p.ID == first && p.Cols == 60 && p.Rows == 20 })
+
+		if err := c.disconnect(); err != nil {
+			t.Fatal(err)
+		}
+		c.until("nothing held after disconnect", func() bool { return c.desk.held() == "" })
+	})
+}
+
 // A signal (ssh hangup) cancels the context; what the phone held is still
 // given back.
 func TestHeldGivenBackOnSignal(t *testing.T) {

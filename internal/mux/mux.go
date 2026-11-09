@@ -103,7 +103,8 @@ type Client interface {
 	// program asked, newlines as Enter.
 	Paste(pane, text string) error
 
-	// SelectWindow makes a window current for the client.
+	// SelectWindow makes a window current for the client, its active pane
+	// with the whole of the client's size, as Focus leaves one.
 	SelectWindow(window string) error
 	// SelectPane makes a pane its window's active one.
 	SelectPane(pane string) error

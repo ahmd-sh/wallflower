@@ -62,7 +62,7 @@ type attached struct {
 	name       string // the control client's, for keys sent through bindings
 	cols, rows int
 	last       *Session        // the latest snapshot
-	zoomed     map[string]bool // windows Focus zoomed -> zoomed before
+	zoomed     map[string]bool // windows the phone zoomed -> zoomed before
 	events     chan mux.Event
 	done       chan struct{} // closed by Close
 	exit       string        // why tmux detached the client, if it said
@@ -87,7 +87,7 @@ func (t *attached) Err() error {
 	return errors.New("detached")
 }
 
-// Close puts the zoom of windows Focus zoomed back, then detaches.
+// Close puts the zoom of windows the phone zoomed back, then detaches.
 func (t *attached) Close() error {
 	t.c.SetZoom(t.zoomed)
 	close(t.done)
@@ -188,28 +188,38 @@ func (t *attached) Paste(pane, text string) error {
 	return t.c.Paste(pane, fmt.Sprintf("wallflower-%d", os.Getpid()), text)
 }
 
-// SelectWindow selects it in the session: a bare window id would pick
-// whichever session holding it was active last.
+// SelectWindow shows it as the phone shows a window, its active pane the
+// whole of it, in the session: a bare window id would pick whichever
+// session holding it was active last.
 func (t *attached) SelectWindow(window string) error {
 	if t.last == nil {
 		return errors.New("no session yet")
 	}
-	return t.c.SelectWindow(t.last.ID, window)
+	was, err := t.c.Show(t.last.ID, window)
+	if err != nil {
+		return err
+	}
+	t.hold(window, was)
+	return nil
 }
 
 func (t *attached) SelectPane(pane string) error { return t.c.SelectPane(pane) }
 
-// Focus remembers how a window it zooms was at first, for Close.
 func (t *attached) Focus(pane string) error {
 	t.claim(pane)
 	window, was, err := t.c.Focus(pane)
 	if err != nil {
 		return err
 	}
-	if _, seen := t.zoomed[window]; !seen {
-		t.zoomed[window] = was
-	}
+	t.hold(window, was)
 	return nil
+}
+
+// hold remembers how a window the phone zoomed was at first, for Close.
+func (t *attached) hold(window string, zoomed bool) {
+	if _, seen := t.zoomed[window]; !seen {
+		t.zoomed[window] = zoomed
+	}
 }
 
 func (t *attached) Split(pane string) (string, error)      { return t.c.Split(pane) }
@@ -219,14 +229,14 @@ func (t *attached) KillPane(pane string) error             { return t.c.KillPane
 func (t *attached) KillWindow(window string) error         { return t.c.KillWindow(window) }
 
 // claim makes the window holding pane current for this client, at its
-// size, if it isn't: another client (the desktop) may have taken the window
+// size and its pane zoomed, if it isn't: another client (the desktop) may have taken the window
 // over, or the client shows a window its session doesn't have current (it
 // chooses what to show itself).
 func (t *attached) claim(pane string) {
 	for _, w := range t.windows() {
 		for _, p := range w.Panes {
 			if p.ID == pane {
-				if !w.Active || w.Width != t.cols || w.Height != t.rows {
+				if !w.Active || w.Width != t.cols || w.Height != t.rows || len(w.Panes) > 1 && !w.Zoomed {
 					t.SelectWindow(w.ID)
 				}
 				return

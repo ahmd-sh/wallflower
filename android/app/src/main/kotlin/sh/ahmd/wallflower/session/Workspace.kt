@@ -66,10 +66,10 @@ internal class Workspace(private val link: Link, private val terminals: Terminal
                 awaitingWindow = null
             }
         }
-        // What's shown is the phone's choice.
+        // What's shown is the phone's choice, and its pane the whole of the phone, though the Mac's layout came back while it was gone.
         if (!synced) {
             synced = true
-            if (!away && m.windows.none { it.id == _viewing.value && it.active }) _viewing.value?.let { link.send(Select(window = it)) }
+            if (!away) _viewing.value?.let { link.send(Select(window = it)) }
         }
         open(m)
         terminals.keep(m.windows.flatMapTo(HashSet()) { w -> w.panes.map { it.id } })

@@ -143,20 +143,29 @@ func (c *Client) Paste(pane, buffer, text string) error {
 	return c.run(fmt.Sprintf("set-buffer -b %[1]s -- %[2]s ; paste-buffer -p -d -b %[1]s -t %[3]s", Quote(buffer), QuoteText(text), pane))
 }
 
-// SelectWindow makes a window current in a session. A bare window id would
-// pick whichever session holding it was active last.
-func (c *Client) SelectWindow(session, window string) error {
-	if err := check(windowID, window); err != nil {
-		return err
-	}
-	return c.run("select-window -t " + Quote(session+":"+window))
-}
-
 func (c *Client) SelectPane(pane string) error {
 	if err := check(paneID, pane); err != nil {
 		return err
 	}
 	return c.run("select-pane -t " + pane)
+}
+
+// Show selects a window in a session, its active pane zoomed if it has
+// others, as Focus leaves one; it says whether the window was zoomed before.
+func (c *Client) Show(session, window string) (zoomed bool, err error) {
+	if err := check(windowID, window); err != nil {
+		return false, err
+	}
+	r, err := c.Command(fmt.Sprintf("display -p -t %[1]s '#{window_zoomed_flag}' ; select-window -t %[2]s ; "+
+		"if -F -t %[1]s '#{&&:#{!=:#{window_panes},1},#{!=:#{window_zoomed_flag},1}}' 'resize-pane -Z -t %[1]s'", window, Quote(session+":"+window)))
+	if err != nil {
+		return false, err
+	}
+	lines := r.Lines()
+	if len(lines) == 0 {
+		return false, errors.New("tmux: no window " + window)
+	}
+	return lines[0] == "1", nil
 }
 
 // Focus makes a pane its window's active one, zoomed if the window has
