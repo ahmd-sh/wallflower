@@ -303,7 +303,7 @@ private fun NewSession(starting: Boolean, onNew: () -> Unit) {
 }
 
 private val DASH = 10.dp
-private const val CREEP_DP_S = 8f
+private const val CREEP_DP_S = 3f
 private const val CREEP_UP_MS = 700f
 
 @Composable
