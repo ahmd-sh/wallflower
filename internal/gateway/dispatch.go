@@ -105,7 +105,9 @@ func (g *gateway) handle(f protocol.Frame) error {
 	case *protocol.Away:
 		g.away = m.On
 		if g.mux == nil {
-			g.sessions(false) // back, it sees them as they are
+			if !m.On {
+				g.sessions(false) // back, it sees them as they are
+			}
 			return nil
 		}
 		return g.mux.Away(m.On)

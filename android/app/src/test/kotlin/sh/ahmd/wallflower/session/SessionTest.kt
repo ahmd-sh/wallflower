@@ -244,6 +244,7 @@ class SessionTest {
         assertEquals(Detach, first.message<Detach>())
         first.send(Detached())
         first.caughtUp()
+        assertNull(session.back.value)
 
         val second = connect()
         first.close()
@@ -251,12 +252,39 @@ class SessionTest {
     }
 
     @Test
-    fun aSessionThatGoesLeavesThePhoneInNoneSayingWhy() {
+    fun aSessionThatGoesLeavesThePhoneInNoneSayingWhyButStillGoesBackIfItsThere() {
         val g = inSession()
         g.send(Detached("tmux exited"))
         eventually { session.place.first { it == null } }
         assertEquals("tmux exited", session.left.value)
         assertNull(session.state.value)
+        // Not the user's choice: the next connection tries it again (a multiplexer restarting, say).
+        assertEquals(Place("tmux", "\$1"), session.back.value)
+        val second = connect()
+        g.close()
+        assertEquals(ClientHello(VERSION, 56, 20, mux = "tmux", session = "\$1"), second.message<ClientHello>())
+    }
+
+    @Test
+    fun whatTheSessionGoingSwallowedComesBack() {
+        val g = inSession()
+        assertTrue(session.submit("%1", "lost with it"))
+        g.message<Submit>()
+        g.message<Ping>()
+        val back = eventually {
+            coroutineScope {
+                val first = async(start = CoroutineStart.UNDISPATCHED) { session.undelivered.first() }
+                g.send(Detached("tmux exited"))
+                first.await()
+            }
+        }
+        assertEquals(Undelivered("%1", "lost with it"), back)
+    }
+
+    @Test
+    fun aNewSessionAskedForWhileDisconnectedIsntLeftStarting() {
+        session.newSession("tmux", "work")
+        assertNull(session.starting.value)
     }
 
     @Test

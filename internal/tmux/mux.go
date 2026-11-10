@@ -32,7 +32,7 @@ func (s Server) Attach(a mux.Attach) (mux.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	version, name, err := c.Configure(a.Cols, a.Rows)
+	version, name, id, err := c.Configure(a.Cols, a.Rows)
 	if err != nil {
 		go func() {
 			for range c.Events() {
@@ -45,7 +45,7 @@ func (s Server) Attach(a mux.Attach) (mux.Client, error) {
 		return nil, err
 	}
 	t := &attached{
-		c: c, name: name, cols: a.Cols, rows: a.Rows, zoomed: map[string]bool{},
+		c: c, name: name, session: id, cols: a.Cols, rows: a.Rows, zoomed: map[string]bool{},
 		about:  mux.About{Name: "tmux", Version: version, Can: []string{mux.Bindings}},
 		events: make(chan mux.Event), done: make(chan struct{}),
 	}
@@ -61,12 +61,14 @@ type attached struct {
 	c          *Client
 	about      mux.About
 	name       string // the control client's, for keys sent through bindings
+	session    string // the id of the session it was attached to
 	cols, rows int
 	last       *Session        // the latest snapshot
 	zoomed     map[string]bool // windows the phone zoomed -> false, how they go back
 	events     chan mux.Event
 	done       chan struct{} // closed by Close
 	exit       string        // why tmux detached the client, if it said
+	ended      bool          // the session went, and tmux moved the client to another
 }
 
 func (t *attached) About() mux.About         { return t.about }
@@ -80,6 +82,8 @@ func (t *attached) Err() error {
 	default:
 	}
 	switch {
+	case t.ended:
+		return mux.ErrSessionEnded
 	case t.exit != "":
 		return errors.New(t.exit)
 	case err != nil:
@@ -97,7 +101,10 @@ func (t *attached) Close() error {
 
 // forward passes tmux's notifications on as events, those the session's
 // snapshot shows as Changed, until tmux detaches the client. Once closed,
-// it drains them, so tmux's queue never waits.
+// it drains them, so tmux's queue never waits. When the session goes,
+// tmux moves the client to another (no-detach-on-destroy, or the user's
+// detach-on-destroy off), but the session the client was in has ended:
+// so it detaches.
 func (t *attached) forward() {
 	defer close(t.events)
 	for n := range t.c.Events() {
@@ -105,8 +112,16 @@ func (t *attached) forward() {
 		switch n.Type {
 		case "output":
 			e = mux.Event{Pane: n.Pane, Data: n.Data, Seq: n.Seq}
+		case "session-changed":
+			if n.Session != t.session && !t.ended && !t.c.Has(t.session) {
+				t.ended = true
+				go t.c.Close()
+				continue
+			}
+			t.session = n.Session // moved at the Mac, with its session still there: it follows
+			e = mux.Event{Changed: true}
 		case "layout-change", "window-add", "window-close", "window-renamed", "window-pane-changed",
-			"session-window-changed", "session-changed", "session-renamed", "subscription-changed":
+			"session-window-changed", "session-renamed", "subscription-changed":
 			e = mux.Event{Changed: true}
 		case "exit":
 			t.exit = n.Value

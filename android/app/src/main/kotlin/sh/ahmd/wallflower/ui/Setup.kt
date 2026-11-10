@@ -89,7 +89,6 @@ private fun SetupForm(
     var address by remember { mutableStateOf(initial.address) }
     var user by remember { mutableStateOf(initial.user) }
     var port by remember { mutableStateOf(initial.port.toString()) }
-    var mux by remember { mutableStateOf(initial.mux) }
     var dev by remember { mutableStateOf(initial.dev) }
     var keyError by remember { mutableStateOf<String?>(null) }
     var tried by remember { mutableStateOf(false) }
@@ -101,10 +100,6 @@ private fun SetupForm(
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Field("username", user, hint = "yours on the Mac", modifier = Modifier.weight(1f)) { user = it }
         Field("port", port, KeyboardType.Number, modifier = Modifier.width(88.dp)) { port = it.filter(Char::isDigit).take(5) }
-    }
-    Text("sessions in", color = Palette.dim, style = Type.caption)
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (m in MUXES) Chip(m, mux == m) { mux = m }
     }
     if (BuildConfig.DEBUG) {
         Toggle("development transport (adb reverse, no ssh)", dev) { dev = it }
@@ -149,8 +144,8 @@ private fun SetupForm(
         if (missing == null) {
             onConnect(
                 Host(
-                    address = address.trim(), user = user.trim(), port = port.toInt(), command = initial.command, mux = mux,
-                    session = initial.session.takeIf { mux == initial.mux }, dev = dev, machine = initial.machine.takeIf { address.trim() == initial.address },
+                    address = address.trim(), user = user.trim(), port = port.toInt(), command = initial.command, mux = initial.mux,
+                    session = initial.session.takeIf { address.trim() == initial.address }, dev = dev, machine = initial.machine.takeIf { address.trim() == initial.address },
                 ),
             )
         }
@@ -171,6 +166,5 @@ private fun missing(address: String, user: String, port: String, dev: Boolean, h
 private val UNLOCKS = listOf(5 * 60, 30 * 60, 2 * 3600, 8 * 3600)
 
 /** The multiplexers the gateway can serve a session of. */
-private val MUXES = listOf("tmux", "rex")
 
 internal fun unlockLabel(seconds: Int) = if (seconds < 3600) "${seconds / 60} min" else "${seconds / 3600} h"

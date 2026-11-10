@@ -105,9 +105,17 @@ class Session(
      * The session the phone is in, or going into; null while it's in none.
      * What the user picks is where it is at once; what the gateway says it's
      * attached to moves it only once the gateway has caught up with what the
-     * user asked. A new connection asks to go back here.
+     * user asked.
      */
     val place: StateFlow<Place?> = _place.asStateFlow()
+
+    private val _back = MutableStateFlow(_place.value)
+    /**
+     * The session a new connection goes back into: the one the phone's in,
+     * or was in when it couldn't be had (its multiplexer restarting, say);
+     * none once the user leaves for none.
+     */
+    val back: StateFlow<Place?> = _back.asStateFlow()
 
     private val _starting = MutableStateFlow<String?>(null)
     /** The multiplexer a session's being started in, by name, until the phone's in it. */
@@ -127,9 +135,11 @@ class Session(
         data object Nowhere : Attachment
         data class At(val place: Place) : Attachment
     }
-    @Volatile private var attachment: Attachment = Attachment.Unknown
+    /** Guards [attachment], [asked] and where the phone is, between the link's thread and the user's. Taken after the link's lock, never before. */
+    private val placing = Any()
+    private var attachment: Attachment = Attachment.Unknown
     /** The user's latest ask of where to be, until the gateway's caught up with it. */
-    @Volatile private var asked: CompletableDeferred<Unit>? = null
+    private var asked: CompletableDeferred<Unit>? = null
     /** This connection's had the phone in a session, or in none: another means leaving that one. */
     @Volatile private var placed = false
 
@@ -151,17 +161,19 @@ class Session(
     private var quieting: Job? = null
 
     private inner class Events : Link.Events {
-        override fun hello() = _place.value.let { ClientHello(cols = grid.first, rows = grid.second, mux = it?.mux, session = it?.session, away = away) }
+        override fun hello() = _back.value.let { ClientHello(cols = grid.first, rows = grid.second, mux = it?.mux, session = it?.session, away = away) }
 
         override fun linked() {
             panes.linked()
             workspace.linked()
             reads.linked()
-            attachment = Attachment.Unknown
             placed = false
-            asked?.cancel() // the new connection's hello asks for where the user means to be
-            asked = null
-            _starting.value = null
+            synchronized(placing) {
+                attachment = Attachment.Unknown
+                asked?.cancel() // the new connection's hello asks for where the user means to be
+                asked = null
+                _starting.value = null
+            }
         }
 
         override fun up() = reads.up()
@@ -175,23 +187,31 @@ class Session(
                 }
                 is Attached -> {
                     leave()
-                    attachment = Attachment.Unknown // until its state says which session
                     _mux.value = m.mux
-                    _starting.value = null
+                    synchronized(placing) {
+                        attachment = Attachment.Unknown // until its state says which session
+                        _starting.value = null
+                    }
                 }
                 is Detached -> {
                     leave()
                     _mux.value = null
                     workspace.clear()
                     reads.clear()
-                    attachment = Attachment.Nowhere
-                    if (m.reason != null) _left.value = m.reason
-                    settle()
+                    // The session went under what was sent to it: what it didn't confirm comes back.
+                    if (m.reason != null) synchronized(link.lock) { input.down() }
+                    synchronized(placing) {
+                        attachment = Attachment.Nowhere
+                        if (m.reason != null) _left.value = m.reason
+                        settle()
+                    }
                 }
                 is State -> {
-                    _mux.value?.let { attachment = Attachment.At(Place(it.name, m.session)) }
                     workspace.state(m)
-                    settle()
+                    synchronized(placing) {
+                        _mux.value?.let { attachment = Attachment.At(Place(it.name, m.session)) }
+                        settle()
+                    }
                 }
                 is SessionList -> _sessions.value = m
                 is Reset -> panes.reset(m)
@@ -314,58 +334,81 @@ class Session(
     fun listSessions() = link.send(Sessions)
 
     /** Goes into a session, over this link: the phone's there at once, its state once the gateway's attached. */
-    fun switchTo(mux: String, session: String) {
+    fun switchTo(mux: String, session: String) = ask(Switch(mux, session)) {
         _place.value = Place(mux, session)
+        _back.value = _place.value
         _left.value = null
-        ask(Switch(mux, session))
     }
 
     /** Starts a session, named [name] or by the multiplexer, and goes into it once it's there ([starting] meanwhile). */
-    fun newSession(mux: String, name: String?) {
+    fun newSession(mux: String, name: String?) = ask(NewSession(mux, name?.trim()?.takeIf { it.isNotEmpty() })) {
         _starting.value = mux
         _left.value = null
-        ask(NewSession(mux, name?.trim()?.takeIf { it.isNotEmpty() }))
     }
 
     /** Leaves the session for none, as the user chose: nothing of it stays, and a new connection doesn't go back into it. */
     fun detach() {
-        _place.value = null
-        _left.value = null
+        ask(Detach) {
+            _place.value = null
+            _back.value = null
+            _left.value = null
+        }
         workspace.clear()
         reads.clear()
-        ask(Detach)
     }
 
     /**
-     * Sends what the user asked of where to be, then a ping: its pong says
-     * the gateway's done it, and said where that left the phone.
+     * Does what the user asked of where to be ([change], at once), and
+     * sends it, then a ping: its pong says the gateway's done it, and said
+     * where that left the phone. Not connected, nothing's sent: a new
+     * connection's hello asks for where they mean to be.
      */
-    private fun ask(m: ClientMessage) {
+    private fun ask(m: ClientMessage, change: () -> Unit) {
         val done = CompletableDeferred<Unit>()
-        asked?.cancel()
-        asked = done
-        link.send(m)
-        link.ping(PROBE_TIMEOUT_MS, done)
+        synchronized(placing) {
+            asked?.cancel()
+            asked = done
+            change()
+        }
+        val on = link.ended()
+        if (on == null || !link.send(m, on)) {
+            synchronized(placing) {
+                if (asked === done) asked = null
+                _starting.value = null
+            }
+            done.cancel()
+            return
+        }
+        link.ping(PROBE_TIMEOUT_MS, done, on)
         scope.launch {
             try {
                 done.await()
             } catch (_: Exception) {
                 return@launch
             }
-            if (asked !== done) return@launch
-            asked = null
-            _starting.value = null // there, or it couldn't be
-            settle()
+            synchronized(placing) {
+                if (asked !== done) return@launch
+                asked = null
+                _starting.value = null // there, or it couldn't be
+                settle()
+            }
         }
     }
 
-    /** With nothing the user asked still on its way, the phone's where the gateway has it. */
+    /**
+     * With nothing the user asked still on its way, the phone's where the
+     * gateway has it; a session that couldn't be had is still the one to go
+     * back into. Under [placing].
+     */
     private fun settle() {
         if (asked != null) return
         when (val a = attachment) {
             Attachment.Unknown -> Unit
             Attachment.Nowhere -> _place.value = null
-            is Attachment.At -> _place.value = a.place
+            is Attachment.At -> {
+                _place.value = a.place
+                _back.value = a.place
+            }
         }
     }
 

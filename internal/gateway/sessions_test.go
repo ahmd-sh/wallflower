@@ -2,10 +2,16 @@ package gateway
 
 import (
 	"context"
+	"errors"
+	"io"
 	"slices"
 	"testing"
+	"time"
 
+	"github.com/ahmd-sh/wallflower/internal/mux"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
+	"github.com/ahmd-sh/wallflower/internal/tmux"
+	"github.com/ahmd-sh/wallflower/internal/tmuxtest"
 )
 
 func (c *client) sessions(what string, match func([]protocol.SessionInfo) bool) []protocol.SessionInfo {
@@ -164,4 +170,59 @@ func TestASwitchThatFailsStaysDetached(t *testing.T) {
 		})
 		c.expect("the error", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Error); return ok })
 	})
+}
+
+// stuck is a multiplexer that never says what sessions it has.
+type stuck struct{ never chan struct{} }
+
+func (s stuck) Attach(mux.Attach) (mux.Client, error) { return nil, errors.New("stuck") }
+func (s stuck) Sessions() (mux.Listing, error) {
+	<-s.never
+	return mux.Listing{}, nil
+}
+func (s stuck) NewSession(string) (string, error)  { return "", errors.New("stuck") }
+func (s stuck) RenameSession(string, string) error { return errors.New("stuck") }
+func (s stuck) KillSession(string) error           { return errors.New("stuck") }
+
+// A multiplexer that doesn't answer holds up neither the others' sessions
+// nor the connection: it's said not to, and isn't asked again until it has.
+func TestAMuxThatDoesntAnswer(t *testing.T) {
+	socket, _ := tmuxtest.Server(t, 80, 24)
+	never := make(chan struct{})
+	defer close(never)
+	opts := Options{Muxes: map[string]mux.Mux{"tmux": tmux.Server{Socket: socket}, "slow": stuck{never}}, Mux: "tmux"}
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	done := make(chan error, 1)
+	go func() { done <- Serve(context.Background(), inR, outW, opts); outW.Close() }()
+	b, _ := protocol.AppendJSON(nil, protocol.ClientHello{V: protocol.Version, Cols: 80, Rows: 24})
+	inW.Write(b)
+	r := protocol.NewReader(outR)
+	next := func(what string, match func(protocol.Message) bool) protocol.Message {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+			f, err := r.Next()
+			if err != nil {
+				t.Fatalf("waiting for %s: %v", what, err)
+			}
+			if m, err := protocol.DecodeServer(f.Data); err == nil && match(m) {
+				return m
+			}
+		}
+		t.Fatalf("no %s", what)
+		return nil
+	}
+	l := next("sessions", func(m protocol.Message) bool { _, ok := m.(*protocol.SessionList); return ok }).(*protocol.SessionList)
+	if len(l.Muxes) != 2 || l.Muxes[0].Error != "slow isn't answering" || len(l.Muxes[1].Sessions) != 1 {
+		t.Errorf("sessions %+v", l)
+	}
+	start := time.Now()
+	b, _ = protocol.AppendJSON(nil, protocol.Ping{ID: 9})
+	inW.Write(b)
+	next("pong", func(m protocol.Message) bool { p, ok := m.(*protocol.Pong); return ok && p.ID == 9 })
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("pong took %v", d)
+	}
+	inW.Close()
+	<-done
 }

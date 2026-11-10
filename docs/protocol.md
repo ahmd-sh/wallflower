@@ -55,10 +55,16 @@ with why). It leaves the session for none with `detach`; when the session's
 multiplexer lets go of it (tmux exited), the gateway sends `detached`, with
 why, as it does then.
 
-While the client is attached to nothing, and not `away`, the gateway lists
-the sessions every couple of seconds, and sends `sessions` whenever they
-change: they're there to pick from. Messages about a session's panes and
-windows are refused with an `error` until it's attached to one.
+While the client is attached to nothing, not `away`, and heard from in
+the last 45 seconds (its pings will do), the gateway lists the sessions
+every couple of seconds, and sends `sessions` whenever they change: they're
+there to pick from. A multiplexer that takes more than a couple of seconds
+to list them is listed with the `error` that it isn't answering, and isn't
+asked again until it has. Messages about a session's panes and windows are
+refused with an `error` until the client is attached to one.
+
+When the session the client is in ends, it's attached to nothing, whatever
+the multiplexer does with its clients (tmux moves them to another session).
 
 `state` is resent, whole, whenever anything in it changes. When an open pane
 changes size, the gateway sends a fresh `reset` and repaint. It does the same

@@ -52,7 +52,7 @@ func (b backend) connect(t *testing.T, cols, rows int) *client {
 // are filled in.
 func (b backend) connectOpts(t *testing.T, ctx context.Context, cols, rows int, opts Options) *client {
 	t.Helper()
-	return b.dial(t, ctx, opts, protocol.ClientHello{V: protocol.Version, Cols: cols, Rows: rows})
+	return b.dial(t, ctx, opts, protocol.ClientHello{V: protocol.Version, Cols: cols, Rows: rows, Session: "t"})
 }
 
 // dial is connectOpts saying its own hello.
@@ -63,7 +63,7 @@ func (b backend) dial(t *testing.T, ctx context.Context, opts Options, hello pro
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	c := &client{t: t, w: inW, frames: make(chan protocol.Frame, 1024), done: make(chan error, 1), desk: d, cols: cols, rows: rows}
-	opts.Muxes, opts.Mux, opts.Session = map[string]mux.Mux{b.name: m}, b.name, "t"
+	opts.Muxes, opts.Mux = map[string]mux.Mux{b.name: m}, b.name
 	go func() {
 		c.done <- Serve(ctx, inR, outW, opts)
 		outW.Close()
@@ -790,6 +790,29 @@ func TestDetachedAtTheMac(t *testing.T) {
 		t.Errorf("detached %q", r)
 	}
 	c.sessions("the session, still there", func(l []protocol.SessionInfo) bool { return slices.Equal(names(l), []string{"t"}) })
+}
+
+// The phone's session ending while others are there leaves it attached to
+// nothing, told so, however tmux moves its clients (no-detach-on-destroy,
+// or detach-on-destroy off, as some set it); not in another session.
+func TestTheSessionEnding(t *testing.T) {
+	for _, off := range []bool{false, true} {
+		t.Run(map[bool]string{false: "default", true: "detach-on-destroy off"}[off], func(t *testing.T) {
+			c := tmuxBackend.connect(t, 60, 20)
+			c.state("state", anyState)
+			if off {
+				c.tmux("set", "-g", "detach-on-destroy", "off")
+			}
+			c.tmux("new-session", "-d", "-s", "other")
+			c.tmux("kill-session", "-t", "t")
+			_, m := c.expect("detached", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Detached); return ok })
+			if r := m.(*protocol.Detached).Reason; r != "that tmux session ended" {
+				t.Errorf("detached %q", r)
+			}
+			c.sessions("the other session", func(l []protocol.SessionInfo) bool { return slices.Equal(names(l), []string{"other"}) })
+			c.until("no client attached", func() bool { return strings.TrimSpace(c.tmux("list-clients", "-F", "#{client_name}")) == "" })
+		})
+	}
 }
 
 func TestUpload(t *testing.T) {

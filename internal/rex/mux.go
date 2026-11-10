@@ -263,7 +263,7 @@ func (t *attached) forward() {
 				Session string `json:"session_id"`
 			}
 			if json.Unmarshal(e.Payload, &d) == nil && d.Session == t.session {
-				t.end(errors.New("session ended"))
+				t.end(mux.ErrSessionEnded)
 				return
 			}
 		}

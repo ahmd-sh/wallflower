@@ -12,6 +12,8 @@
 // translates them.
 package mux
 
+import "errors"
+
 // A Mux is a multiplexer a client can attach to, and whose sessions it can
 // list, start and end without being attached to them.
 type Mux interface {
@@ -27,6 +29,9 @@ type Mux interface {
 	// KillSession ends a session, and the programs in it.
 	KillSession(session string) error
 }
+
+// ErrSessionEnded is why a client was detached when its session ended.
+var ErrSessionEnded = errors.New("the session ended")
 
 // A Listing is a multiplexer's sessions, in its own order (none while it
 // isn't running), and what can be done with them (CanNew...).

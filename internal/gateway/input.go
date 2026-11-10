@@ -14,6 +14,7 @@ const (
 
 // take handles a frame from the client, or keeps it behind work still held.
 func (g *gateway) take(f protocol.Frame) {
+	g.heard = time.Now()
 	g.do(func() error { return g.handle(f) })
 }
 

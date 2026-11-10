@@ -28,7 +28,6 @@ import (
 type Options struct {
 	Muxes    map[string]mux.Mux // the multiplexers a client can ask for, by name
 	Mux      string             // the one when it doesn't ask
-	Session  string             // the session in that one to attach a client to that names none; none if empty
 	Programs []program.Program  // the programs it knows, by the panes that run them; first match wins
 	Uploads  string             // where files the client sends are saved; UploadDir() if empty
 	Machine  string             // the machine's name, said in hello; MachineName() if empty
@@ -65,7 +64,9 @@ type gateway struct {
 
 	uploads uploads
 
-	listed []byte // the sessions as last sent
+	listed []byte                  // the sessions as last sent
+	asking map[string]chan listing // multiplexers that took too long to list their sessions, until they do
+	heard  time.Time               // when the client last sent anything
 }
 
 // Serve serves one client over in and out until it disconnects: attached
@@ -79,6 +80,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 		panes: map[string]*pane{}, scanners: map[string]*desktop.Scanner{},
 		programs: opts.Programs, reading: map[string]reading{}, updates: make(chan readUpdate, 16),
 		uploads: uploads{dir: opts.Uploads, open: map[string]*upload{}},
+		asking:  map[string]chan listing{}, heard: time.Now(),
 	}
 	if g.uploads.dir == "" {
 		g.uploads.dir = UploadDir()
@@ -107,14 +109,10 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 			g.mux.Close()
 		}
 	}()
-	where, session := hello.Mux, hello.Session
-	if session == "" {
-		where, session = opts.Mux, opts.Session
-	}
-	if session == "" {
+	if hello.Session == "" {
 		g.detach("")
-	} else if name, c, err := g.attach(where, session); err != nil {
-		g.detach(g.unhad(where, err))
+	} else if name, c, err := g.attach(hello.Mux, hello.Session); err != nil {
+		g.detach(g.unhad(hello.Mux, err))
 	} else {
 		g.attached(name, c)
 	}
@@ -178,7 +176,7 @@ func (g *gateway) unhad(name string, err error) string {
 	if perr != nil {
 		return perr.Error()
 	}
-	l, lerr := m.Sessions()
+	l, lerr := g.listing(name, m)
 	switch {
 	case lerr != nil:
 		return err.Error()
@@ -191,11 +189,15 @@ func (g *gateway) unhad(name string, err error) string {
 // letGo says why the multiplexer let go of the client's session: it
 // exited, or it's still there (someone detached the client).
 func (g *gateway) letGo() string {
-	if l, err := g.opts.Muxes[g.muxed].Sessions(); err != nil || !l.Running {
+	if l, err := g.listing(g.muxed, g.opts.Muxes[g.muxed]); err != nil || !l.Running {
 		return g.about.Name + " exited"
 	}
+	err := g.mux.Err()
+	if errors.Is(err, mux.ErrSessionEnded) {
+		return "that " + g.about.Name + " session ended"
+	}
 	reason := g.about.Name + " let go of the session"
-	if err := g.mux.Err(); err != nil {
+	if err != nil {
 		reason += ": " + err.Error()
 	}
 	return reason
@@ -306,7 +308,7 @@ func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readEr
 		case <-activity.C:
 			g.watchActivity()
 		case <-listing.C:
-			if g.mux == nil && !g.away {
+			if g.mux == nil && !g.away && time.Since(g.heard) < listHeard {
 				g.sessions(false)
 			}
 		case <-ctx.Done():

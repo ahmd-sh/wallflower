@@ -48,19 +48,24 @@ func ResolveSession(socket, session string) (string, error) {
 }
 
 // Configure sizes this client, subscribes it to SnapshotChanges, and says
-// tmux's version and the client's name.
-func (c *Client) Configure(cols, rows int) (version, name string, err error) {
-	r, err := c.Command(fmt.Sprintf("refresh-client -C %dx%d ; refresh-client -B %s ; display -p '#{version}\t#{client_name}'",
+// tmux's version, the client's name, and its session's id.
+func (c *Client) Configure(cols, rows int) (version, name, session string, err error) {
+	r, err := c.Command(fmt.Sprintf("refresh-client -C %dx%d ; refresh-client -B %s ; display -p '#{version}\t#{client_name}\t#{session_id}'",
 		cols, rows, Quote(SnapshotChanges)))
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	lines := r.Lines()
-	if len(lines) != 1 {
-		return "", "", fmt.Errorf("tmux: unexpected setup reply %q", lines)
+	f := strings.Split(strings.Join(lines, ""), "\t")
+	if len(lines) != 1 || len(f) != 3 {
+		return "", "", "", fmt.Errorf("tmux: unexpected setup reply %q", lines)
 	}
-	version, name, _ = strings.Cut(lines[0], "\t")
-	return version, name, nil
+	return f[0], f[1], f[2], nil
+}
+
+// Has says whether a session is still there.
+func (c *Client) Has(session string) bool {
+	return c.run("has-session -t "+Quote(session)) == nil
 }
 
 // Resize sets this client's size, which applies to windows it's the latest

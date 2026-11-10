@@ -49,7 +49,6 @@ func gatewayFlags(fs *flag.FlagSet) func() (gateway.Options, error) {
 	multiplexer := fs.String("mux", "tmux", "the multiplexer the sessions are in when the client doesn't say: tmux or rex")
 	socket := fs.String("L", "", "tmux socket name, or path if it contains a slash")
 	rexServer := fs.String("rex", "", "Rex server's socket (default: Rex.app's)")
-	session := fs.String("t", "", "session to attach to when the client doesn't name one")
 	claudeDir := fs.String("claude", defaultClaudeDir(), "Claude Code's data, for its mobile views (empty: none)")
 	plugins := fs.String("plugins", defaultPluginDir(), "plugins of your own, a JSON file each (docs/plugins.md)")
 	return func() (gateway.Options, error) {
@@ -63,7 +62,7 @@ func gatewayFlags(fs *flag.FlagSet) func() (gateway.Options, error) {
 			fmt.Fprintln(os.Stderr, "wallflower:", err)
 		}
 		// Yours first: a command one of yours claims is its, not a built-in's.
-		return gateway.Options{Muxes: muxes, Mux: *multiplexer, Session: *session, Programs: append(own, builtin...)}, nil
+		return gateway.Options{Muxes: muxes, Mux: *multiplexer, Programs: append(own, builtin...)}, nil
 	}
 }
 

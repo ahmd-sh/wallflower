@@ -72,7 +72,7 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         connect(host)
     }
 
-    /** The session the phone is in, kept so it goes back there; in none, it opens on the Mac's sessions. */
+    /** The session to go back into, kept past the app's life; with none, it opens on the Mac's sessions. */
     private fun remember(place: Place?) = update { it.copy(mux = place?.mux ?: it.mux, session = place?.session) }
 
     /** What the Mac's called, kept so it's named before the next connection's hello. */
@@ -99,7 +99,7 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         val session = Session(transport, scope, host.mux, host.session, hidden = hidden, grid = grid)
         session.away(away)
         watching = scope.launch {
-            launch { session.place.collect(::remember) }
+            launch { session.back.collect(::remember) }
             launch { session.machine.filterNotNull().collect(::named) }
             launch { session.size.collect { (cols, rows) -> prefs.edit().putInt(GRID_COLS, cols).putInt(GRID_ROWS, rows).apply() } }
             launch {

@@ -46,7 +46,7 @@ internal class Input(private val link: Link) {
     /** Messages are handled in order: everything sent before ping [id] arrived. */
     fun arrived(id: Int) = synchronized(link.lock) { pending.removeAll { it.ping <= id } }
 
-    /** The connection's gone, and with it whatever it didn't confirm. Under the link's lock. */
+    /** The connection's gone, or the session, and with it whatever it didn't confirm. Under the link's lock. */
     fun down() {
         pending.forEach { _undelivered.tryEmit(Undelivered(it.pane, it.text)) }
         pending.clear()
