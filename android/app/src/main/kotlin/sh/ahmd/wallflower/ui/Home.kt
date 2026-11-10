@@ -7,6 +7,18 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlin.math.PI
+import kotlin.math.roundToInt
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -227,8 +239,72 @@ private fun MuxSection(
             onClose = if (can(MuxSessions.CAN_KILL)) ({ onClose(s) }) else null,
         )
     }
-    if (can(MuxSessions.CAN_NEW)) Button(if (starting) "starting…" else "new session") { if (!starting) onNew() }
+    if (can(MuxSessions.CAN_NEW)) NewSession(starting, onNew)
 }
+
+/**
+ * Starts a session: a row as big as a session's, with nothing behind it,
+ * its dashed edge creeping round clockwise, from a standstill up to a slow
+ * walk as it comes in.
+ */
+@Composable
+private fun NewSession(starting: Boolean, onNew: () -> Unit) {
+    val haptics = haptics()
+    val edge = Palette.grey
+    val crept = remember { mutableFloatStateOf(0f) } // how far round, in dp
+    LaunchedEffect(Unit) {
+        val scale = coroutineContext[MotionDurationScale]?.scaleFactor ?: 1f
+        if (scale <= 0f) return@LaunchedEffect // animations are off
+        val start = withFrameNanos { it }
+        var last = start
+        while (true) withFrameNanos { now ->
+            val up = ((now - start) / 1e6f / CREEP_UP_MS).coerceAtMost(1f)
+            val dt = ((now - last) / 1e9f).coerceAtMost(0.05f) // not a leap after the app's been away
+            crept.floatValue += CREEP_DP_S * up * up * (3 - 2 * up) * dt / scale
+            last = now
+        }
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .drawBehind {
+                val w = 1.5.dp.toPx()
+                val r = 12.dp.toPx() - w / 2
+                val box = RoundRect(w / 2, w / 2, size.width - w / 2, size.height - w / 2, CornerRadius(r))
+                // Dashes that fit the edge evenly, so there's no seam where it starts.
+                val round = 2 * (box.width + box.height) - (8 - 2 * PI.toFloat()) * r
+                val period = round / (round / DASH.toPx()).roundToInt().coerceAtLeast(1)
+                val phase = period - crept.floatValue.dp.toPx() % period
+                drawPath(
+                    Path().apply { addRoundRect(box, Path.Direction.Clockwise) },
+                    edge,
+                    style = Stroke(w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(period * 0.55f, period * 0.45f), phase)),
+                )
+            }
+            .clickable(enabled = !starting) {
+                haptics.tick()
+                onNew()
+            }
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        GlyphIcon(Glyph.Plus, Palette.fg, size = 11.dp)
+        Text(
+            if (starting) "starting…" else "new session",
+            color = Palette.fg,
+            fontFamily = words,
+            fontSize = wordSize(13.sp, 16.sp),
+            maxLines = 1,
+            modifier = Modifier.padding(start = 8.dp),
+        )
+    }
+}
+
+private val DASH = 10.dp
+private const val CREEP_DP_S = 8f
+private const val CREEP_UP_MS = 700f
 
 @Composable
 private fun SessionRow(info: SessionInfo, onClick: () -> Unit, onRename: (() -> Unit)?, onClose: (() -> Unit)?) {
