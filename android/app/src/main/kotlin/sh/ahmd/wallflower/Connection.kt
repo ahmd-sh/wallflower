@@ -72,8 +72,8 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         connect(host)
     }
 
-    /** Where the phone is, kept so it comes back there; switching there isn't connecting again. */
-    private fun remember(place: Place) = update { it.copy(mux = place.mux, session = place.session) }
+    /** The session the phone is in, kept so it goes back there; in none, it opens on the Mac's sessions. */
+    private fun remember(place: Place?) = update { it.copy(mux = place?.mux ?: it.mux, session = place?.session) }
 
     /** What the Mac's called, kept so it's named before the next connection's hello. */
     private fun named(machine: String) = update { it.copy(machine = machine) }
@@ -95,11 +95,13 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         _session.value?.stop()
         watching?.cancel()
         val transport = if (host.dev) TcpTransport() else SshTransport(host, key, hostKeys)
-        val session = Session(transport, scope, host.mux, host.session, hidden = hidden)
+        val grid = prefs.getInt(GRID_COLS, 0).takeIf { it > 0 }?.let { it to prefs.getInt(GRID_ROWS, 24) } ?: (80 to 24)
+        val session = Session(transport, scope, host.mux, host.session, hidden = hidden, grid = grid)
         session.away(away)
         watching = scope.launch {
-            launch { session.place.filterNotNull().collect(::remember) }
+            launch { session.place.collect(::remember) }
             launch { session.machine.filterNotNull().collect(::named) }
+            launch { session.size.collect { (cols, rows) -> prefs.edit().putInt(GRID_COLS, cols).putInt(GRID_ROWS, rows).apply() } }
             launch {
                 session.notifications.collect { n ->
                     if (away || n.pane != session.shownPane()) {
@@ -171,6 +173,8 @@ class Connection(private val context: Context, private val scope: CoroutineScope
 }
 
 private const val HIDDEN = "hidden"
+private const val GRID_COLS = "grid_cols"
+private const val GRID_ROWS = "grid_rows"
 
 /** How many taken-back messages are kept hidden past the app's life; only the latest can still be in a view. */
 private const val KEPT_HIDDEN = 20

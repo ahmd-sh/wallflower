@@ -13,6 +13,7 @@ import (
 // Socket names it (see Options).
 type Server struct {
 	Socket string
+	Config string // the config a server started for a new session reads (tmux -f); empty is tmux's own
 }
 
 // Attach attaches a control client to the session itself, as the desktop's

@@ -1,9 +1,10 @@
-# wallflower protocol, version 5
+# wallflower protocol, version 6
 
 The client runs `wallflower serve` over ssh and talks to it on stdin/stdout. One
-connection is one client session; the gateway exits when the client
-disconnects, and has nothing to clean up beyond what the client changed for
-itself (tmux's zooms, Rex's terminals).
+connection is one client, attached to a session in one of the Mac's
+multiplexers or to none; the gateway exits when the client disconnects, and
+has nothing to clean up beyond what the client changed for itself (tmux's
+zooms, Rex's terminals).
 
 ## Frames
 
@@ -32,23 +33,32 @@ the multiplexer's own (tmux's `%3`, `@1`, `$0`); don't parse them.
 
 ## Session
 
-1. Client sends `hello`. The gateway attaches to the session it asked for in
-   the multiplexer it asked for (`mux`: `tmux` or `rex`; by default the
-   gateway's, and the session the multiplexer would pick), as any other
-   client of it does: a window switched to on the client is switched to on
-   the others too. A session that's gone is the default one instead, and so
-   is a multiplexer that isn't running: the gateway's default, in its
-   default session. One the gateway doesn't have, or the default not
-   running, gets a `bye` saying so.
-2. Gateway sends `hello`, then `state`.
+1. Client sends `hello`, naming the session it was in (`session`, in the
+   multiplexer `mux` names: `tmux` or `rex`, by default the gateway's), if
+   it was in one.
+2. Gateway sends `hello`, then attaches to that session as any other client
+   of the multiplexer does (a window switched to on the client is switched
+   to on the others too), and sends `attached`, then `state`. If the client
+   named none, or it's gone, or its multiplexer isn't running, the client
+   is attached to nothing: the gateway sends `detached` (with why, if it
+   named one), then `sessions`.
 3. Client sends `open` for the panes it wants to show. For each, the gateway
    sends `reset` and one data frame that repaints the pane, then streams its
    output.
 
-The client can switch to another session, in the same multiplexer or
-another, without connecting again: after `switch` (or `new-session`) the
-gateway sends `hello` and `state` again, as if it had. What the client had
-open of the last session is closed, and its mobile views are off.
+The client goes into another session, in the same multiplexer or another,
+without connecting again: after `switch` (or `new-session`) the gateway
+sends `attached` and `state` again. What it had open of the last session is
+closed, and its mobile views are off. One that can't be had leaves the
+client where it was: attached to nothing, it's told so again (`detached`,
+with why). It leaves the session for none with `detach`; when the session's
+multiplexer lets go of it (tmux exited), the gateway sends `detached`, with
+why, as it does then.
+
+While the client is attached to nothing, and not `away`, the gateway lists
+the sessions every couple of seconds, and sends `sessions` whenever they
+change: they're there to pick from. Messages about a session's panes and
+windows are refused with an `error` until it's attached to one.
 
 `state` is resent, whole, whenever anything in it changes. When an open pane
 changes size, the gateway sends a fresh `reset` and repaint. It does the same
@@ -59,7 +69,7 @@ client never has to resync on its own.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `cols`, `rows`, `mux`?, `session`?, `away`? | first message; `v` is 5 |
+| `hello` | `v`, `cols`, `rows`, `mux`?, `session`?, `away`? | first message; `v` is 6. `session` is the one to go back into, if it's there; see Session |
 | `resize` | `cols`, `rows` | the client's terminal area changed |
 | `open` | `pane`, `history`? | repaint and stream a pane; `history` lines of scrollback (default 1000) |
 | `close` | `pane` | stop streaming a pane |
@@ -77,10 +87,11 @@ client never has to resync on its own.
 | `ping` | `id` | |
 | `away` | `on` | the user has left the client for now (or is back): see Sizing |
 | `sessions` | | list the sessions in every multiplexer the gateway has; they come in `sessions` |
-| `switch` | `mux`, `session` | attach to another session, see Session |
-| `new-session` | `mux`, `name`? | start a session in the user's home directory, named `name` or a name of the multiplexer's own, and switch to it |
+| `switch` | `mux`, `session` | attach to a session, see Session |
+| `new-session` | `mux`, `name`? | start a session in the user's home directory, named `name` or a name of the multiplexer's own (and the multiplexer, if it isn't running and `can` `new`), and switch to it |
 | `rename-session` | `mux`, `session`, `name` | |
 | `kill-session` | `mux`, `session` | end a session and the programs in it; not the client's own |
+| `detach` | | leave the session for none, as the user chose; `detached` follows |
 
 Messages are handled in order, so a `pong` means everything sent before its
 `ping` has reached the multiplexer.
@@ -98,21 +109,30 @@ them at once takes it all as a paste, Enter and all.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `mux`, `uploads`?, `machine`?, `programs`? | the multiplexer, see below; the directory uploads are saved in; the machine's name, as its owner calls it (a Mac's Computer Name); the phone halves of the user's plugins, see below. Again after a switch |
+| `hello` | `v`, `uploads`?, `machine`?, `programs`? | first, before the client's attached to anything: the directory uploads are saved in; the machine's name, as its owner calls it (a Mac's Computer Name); the phone halves of the user's plugins, see below |
+| `attached` | `mux` | the client is attached to a session in this multiplexer, see below; `state` follows |
+| `detached` | `reason`? | the client is attached to nothing, and why if it didn't ask to be; `sessions` follows |
 | `state` | `session`, `name`, `windows` | everything in the session, see below |
 | `reset` | `pane`, `cols`, `rows` | recreate the pane's terminal at this size; the next data frame repaints it |
 | `entries` | `pane`, `reset`?, `more`?, `entries`?, `error`?, `context`?, `title`?, `queued`? | a pane's mobile view, see below |
 | `error` | `message` | a message failed |
 | `pong` | `id` | |
 | `uploaded` | `id`, `path`?, `error`? | where an upload was saved, or why it wasn't |
-| `bye` | `reason` | the gateway is exiting |
+| `bye` | `reason` | the gateway is exiting: the client's `hello` couldn't be taken |
 | `notification` | `pane`, `title`?, `body` | a desktop notification a program sent, see below |
-| `sessions` | `muxes` | each multiplexer's `name` and `sessions` (`id`, `name`, `windows`), or the `error` listing them; sent when asked, and after a session is started, renamed or ended |
+| `sessions` | `muxes` | each multiplexer's sessions, see below; sent when asked, after a session is started, renamed or ended, and whenever they change while the client is attached to nothing |
 
-`mux` is the multiplexer the session is in: its `name` (`tmux`), its
-`version`, and `can`, what it can do beyond what every one does:
-`bindings`, keys through its own key bindings. A client offers only what
-the multiplexer can.
+`mux` in `attached` is the multiplexer the session is in: its `name`
+(`tmux`), its `version`, and `can`, what it can do beyond what every one
+does: `bindings`, keys through its own key bindings. A client offers only
+what the multiplexer can.
+
+Each of `muxes` in `sessions` is a multiplexer's `name`, whether it's
+`running`, its `sessions` in its own order (`id`, `name`, `windows`), or the
+`error` listing them, and `can`, what can be done with its sessions: `new`
+(start one, and the multiplexer with it if it isn't running: tmux can, Rex's
+server is Rex's to start), `rename`, `kill`. A client knows none of them by
+name: it offers what each says it can.
 
 A window is `id`, `index`, `name`, `active` and `panes`. A pane is:
 

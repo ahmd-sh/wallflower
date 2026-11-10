@@ -2,6 +2,7 @@ package sh.ahmd.wallflower.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandHorizontally
@@ -72,9 +73,9 @@ import sh.ahmd.wallflower.ui.composer.Typing
 import androidx.compose.runtime.mutableLongStateOf
 import sh.ahmd.wallflower.screen.Prompt
 
+/** Where the user is: the session's terminals, or the Mac's sessions while the phone's in none ([Terminal] either way), or a page over them. */
 private sealed interface Screen {
     data object Terminal : Screen
-    data object Sessions : Screen
     data object Settings : Screen
     data object Setup : Screen
     data object Look : Screen
@@ -86,13 +87,13 @@ private sealed interface Screen {
 private val Screen.depth: Int
     get() = when (this) {
         Screen.Terminal -> 0
-        Screen.Sessions, Screen.Settings -> 1
+        Screen.Settings -> 1
         Screen.Setup, Screen.Look, Screen.KeyBars -> 2
         is Screen.Profile -> back.depth + 1
     }
 
 private fun Screen.previous(): Screen = when (this) {
-    Screen.Terminal, Screen.Sessions, Screen.Settings -> Screen.Terminal
+    Screen.Terminal, Screen.Settings -> Screen.Terminal
     Screen.Setup, Screen.Look, Screen.KeyBars -> Screen.Settings
     is Screen.Profile -> back
 }
@@ -130,20 +131,28 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
         setup(null)
         return
     }
+    val place by current.place.collectAsStateWithLifecycle()
     // Pages draw over the terminal, which keeps its place underneath.
     Box(Modifier.fillMaxSize()) {
         key(current) {
-            TerminalScreen(
-                current,
-                mac,
-                model,
-                unlock,
-                onProgram = { command, id -> program = command; programId = id },
-                onSessions = { screen = Screen.Sessions },
-                onSettings = { screen = Screen.Settings },
-                onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
-                onExit = onExit,
-            )
+            Crossfade(place == null, animationSpec = Motion.effect(), label = "home") { home ->
+                if (home) {
+                    LaunchedEffect(Unit) { program = null; programId = null }
+                    HomeScreen(current, mac, model, unlock, onSettings = { screen = Screen.Settings }, onExit = onExit)
+                } else {
+                    TerminalScreen(
+                        current,
+                        mac,
+                        model,
+                        unlock,
+                        onProgram = { command, id -> program = command; programId = id },
+                        onSessions = current::detach,
+                        onSettings = { screen = Screen.Settings },
+                        onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
+                        onExit = onExit,
+                    )
+                }
+            }
         }
         BackHandler(enabled = screen != Screen.Terminal) { screen = screen.previous() }
         // A page further in slides in from the right over the last; back, it slides away again.
@@ -164,7 +173,6 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
         ) { s ->
             when (s) {
                 Screen.Terminal -> Unit
-                Screen.Sessions -> SessionsScreen(current, onBack = { screen = Screen.Terminal })
                 Screen.Settings -> SettingsScreen(
                     host = host,
                     store = model.keyBar,
@@ -202,7 +210,8 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
  * every pane. What's shown is the phone's own; the Mac follows. A terminal is
  * typed into straight from the keyboard, which a tap on it brings up; a
  * mobile view is written for in the composer's box. While the connection
- * to [host] is down, it says so, and how it's coming back.
+ * to [host] is down, it says so, and how it's coming back. [onSessions]
+ * leaves the session for the Mac's sessions.
  */
 @Composable
 private fun TerminalScreen(
@@ -217,7 +226,11 @@ private fun TerminalScreen(
     onExit: () -> Unit,
 ) {
     val status by session.status.collectAsStateWithLifecycle()
-    val state by session.state.collectAsStateWithLifecycle()
+    val place by session.place.collectAsStateWithLifecycle()
+    val attached by session.state.collectAsStateWithLifecycle()
+    val state = attached?.takeIf { it.session == place?.session } // not the last session's, on the way into another
+    val mux by session.mux.collectAsStateWithLifecycle()
+    val listed by session.sessions.collectAsStateWithLifecycle()
     val terminals by session.terminals.collectAsStateWithLifecycle()
     val viewing by session.viewing.collectAsStateWithLifecycle()
     val chosen by session.chosen.collectAsStateWithLifecycle()
@@ -353,7 +366,7 @@ private fun TerminalScreen(
             status = status,
             machine = machine,
             address = address,
-            session = state?.name,
+            session = listOfNotNull(state?.name, mux?.let { "${it.name} ${it.version}" }).joinToString(" in ").ifEmpty { null },
             onSelect = { session.view(it) },
             onNew = { session.newWindow() },
             onRename = { renaming = it },
@@ -499,7 +512,8 @@ private fun TerminalScreen(
                             }
                         }
                         val first by animateFloatAsState(if (state == null) 1f else 0f, Motion.effect(), label = "connecting")
-                        if (first > 0f) Connecting(status, machine, address, session::retry, Modifier.graphicsLayer { alpha = first })
+                        val opening = listed?.muxes?.firstOrNull { it.name == place?.mux }?.sessions?.firstOrNull { it.id == place?.session }?.name ?: "the session"
+                        if (first > 0f) Connecting(status, machine, address, session::retry, Modifier.graphicsLayer { alpha = first }, opening = opening)
                         if (window != null && pane != null) {
                             Row(
                                 Modifier.align(Alignment.TopEnd).graphicsLayer { alpha = 1f - overview.zoom.value },
@@ -635,7 +649,7 @@ private fun TerminalScreen(
 }
 
 /** How long the connection is down before the screen says so. */
-private const val DOWN_UNSAID_MS = 1_500L
+internal const val DOWN_UNSAID_MS = 1_500L
 
 /** How long a message asked back is looked for in what its command opens, from the last keys sent. */
 private const val SEEKS_MS = 10_000L

@@ -2,6 +2,7 @@ package sh.ahmd.wallflower.session
 
 import android.os.SystemClock
 import java.io.InputStream
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -15,8 +16,12 @@ import sh.ahmd.wallflower.program.Command
 import sh.ahmd.wallflower.program.KeyDefaults
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.program.Supplied
+import sh.ahmd.wallflower.protocol.Attached
 import sh.ahmd.wallflower.protocol.Away
 import sh.ahmd.wallflower.protocol.ClientHello
+import sh.ahmd.wallflower.protocol.ClientMessage
+import sh.ahmd.wallflower.protocol.Detach
+import sh.ahmd.wallflower.protocol.Detached
 import sh.ahmd.wallflower.protocol.Entries
 import sh.ahmd.wallflower.protocol.KillSession
 import sh.ahmd.wallflower.protocol.NewSession
@@ -44,10 +49,13 @@ import sh.ahmd.wallflower.terminal.Terminal
 data class Place(val mux: String, val session: String)
 
 /**
- * The phone's session with the Mac's multiplexer ([mux]), over one [Link] at
- * a time, reconnecting until [stop], to the [place] it was last in. It can
- * switch to another session, or another multiplexer's, over the same link
- * ([switchTo]). Its state arrives pushed and is kept here
+ * The phone's connection to the Mac's gateway, over one [Link] at a time,
+ * reconnecting until [stop], and the session it's in ([place]), in any of
+ * the Mac's multiplexers, or none: then it's on the Mac's sessions
+ * ([sessions]), from which it goes into one ([switchTo], [newSession]). It
+ * leaves one only when the user does ([detach]), or the session goes: a
+ * new connection, after a network change or with the app back, goes back
+ * into the one it was in. Its state arrives pushed and is kept here
  * ([Workspace]), with the panes' terminals ([Terminals]) and mobile views
  * ([MobileViews]); presentation is local, and what the user does goes out as
  * intents ([Input], uploads). While the user is [away], it stays connected
@@ -56,16 +64,15 @@ data class Place(val mux: String, val session: String)
 class Session(
     transport: Transport,
     private val scope: CoroutineScope,
-    /** The multiplexer to ask the gateway for, by name, and the session in it; null for its defaults. */
+    /** The session the phone was last in, and the multiplexer it's in, by name; none if it was in none. */
     mux: String? = null,
     session: String? = null,
     clock: () -> Long = SystemClock::elapsedRealtime,
     /** What rewinds took back, kept past the app's life. */
     hidden: Hidden = Hidden.None,
+    /** The terminal's size, in cells, as last measured: what a connection says until it's measured again. */
+    grid: Pair<Int, Int> = 80 to 24,
 ) {
-    /** What a new connection asks for: where the phone was last. */
-    @Volatile private var askingMux: String? = mux
-    @Volatile private var askingSession: String? = session
     private val link: Link = Link(transport, scope, clock, Events())
     private val panes = Terminals(link)
     private val workspace = Workspace(link, panes)
@@ -90,16 +97,41 @@ class Session(
     val notifications: SharedFlow<Notification> = _notifications
 
     private val _mux = MutableStateFlow<Mux?>(null)
-    /** The multiplexer the session is in, as the gateway last said. */
+    /** The multiplexer the session is in, as the gateway last said; null while it's in none. */
     val mux: StateFlow<Mux?> = _mux.asStateFlow()
 
-    private val _place = MutableStateFlow<Place?>(null)
-    /** Where the phone is, once the gateway says: hello's multiplexer, and the session its state is of. */
+    private val _place = MutableStateFlow(if (mux != null && session != null) Place(mux, session) else null)
+    /**
+     * The session the phone is in, or going into; null while it's in none.
+     * What the user picks is where it is at once; what the gateway says it's
+     * attached to moves it only once the gateway has caught up with what the
+     * user asked. A new connection asks to go back here.
+     */
     val place: StateFlow<Place?> = _place.asStateFlow()
 
+    private val _starting = MutableStateFlow<String?>(null)
+    /** The multiplexer a session's being started in, by name, until the phone's in it. */
+    val starting: StateFlow<String?> = _starting.asStateFlow()
+
+    private val _left = MutableStateFlow<String?>(null)
+    /** Why the phone's in no session, when it didn't choose that: the session or its multiplexer went, or one it asked for couldn't be had. */
+    val left: StateFlow<String?> = _left.asStateFlow()
+
     private val _sessions = MutableStateFlow<SessionList?>(null)
-    /** The sessions in every multiplexer on the Mac, as last listed ([listSessions]). */
+    /** The sessions in every multiplexer on the Mac, as last listed: pushed while the phone's in none, or asked for ([listSessions]). */
     val sessions: StateFlow<SessionList?> = _sessions.asStateFlow()
+
+    /** Where the gateway has the phone: the session its last state was of, null while attached to nothing, unknown until it says. */
+    private sealed interface Attachment {
+        data object Unknown : Attachment
+        data object Nowhere : Attachment
+        data class At(val place: Place) : Attachment
+    }
+    @Volatile private var attachment: Attachment = Attachment.Unknown
+    /** The user's latest ask of where to be, until the gateway's caught up with it. */
+    @Volatile private var asked: CompletableDeferred<Unit>? = null
+    /** This connection's had the phone in a session, or in none: another means leaving that one. */
+    @Volatile private var placed = false
 
     private val _machine = MutableStateFlow<String?>(null)
     /** The Mac's name, as the gateway last said. */
@@ -109,19 +141,27 @@ class Session(
     /** Where the gateway saves uploads: paths under it in what's sent are uploads, pasted on their own. */
     val uploadDir: StateFlow<String?> = _uploadDir.asStateFlow()
 
-    @Volatile private var grid = 80 to 24
+    @Volatile private var grid = grid
+    private val _size = MutableStateFlow(grid)
+    /** The terminal's size, in cells, as the gateway was last told it. */
+    val size: StateFlow<Pair<Int, Int>> = _size.asStateFlow()
     private var started = false
     private var resizing: Job? = null
     @Volatile private var away = false
     private var quieting: Job? = null
 
     private inner class Events : Link.Events {
-        override fun hello() = ClientHello(cols = grid.first, rows = grid.second, mux = askingMux, session = askingSession, away = away)
+        override fun hello() = _place.value.let { ClientHello(cols = grid.first, rows = grid.second, mux = it?.mux, session = it?.session, away = away) }
 
         override fun linked() {
             panes.linked()
             workspace.linked()
             reads.linked()
+            attachment = Attachment.Unknown
+            placed = false
+            asked?.cancel() // the new connection's hello asks for where the user means to be
+            asked = null
+            _starting.value = null
         }
 
         override fun up() = reads.up()
@@ -129,16 +169,29 @@ class Session(
         override fun message(m: ServerMessage) {
             when (m) {
                 is ServerHello -> {
-                    _mux.value = m.mux
-                    askingMux = m.mux.name
                     _uploadDir.value = m.uploads
                     m.machine?.let { _machine.value = it }
                     Programs.supply(m.programs.associate { it.id to it.program() })
                 }
+                is Attached -> {
+                    leave()
+                    attachment = Attachment.Unknown // until its state says which session
+                    _mux.value = m.mux
+                    _starting.value = null
+                }
+                is Detached -> {
+                    leave()
+                    _mux.value = null
+                    workspace.clear()
+                    reads.clear()
+                    attachment = Attachment.Nowhere
+                    if (m.reason != null) _left.value = m.reason
+                    settle()
+                }
                 is State -> {
-                    askingSession = m.session
-                    askingMux?.let { _place.value = Place(it, m.session) }
+                    _mux.value?.let { attachment = Attachment.At(Place(it.name, m.session)) }
                     workspace.state(m)
+                    settle()
                 }
                 is SessionList -> _sessions.value = m
                 is Reset -> panes.reset(m)
@@ -162,8 +215,12 @@ class Session(
         if (started) return
         started = true
         grid = cols to rows
+        _size.value = grid
         link.start()
     }
+
+    /** Connects at the size last measured, before the terminal's on screen to measure it. */
+    fun start() = start(grid.first, grid.second)
 
     fun stop() {
         started = false
@@ -235,6 +292,7 @@ class Session(
         resizing = scope.launch {
             if (!ahead) delay(RESIZE_SETTLE_MS)
             link.send(Resize(cols, rows))
+            _size.value = cols to rows
         }
     }
 
@@ -255,11 +313,71 @@ class Session(
     /** Asks for the sessions in every multiplexer, which come in [sessions]. */
     fun listSessions() = link.send(Sessions)
 
-    /** Moves to another session, over this link; the gateway says hello again, and its state follows. */
-    fun switchTo(mux: String, session: String) = link.send(Switch(mux, session))
+    /** Goes into a session, over this link: the phone's there at once, its state once the gateway's attached. */
+    fun switchTo(mux: String, session: String) {
+        _place.value = Place(mux, session)
+        _left.value = null
+        ask(Switch(mux, session))
+    }
 
-    /** Starts a session, named [name] or by the multiplexer, and moves to it. */
-    fun newSession(mux: String, name: String?) = link.send(NewSession(mux, name?.trim()?.takeIf { it.isNotEmpty() }))
+    /** Starts a session, named [name] or by the multiplexer, and goes into it once it's there ([starting] meanwhile). */
+    fun newSession(mux: String, name: String?) {
+        _starting.value = mux
+        _left.value = null
+        ask(NewSession(mux, name?.trim()?.takeIf { it.isNotEmpty() }))
+    }
+
+    /** Leaves the session for none, as the user chose: nothing of it stays, and a new connection doesn't go back into it. */
+    fun detach() {
+        _place.value = null
+        _left.value = null
+        workspace.clear()
+        reads.clear()
+        ask(Detach)
+    }
+
+    /**
+     * Sends what the user asked of where to be, then a ping: its pong says
+     * the gateway's done it, and said where that left the phone.
+     */
+    private fun ask(m: ClientMessage) {
+        val done = CompletableDeferred<Unit>()
+        asked?.cancel()
+        asked = done
+        link.send(m)
+        link.ping(PROBE_TIMEOUT_MS, done)
+        scope.launch {
+            try {
+                done.await()
+            } catch (_: Exception) {
+                return@launch
+            }
+            if (asked !== done) return@launch
+            asked = null
+            _starting.value = null // there, or it couldn't be
+            settle()
+        }
+    }
+
+    /** With nothing the user asked still on its way, the phone's where the gateway has it. */
+    private fun settle() {
+        if (asked != null) return
+        when (val a = attachment) {
+            Attachment.Unknown -> Unit
+            Attachment.Nowhere -> _place.value = null
+            is Attachment.At -> _place.value = a.place
+        }
+    }
+
+    /** What was kept of the session the phone was in goes, as for a new connection, if this one's had it in one. */
+    private fun leave() {
+        if (placed) synchronized(link.lock) {
+            panes.linked()
+            workspace.linked()
+            reads.linked()
+        }
+        placed = true
+    }
 
     fun renameSession(mux: String, session: String, name: String) = link.send(RenameSession(mux, session, name))
 

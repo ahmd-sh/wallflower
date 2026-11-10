@@ -33,8 +33,9 @@ func (s Server) with(session string, f func(c *control) error) error {
 	return f(c)
 }
 
-// Sessions lists the server's sessions, none if there's no server.
-func (s Server) Sessions() ([]mux.Listed, error) {
+// Sessions lists the server's sessions. With no server there are none,
+// and none can be started: the server is Rex's to start.
+func (s Server) Sessions() (mux.Listing, error) {
 	var list []mux.Listed
 	err := s.with("", func(c *control) error {
 		var ls struct {
@@ -61,9 +62,9 @@ func (s Server) Sessions() ([]mux.Listed, error) {
 		return nil
 	})
 	if isNoServer(err) {
-		return nil, nil
+		return mux.Listing{}, nil
 	}
-	return list, err
+	return mux.Listing{Running: true, Sessions: list, Can: []string{mux.CanNew, mux.CanRename, mux.CanKill}}, err
 }
 
 func isNoServer(err error) bool {

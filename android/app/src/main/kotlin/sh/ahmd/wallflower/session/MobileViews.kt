@@ -40,6 +40,9 @@ internal class MobileViews(private val link: Link, private val clock: () -> Long
 
     fun linked() = asked.clear()
 
+    /** The session's gone: so are its mobile views. */
+    fun clear() = _readings.update { emptyMap() }
+
     /** A new connection is asked for them all again. */
     fun up() = ask()
 

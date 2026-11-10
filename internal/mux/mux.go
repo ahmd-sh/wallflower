@@ -17,16 +17,33 @@ package mux
 type Mux interface {
 	Attach(a Attach) (Client, error)
 
-	// Sessions lists its sessions, in its own order; none if it isn't
-	// running.
-	Sessions() ([]Listed, error)
+	// Sessions lists its sessions, and what can be done with them.
+	Sessions() (Listing, error)
 	// NewSession starts a session in the user's home directory, with one
-	// shell, named name or a name of its own if that's empty, and says its id.
+	// shell, named name or a name of its own if that's empty, and says its
+	// id; it starts the multiplexer too if it isn't running, if it Can.
 	NewSession(name string) (string, error)
 	RenameSession(session, name string) error
 	// KillSession ends a session, and the programs in it.
 	KillSession(session string) error
 }
+
+// A Listing is a multiplexer's sessions, in its own order (none while it
+// isn't running), and what can be done with them (CanNew...).
+type Listing struct {
+	Running  bool
+	Sessions []Listed
+	Can      []string
+}
+
+// What can be done with a multiplexer's sessions, as Listing.Can and the
+// wire name it: start one, starting the multiplexer if it isn't running;
+// rename one; end one.
+const (
+	CanNew    = "new"
+	CanRename = "rename"
+	CanKill   = "kill"
+)
 
 // A Listed session is one as its multiplexer lists them.
 type Listed struct {

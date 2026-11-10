@@ -63,6 +63,9 @@ func (g *gateway) submit(m *protocol.Submit) error {
 // like Claude Code, takes it all as a paste, Enter and all, and nothing is
 // submitted.
 func (g *gateway) typeOut(pane string, runs []run, enter bool) error {
+	if g.mux == nil {
+		return errNowhere // detached while it waited
+	}
 	typed := false
 	for i, r := range runs {
 		var err error
@@ -87,7 +90,7 @@ func (g *gateway) typeOut(pane string, runs []run, enter bool) error {
 	case !enter:
 		return nil
 	case typed:
-		g.hold(enterSettle, func() error { return g.mux.Keys(pane, "Enter") })
+		g.hold(enterSettle, func() error { return g.keys(pane, []string{"Enter"}, false) })
 		return nil
 	}
 	return g.mux.Keys(pane, "Enter")
@@ -97,6 +100,8 @@ func (g *gateway) typeOut(pane string, runs []run, enter bool) error {
 // keyboard attached to the multiplexer.
 func (g *gateway) keys(pane string, keys []string, bindings bool) error {
 	switch {
+	case g.mux == nil:
+		return errNowhere
 	case len(keys) == 0:
 		return nil
 	case bindings:

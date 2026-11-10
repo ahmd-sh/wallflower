@@ -78,7 +78,7 @@ type tmuxDesk struct {
 
 func startTmux(t *testing.T) (mux.Mux, desk) {
 	socket, run := tmuxtest.Server(t, 120, 40)
-	return tmux.Server{Socket: socket}, &tmuxDesk{t: t, socket: socket, tmux: run}
+	return tmux.Server{Socket: socket, Config: "/dev/null"}, &tmuxDesk{t: t, socket: socket, tmux: run}
 }
 
 func (d *tmuxDesk) run(pane, line string) { d.tmux("send-keys", "-t", pane, line, "Enter") }

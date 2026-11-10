@@ -61,7 +61,7 @@ import sh.ahmd.wallflower.session.Status
 @Composable
 @ReadOnlyComposable
 internal fun statusColor(status: Status): Color = when (status) {
-    is Status.Connected -> Palette.green
+    Status.Connected -> Palette.green
     Status.Connecting, is Status.Disconnected -> Palette.yellow
     is Status.NeedsUser -> Palette.orange
 }
@@ -94,7 +94,8 @@ internal fun ConnectionDot(status: Status, modifier: Modifier = Modifier) {
  * The connection's way in, at the end of the tab bar: its dot says how it
  * is. Its menu names the Mac ([machine], at [address]) and the [session],
  * says when it tries next and why the last try failed, and offers a retry
- * then, the sessions, settings and disconnecting.
+ * then, the sessions (leaving this one, if [onSessions]), settings and
+ * disconnecting.
  */
 @Composable
 internal fun ConnectionButton(
@@ -103,7 +104,7 @@ internal fun ConnectionButton(
     address: String,
     session: String?,
     onRetry: () -> Unit,
-    onSessions: () -> Unit,
+    onSessions: (() -> Unit)?,
     onSettings: () -> Unit,
     onExit: () -> Unit,
 ) {
@@ -122,7 +123,7 @@ internal fun ConnectionButton(
             onDismiss = { open = false },
             actions = listOfNotNull(
                 if (status.waiting) MenuAction("retry now", Palette.green) { open = false; onRetry() } else null,
-                MenuAction("sessions") { open = false; onSessions() },
+                onSessions?.let { MenuAction("sessions") { open = false; it() } },
                 MenuAction("settings") { open = false; onSettings() },
                 MenuAction("disconnect", Palette.red) { open = false; onExit() },
             ),
@@ -138,9 +139,10 @@ internal fun ConnectionButton(
     }
 }
 
+/** How the connection is, in words, and where it has the phone ([session]: its name and multiplexer), if anywhere. */
 @Composable
-private fun statusLine(status: Status, session: String?): String = when (status) {
-    is Status.Connected -> "connected · " + listOfNotNull(session, status.mux.name + " " + status.mux.version).joinToString(" in ")
+internal fun statusLine(status: Status, session: String?): String = when (status) {
+    Status.Connected -> listOfNotNull("connected", session).joinToString(" · ")
     Status.Connecting -> "connecting…"
     is Status.Disconnected -> {
         val left = if (status.trying) 0 else secondsUntil(status.retryAt)
@@ -182,7 +184,7 @@ internal fun Reconnecting(status: Status, machine: String, onRetry: () -> Unit) 
  * above says what to do, and only the flower stays.
  */
 @Composable
-internal fun Connecting(status: Status, machine: String, address: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+internal fun Connecting(status: Status, machine: String, address: String, onRetry: () -> Unit, modifier: Modifier = Modifier, opening: String? = null) {
     Column(
         modifier.fillMaxSize().padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -195,7 +197,7 @@ internal fun Connecting(status: Status, machine: String, address: String, onRetr
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("connecting to $machine…", color = Palette.fg, style = Type.body)
+            Text(if (status == Status.Connected && opening != null) "opening $opening…" else "connecting to $machine…", color = Palette.fg, style = Type.body)
             Text(address, color = Palette.dim, fontFamily = Mono, fontSize = 11.sp)
             nextTry(status, machine)?.let { Text(it, color = Palette.grey, style = Type.caption, textAlign = TextAlign.Center) }
             RetryNow(status, onRetry)

@@ -23,7 +23,6 @@ import sh.ahmd.wallflower.protocol.ErrorMessage
 import sh.ahmd.wallflower.protocol.Frame
 import sh.ahmd.wallflower.protocol.FrameReader
 import sh.ahmd.wallflower.protocol.FrameWriter
-import sh.ahmd.wallflower.protocol.Mux
 import sh.ahmd.wallflower.protocol.Ping
 import sh.ahmd.wallflower.protocol.Pong
 import sh.ahmd.wallflower.protocol.ServerHello
@@ -32,7 +31,7 @@ import sh.ahmd.wallflower.protocol.VERSION
 
 sealed interface Status {
     data object Connecting : Status
-    data class Connected(val mux: Mux) : Status
+    data object Connected : Status
     /**
      * Retrying on its own: [trying] now, or next at [retryAt]; down since
      * [since], its last try ended for [reason]. Times are the session's
@@ -221,10 +220,8 @@ internal class Link(
         when (m) {
             is ServerHello -> {
                 if (m.v != VERSION) throw Blocked.Outdated(m.v, VERSION)
-                // Hello again: the session switched, so what was kept of the last goes, as for a new connection.
-                if (greeted) synchronized(lock) { events.linked() }
                 greeted = true
-                _status.value = Status.Connected(m.mux)
+                _status.value = Status.Connected
             }
             is Pong -> {
                 // Any pong says the link is alive; only the newest leaves nothing outstanding. (Uploads keep pings in flight.)

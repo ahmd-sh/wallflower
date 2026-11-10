@@ -9,7 +9,7 @@ import kotlinx.serialization.json.Json
 // The wire format is defined in docs/protocol.md. Field order matches the Go
 // structs so both sides encode identical bytes (checked by the golden tests).
 
-const val VERSION = 5
+const val VERSION = 6
 const val DEFAULT_HISTORY = 1000
 
 val WireJson = Json {
@@ -22,7 +22,12 @@ val WireJson = Json {
 @Serializable
 sealed interface ClientMessage
 
-/** The first message: [mux] names the multiplexer the session is in (tmux, rex; null: the gateway's default), [away] as in [Away]. */
+/**
+ * The first message: where the app was ([session], in the multiplexer [mux]
+ * names, tmux or rex; null: the gateway's default), to attach there again if
+ * it's there; with no [session], or one that's gone, it's attached to
+ * nothing ([Detached]). [away] as in [Away].
+ */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @SerialName("hello")
@@ -135,12 +140,12 @@ data class Away(val on: Boolean) : ClientMessage
 @SerialName("sessions")
 data object Sessions : ClientMessage
 
-/** Attaches to another session, in this multiplexer or another: another hello says which, and state follows, as if connected again. */
+/** Attaches to a session, in any multiplexer: [Attached] says which, and state follows; failing while attached to nothing, [Detached] says why. */
 @Serializable
 @SerialName("switch")
 data class Switch(val mux: String, val session: String) : ClientMessage
 
-/** Starts a session, named [name] or a name of the multiplexer's own, and switches to it. */
+/** Starts a session, named [name] or a name of the multiplexer's own (and the multiplexer, if it isn't running and [MuxSessions.CAN_NEW]), and switches to it. */
 @Serializable
 @SerialName("new-session")
 data class NewSession(val mux: String, val name: String? = null) : ClientMessage
@@ -154,15 +159,19 @@ data class RenameSession(val mux: String, val session: String, val name: String)
 @SerialName("kill-session")
 data class KillSession(val mux: String, val session: String) : ClientMessage
 
+/** Leaves the session for none, as the user chose: [Detached] follows. */
+@Serializable
+@SerialName("detach")
+data object Detach : ClientMessage
+
 @Serializable
 sealed interface ServerMessage
 
-/** Comes first, and again whenever the app switches session. */
+/** Comes first, before the app is attached to anything. */
 @Serializable
 @SerialName("hello")
 data class ServerHello(
     val v: Int,
-    val mux: Mux,
     /** Where uploads are saved: paths under it are uploads. */
     val uploads: String? = null,
     /** The machine's name, as its owner calls it (a Mac's Computer Name). */
@@ -188,6 +197,21 @@ data class KeyBarData(val name: String, val keys: List<String>, val stop: List<S
 /** A command a program takes, as the composer offers it. */
 @Serializable
 data class CommandData(val text: String, val about: String = "")
+
+/** The app is attached to a session in [mux]; its state follows. */
+@Serializable
+@SerialName("attached")
+data class Attached(val mux: Mux) : ServerMessage
+
+/**
+ * The app is attached to nothing: it never was this connection, it asked
+ * ([Detach]), or the session or its multiplexer went, or one it asked for
+ * couldn't be had ([reason] says). The sessions follow, and come again
+ * whenever they change, until it's attached.
+ */
+@Serializable
+@SerialName("detached")
+data class Detached(val reason: String? = null) : ServerMessage
 
 /** The multiplexer the session is in (tmux), its version, and what it [can] do beyond what every one does. */
 @Serializable
@@ -309,14 +333,27 @@ data class Uploaded(val id: String, val path: String? = null, val error: String?
 @SerialName("notification")
 data class Notification(val pane: String, val title: String? = null, val body: String = "", val bell: Boolean = false) : ServerMessage
 
-/** The sessions in each multiplexer the gateway has; sent when asked, and after one is started, renamed or ended. */
+/** The sessions in each multiplexer the gateway has; sent when asked, after one is started, renamed or ended, and whenever they change while the app is attached to nothing. */
 @Serializable
 @SerialName("sessions")
 data class SessionList(val muxes: List<MuxSessions>) : ServerMessage
 
-/** One multiplexer's sessions, in its own order, or why they can't be listed. */
+/** One multiplexer's sessions, in its own order, or why they can't be listed; whether it's [running], and what [can] be done with its sessions. */
 @Serializable
-data class MuxSessions(val name: String, val sessions: List<SessionInfo> = emptyList(), val error: String? = null)
+data class MuxSessions(
+    val name: String,
+    val running: Boolean = false,
+    val sessions: List<SessionInfo> = emptyList(),
+    val can: List<String> = emptyList(),
+    val error: String? = null,
+) {
+    companion object {
+        /** A session can be started, and the multiplexer with it if it isn't running. */
+        const val CAN_NEW = "new"
+        const val CAN_RENAME = "rename"
+        const val CAN_KILL = "kill"
+    }
+}
 
 @Serializable
 data class SessionInfo(val id: String, val name: String, val windows: Int = 0)

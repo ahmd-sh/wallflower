@@ -9,10 +9,17 @@ import (
 
 const maxSize = 1000 // columns or rows, at most
 
+// errNowhere is a client attached to nothing asking for what only one
+// attached to a session can have.
+var errNowhere = errors.New("not attached to a session: switch to one first")
+
 // handle does what a frame from the client asks.
 func (g *gateway) handle(f protocol.Frame) error {
 	switch f.Type {
 	case protocol.FrameData:
+		if g.mux == nil {
+			return errNowhere
+		}
 		return g.typeBytes(f.ID, f.Data)
 	case protocol.FrameUpload:
 		path, err := g.uploads.write(f.ID, f.Data)
@@ -26,12 +33,18 @@ func (g *gateway) handle(f protocol.Frame) error {
 	if err != nil {
 		return err
 	}
+	if g.mux == nil && inSession(m) {
+		return errNowhere
+	}
 	switch m := m.(type) {
 	case *protocol.Resize:
 		if !validSize(m.Cols, m.Rows) {
 			return fmt.Errorf("bad size %dx%d", m.Cols, m.Rows)
 		}
 		g.cols, g.rows = m.Cols, m.Rows
+		if g.mux == nil {
+			return nil
+		}
 		return g.mux.Resize(m.Cols, m.Rows)
 	case *protocol.Open:
 		return g.open(m.Pane, m.History)
@@ -91,9 +104,16 @@ func (g *gateway) handle(f protocol.Frame) error {
 		return nil
 	case *protocol.Away:
 		g.away = m.On
+		if g.mux == nil {
+			g.sessions(false) // back, it sees them as they are
+			return nil
+		}
 		return g.mux.Away(m.On)
 	case *protocol.Sessions:
-		g.sessions()
+		g.sessions(true)
+		return nil
+	case *protocol.Detach:
+		g.detach("")
 		return nil
 	case *protocol.Switch:
 		return g.switchTo(m.Mux, m.Session)
@@ -107,6 +127,16 @@ func (g *gateway) handle(f protocol.Frame) error {
 		return errors.New("already said hello")
 	}
 	return fmt.Errorf("unhandled message %q", m.Type())
+}
+
+// inSession is whether m is about the session the client's attached to.
+func inSession(m protocol.Message) bool {
+	switch m.(type) {
+	case *protocol.Open, *protocol.Close, *protocol.Keys, *protocol.Submit, *protocol.Select, *protocol.Focus,
+		*protocol.Split, *protocol.New, *protocol.Rename, *protocol.Kill, *protocol.Read, *protocol.Picture:
+		return true
+	}
+	return false
 }
 
 func validSize(cols, rows int) bool {

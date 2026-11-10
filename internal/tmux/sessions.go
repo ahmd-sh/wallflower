@@ -21,7 +21,11 @@ func (s Server) tmux(args ...string) (string, error) {
 
 // run runs a tmux command in env (nil: the gateway's).
 func (s Server) run(env []string, args ...string) (string, error) {
-	cmd := exec.Command(binary(), append(append(socketArgs(s.Socket), "-u"), args...)...)
+	flags := append(socketArgs(s.Socket), "-u")
+	if s.Config != "" {
+		flags = append(flags, "-f", s.Config)
+	}
+	cmd := exec.Command(binary(), append(flags, args...)...)
 	cmd.Env = env
 	if home, err := os.UserHomeDir(); err == nil {
 		cmd.Dir = home
@@ -39,24 +43,26 @@ func notRunning(err error) bool {
 	return strings.Contains(msg, "no server running") || strings.Contains(msg, "error connecting to")
 }
 
-func (s Server) Sessions() ([]mux.Listed, error) {
+// Sessions can always be started: tmux starts with the first.
+func (s Server) Sessions() (mux.Listing, error) {
+	l := mux.Listing{Can: []string{mux.CanNew, mux.CanRename, mux.CanKill}}
 	out, err := s.tmux("list-sessions", "-F", "#{session_id}\t#{session_windows}\t#{session_name}")
 	if err != nil {
 		if notRunning(err) {
-			return nil, nil
+			return l, nil
 		}
-		return nil, err
+		return l, err
 	}
-	var list []mux.Listed
+	l.Running = true
 	for _, line := range strings.Split(out, "\n") {
 		f := strings.SplitN(line, "\t", 3)
 		if len(f) != 3 {
 			continue
 		}
 		windows, _ := strconv.Atoi(f[1])
-		list = append(list, mux.Listed{ID: f[0], Name: f[2], Windows: windows})
+		l.Sessions = append(l.Sessions, mux.Listed{ID: f[0], Name: f[2], Windows: windows})
 	}
-	return list, nil
+	return l, nil
 }
 
 // NewSession asks with -E, so the session doesn't take the ssh

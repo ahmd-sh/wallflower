@@ -52,6 +52,7 @@ class FramesTest {
             NewSession("tmux"),
             RenameSession("tmux", "$2", "play"),
             KillSession("tmux", "$2"),
+            Detach,
         ).forEach(w::send)
         w.sendData("%1", "\u001b[<64;10;5M".encodeToByteArray())
         w.sendUpload("u1", byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0), length = 3)
@@ -67,7 +68,8 @@ class FramesTest {
         val r = FrameReader(ByteArrayInputStream(golden("server.bin")))
         fun message() = assertIs<Frame.Message>(r.next()).message
 
-        assertEquals(ServerHello(VERSION, Mux("tmux", "3.8", listOf(Mux.BINDINGS)), uploads = "/Users/me/Library/Caches/wallflower/uploads", machine = "vishingstar"), message())
+        assertEquals(ServerHello(VERSION, uploads = "/Users/me/Library/Caches/wallflower/uploads", machine = "vishingstar"), message())
+        assertEquals(Attached(Mux("tmux", "3.8", listOf(Mux.BINDINGS))), message())
         val state = assertIs<State>(message())
         assertEquals("o", state.name)
         val (claude, shell, other) = state.windows.single().panes
@@ -117,11 +119,17 @@ class FramesTest {
         assertEquals("gone" to 0, gone.id to gone.length)
         assertEquals(Uploaded("u1", path = "/Users/me/Library/Caches/wallflower/uploads/PXL-1.jpg"), message())
         assertEquals(Uploaded("u2", error = "too big"), message())
+        assertEquals(Detached(), message())
+        assertEquals(Detached("tmux exited"), message())
         assertEquals(
             SessionList(
                 listOf(
-                    MuxSessions("rex", error = "rex: no server at /x/server.sock"),
-                    MuxSessions("tmux", listOf(SessionInfo("$1", "o", 3), SessionInfo("$2", "work ✓", 1))),
+                    MuxSessions("rex"),
+                    MuxSessions(
+                        "tmux", running = true, sessions = listOf(SessionInfo("$1", "o", 3), SessionInfo("$2", "work ✓", 1)),
+                        can = listOf(MuxSessions.CAN_NEW, MuxSessions.CAN_RENAME, MuxSessions.CAN_KILL),
+                    ),
+                    MuxSessions("zellij", can = listOf(MuxSessions.CAN_NEW), error = "zellij: permission denied"),
                 ),
             ),
             message(),

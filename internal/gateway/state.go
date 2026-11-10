@@ -17,6 +17,9 @@ const stateDelay = 15 * time.Millisecond // a multiplexer may announce one chang
 // and mobile views in line with it.
 func (g *gateway) sendState() {
 	g.dirty = false
+	if g.mux == nil {
+		return
+	}
 	s, err := g.mux.Snapshot()
 	if err != nil {
 		g.send(protocol.Error{Message: err.Error()})

@@ -1,15 +1,22 @@
 package gateway
 
 import (
+	"bytes"
 	"errors"
 	"sort"
+	"time"
 
-	"github.com/ahmd-sh/wallflower/internal/desktop"
 	"github.com/ahmd-sh/wallflower/internal/protocol"
 )
 
-// sessions sends the sessions in every multiplexer the gateway has.
-func (g *gateway) sessions() {
+// listEvery is how often the sessions are listed again while the client
+// is attached to nothing, and there to see them: what's listed is sent
+// when it changes.
+const listEvery = 2 * time.Second
+
+// sessions sends the sessions in every multiplexer the gateway has, unless
+// they're as last sent and it's not asked to.
+func (g *gateway) sessions(asked bool) {
 	names := make([]string, 0, len(g.opts.Muxes))
 	for name := range g.opts.Muxes {
 		names = append(names, name)
@@ -17,50 +24,60 @@ func (g *gateway) sessions() {
 	sort.Strings(names)
 	list := protocol.SessionList{Muxes: []protocol.MuxSessions{}}
 	for _, name := range names {
-		ms := protocol.MuxSessions{Name: name, Sessions: []protocol.SessionInfo{}}
-		listed, err := g.opts.Muxes[name].Sessions()
+		l, err := g.opts.Muxes[name].Sessions()
+		ms := protocol.MuxSessions{Name: name, Running: l.Running, Sessions: []protocol.SessionInfo{}, Can: l.Can}
 		if err != nil {
 			ms.Error = err.Error()
 		}
-		for _, l := range listed {
-			ms.Sessions = append(ms.Sessions, protocol.SessionInfo{ID: l.ID, Name: l.Name, Windows: l.Windows})
+		for _, s := range l.Sessions {
+			ms.Sessions = append(ms.Sessions, protocol.SessionInfo{ID: s.ID, Name: s.Name, Windows: s.Windows})
 		}
 		list.Muxes = append(list.Muxes, ms)
 	}
-	g.send(list)
+	b, err := protocol.AppendJSON(nil, list)
+	if err != nil || !asked && bytes.Equal(b, g.listed) {
+		return
+	}
+	g.listed = b
+	g.out.push(b)
 }
 
-// switchTo attaches the client to another session, as if it had connected
-// again: what it had open of the last is closed.
+// switchTo attaches the client to a session, in place of the one it's in.
+// If it can't be, the client stays where it was: attached to nothing, it's
+// told so again, with why.
 func (g *gateway) switchTo(name, session string) error {
-	if session == "" {
-		return errors.New("switch needs a session")
-	}
+	asked := name
 	name, c, err := g.attach(name, session)
 	if err != nil {
+		g.stay(errors.New(g.unhad(asked, err)))
 		return err
 	}
-	g.mux.Close()
-	for id := range g.reading {
-		g.unread(id)
-	}
-	g.snapshot, g.lastState, g.found, g.dirty, g.stale = nil, nil, nil, false, false
-	g.panes, g.scanners = map[string]*pane{}, map[string]*desktop.Scanner{}
 	g.attached(name, c)
 	return nil
+}
+
+// stay tells a client attached to nothing that it still is, and why: what
+// it asked for failed.
+func (g *gateway) stay(err error) {
+	if g.mux == nil {
+		g.send(protocol.Detached{Reason: err.Error()})
+		g.sessions(true)
+	}
 }
 
 func (g *gateway) newSession(name, label string) error {
 	name, m, err := g.opts.pick(name)
 	if err != nil {
+		g.stay(err)
 		return err
 	}
 	id, err := m.NewSession(label)
 	if err != nil {
+		g.stay(err)
 		return err
 	}
 	err = g.switchTo(name, id)
-	g.sessions()
+	g.sessions(true)
 	return err
 }
 
@@ -70,7 +87,7 @@ func (g *gateway) renameSession(name, session, label string) error {
 		return err
 	}
 	err = m.RenameSession(session, label)
-	g.sessions()
+	g.sessions(true)
 	return err
 }
 
@@ -84,6 +101,6 @@ func (g *gateway) killSession(name, session string) error {
 		return errors.New("that's the session you're in: switch to another first")
 	}
 	err = m.KillSession(session)
-	g.sessions()
+	g.sessions(true)
 	return err
 }

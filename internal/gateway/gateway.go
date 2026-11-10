@@ -1,7 +1,8 @@
 // Package gateway serves one client over the wallflower protocol, backed by
-// a client of the multiplexer the session is in (see package mux). It keeps
-// no state that the multiplexer doesn't already hold; everything it sends
-// can be rebuilt from it.
+// a client of the multiplexer the session it's attached to is in (see
+// package mux), or none while it's attached to nothing. It keeps no state
+// that the multiplexer doesn't already hold; everything it sends can be
+// rebuilt from it.
 //
 // One loop owns all of it: the client's messages (dispatch.go) drive the
 // multiplexer (input.go), and its events become the client's pane streams
@@ -27,7 +28,7 @@ import (
 type Options struct {
 	Muxes    map[string]mux.Mux // the multiplexers a client can ask for, by name
 	Mux      string             // the one when it doesn't ask
-	Session  string             // the session in that one when it doesn't ask, or what it asks for is gone
+	Session  string             // the session in that one to attach a client to that names none; none if empty
 	Programs []program.Program  // the programs it knows, by the panes that run them; first match wins
 	Uploads  string             // where files the client sends are saved; UploadDir() if empty
 	Machine  string             // the machine's name, said in hello; MachineName() if empty
@@ -36,8 +37,8 @@ type Options struct {
 type gateway struct {
 	ctx   context.Context
 	opts  Options
-	mux   mux.Client
-	muxed string // the name of the multiplexer it's attached to
+	mux   mux.Client // nil while attached to nothing
+	muxed string     // the name of the multiplexer it's attached to
 	about mux.About
 	out   *outbox
 
@@ -63,10 +64,13 @@ type gateway struct {
 	gen      int // readers started
 
 	uploads uploads
+
+	listed []byte // the sessions as last sent
 }
 
-// Serve runs one client session over in and out until the client
-// disconnects or the multiplexer detaches it.
+// Serve serves one client over in and out until it disconnects: attached
+// to the session its hello names, if it's there, or to none, and to others
+// or none as it asks or the multiplexer lets go of it.
 func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -92,17 +96,28 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 		return err
 	}
 	g.cols, g.rows, g.away = hello.Cols, hello.Rows, hello.Away
-	name, c, err := g.attach(hello.Mux, hello.Session)
-	if err != nil && name != "" && name != opts.Mux {
-		// Where the client was last isn't there (Rex quit, say): it comes back to the default, not to nothing.
-		name, c, err = g.attach(opts.Mux, "")
+	g.send(protocol.ServerHello{
+		V:        protocol.Version,
+		Uploads:  g.uploads.dir,
+		Machine:  g.opts.Machine,
+		Programs: clients(g.programs),
+	})
+	defer func() {
+		if g.mux != nil {
+			g.mux.Close()
+		}
+	}()
+	where, session := hello.Mux, hello.Session
+	if session == "" {
+		where, session = opts.Mux, opts.Session
 	}
-	if err != nil {
-		g.send(protocol.Bye{Reason: err.Error()})
-		return err
+	if session == "" {
+		g.detach("")
+	} else if name, c, err := g.attach(where, session); err != nil {
+		g.detach(g.unhad(where, err))
+	} else {
+		g.attached(name, c)
 	}
-	defer func() { g.mux.Close() }()
-	g.attached(name, c)
 
 	frames := make(chan protocol.Frame)
 	readErr := make(chan error, 1)
@@ -124,41 +139,81 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 }
 
 // attach attaches a client of the multiplexer named (the default if it's
-// empty) to the session, or the one the multiplexer would pick if that's
-// gone, at the client's size.
+// empty) to the session, at the client's size.
 func (g *gateway) attach(name, session string) (string, mux.Client, error) {
 	name, m, err := g.opts.pick(name)
 	if err != nil {
 		return "", nil, err
 	}
-	fallback := ""
-	if name == g.opts.Mux {
-		fallback = g.opts.Session
-	}
 	if session == "" {
-		session = fallback
+		return "", nil, errors.New("attaching needs a session")
 	}
-	at := func(session string) (mux.Client, error) {
-		return m.Attach(mux.Attach{Session: session, Cols: g.cols, Rows: g.rows, Away: g.away})
-	}
-	c, err := at(session)
-	if err != nil && session != fallback {
-		c, err = at(fallback)
-	}
+	c, err := m.Attach(mux.Attach{Session: session, Cols: g.cols, Rows: g.rows, Away: g.away})
 	return name, c, err
 }
 
-// attached makes c the client's, saying hello and sending its state.
+// attached makes c the client's, in place of the one it had, saying so and
+// sending its state.
 func (g *gateway) attached(name string, c mux.Client) {
+	g.leave()
 	g.mux, g.muxed, g.about = c, name, c.About()
-	g.send(protocol.ServerHello{
-		V:        protocol.Version,
-		Mux:      protocol.Mux{Name: g.about.Name, Version: g.about.Version, Can: g.about.Can},
-		Uploads:  g.uploads.dir,
-		Machine:  g.opts.Machine,
-		Programs: clients(g.programs),
-	})
+	g.send(protocol.Attached{Mux: protocol.Mux{Name: g.about.Name, Version: g.about.Version, Can: g.about.Can}})
 	g.sendState()
+}
+
+// detach leaves the client attached to nothing, saying so, and why if it
+// didn't ask, then sending the sessions it can attach to.
+func (g *gateway) detach(reason string) {
+	g.leave()
+	g.send(protocol.Detached{Reason: reason})
+	g.listed = nil
+	g.sessions(false)
+}
+
+// unhad says why a session the client asked for in the multiplexer named
+// couldn't be had: the multiplexer isn't running, or the session's gone;
+// otherwise, what went wrong.
+func (g *gateway) unhad(name string, err error) string {
+	name, m, perr := g.opts.pick(name)
+	if perr != nil {
+		return perr.Error()
+	}
+	l, lerr := m.Sessions()
+	switch {
+	case lerr != nil:
+		return err.Error()
+	case !l.Running:
+		return name + " isn't running"
+	}
+	return "that " + name + " session is gone"
+}
+
+// letGo says why the multiplexer let go of the client's session: it
+// exited, or it's still there (someone detached the client).
+func (g *gateway) letGo() string {
+	if l, err := g.opts.Muxes[g.muxed].Sessions(); err != nil || !l.Running {
+		return g.about.Name + " exited"
+	}
+	reason := g.about.Name + " let go of the session"
+	if err := g.mux.Err(); err != nil {
+		reason += ": " + err.Error()
+	}
+	return reason
+}
+
+// leave closes the multiplexer's client, if there is one, and what the
+// client had open of its session.
+func (g *gateway) leave() {
+	if g.mux == nil {
+		return
+	}
+	g.mux.Close()
+	for id := range g.reading {
+		g.unread(id)
+	}
+	g.mux, g.muxed, g.about = nil, "", mux.About{}
+	g.snapshot, g.lastState, g.found, g.dirty, g.stale = nil, nil, nil, false, false
+	g.panes, g.scanners = map[string]*pane{}, map[string]*desktop.Scanner{}
 }
 
 // pick is the multiplexer named, or the default for none, and its name.
@@ -206,17 +261,19 @@ func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readEr
 	var stateDue, repaintDue <-chan time.Time
 	activity := time.NewTicker(activityEvery)
 	defer activity.Stop()
+	listing := time.NewTicker(listEvery)
+	defer listing.Stop()
 	for {
+		var events <-chan mux.Event
+		if g.mux != nil {
+			events = g.mux.Events()
+		}
 		select {
-		case e, ok := <-g.mux.Events():
+		case e, ok := <-events:
 			if !ok {
-				err := g.mux.Err()
-				reason := g.about.Name + " exited"
-				if err != nil {
-					reason += ": " + err.Error()
-				}
-				g.send(protocol.Bye{Reason: reason})
-				return err
+				g.detach(g.letGo())
+				stateDue, repaintDue = nil, nil
+				continue
 			}
 			if e.Changed {
 				g.dirty = true
@@ -248,6 +305,10 @@ func (g *gateway) loop(ctx context.Context, frames <-chan protocol.Frame, readEr
 			g.repaintStale()
 		case <-activity.C:
 			g.watchActivity()
+		case <-listing.C:
+			if g.mux == nil && !g.away {
+				g.sessions(false)
+			}
 		case <-ctx.Done():
 			return ctx.Err()
 		}

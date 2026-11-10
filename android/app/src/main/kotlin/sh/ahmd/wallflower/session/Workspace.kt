@@ -75,6 +75,15 @@ internal class Workspace(private val link: Link, private val terminals: Terminal
         terminals.keep(m.windows.flatMapTo(HashSet()) { w -> w.panes.map { it.id } })
     }
 
+    /** The session's gone (the phone left it, or it went): nothing of it stays. */
+    fun clear() {
+        _state.value = null
+        _viewing.value = null
+        _chosen.value = emptyMap()
+        awaitingWindow = null
+        terminals.keep(emptySet())
+    }
+
     /** Opens every pane again, after they went quiet. */
     fun reopen() {
         _state.value?.let(::open)

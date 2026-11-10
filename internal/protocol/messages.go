@@ -11,12 +11,14 @@ type Message interface{ Type() string }
 
 // Client to gateway.
 
+// ClientHello says where the client was (Session, in the multiplexer Mux
+// names, tmux or rex; empty is the gateway's default), to attach there
+// again if it's there. With no Session, or one that's gone, the client is
+// attached to nothing.
 type ClientHello struct {
-	V    int `json:"v"`
-	Cols int `json:"cols"`
-	Rows int `json:"rows"`
-	// Mux names the multiplexer the session is in (tmux, rex); empty is the
-	// gateway's default.
+	V       int    `json:"v"`
+	Cols    int    `json:"cols"`
+	Rows    int    `json:"rows"`
 	Mux     string `json:"mux,omitempty"`
 	Session string `json:"session,omitempty"`
 	Away    bool   `json:"away,omitempty"` // see Away
@@ -127,16 +129,17 @@ type Ping struct {
 // which come in a Sessions of its own.
 type Sessions struct{}
 
-// Switch attaches the client to another session, in this multiplexer or
-// another. Another hello says which, and state follows, as if the client
-// had connected again: its panes are closed, and its mobile views off.
+// Switch attaches the client to a session, in any multiplexer: Attached
+// says which, and state follows. What it had open of one it was attached
+// to is closed, and its mobile views are off.
 type Switch struct {
 	Mux     string `json:"mux"`
 	Session string `json:"session"`
 }
 
 // NewSession starts a session, named Name or a name of the multiplexer's
-// own, and switches to it.
+// own, and switches to it; for one that isn't running, if it Can, it starts
+// it too.
 type NewSession struct {
 	Mux  string `json:"mux"`
 	Name string `json:"name,omitempty"`
@@ -153,6 +156,9 @@ type KillSession struct {
 	Mux     string `json:"mux"`
 	Session string `json:"session"`
 }
+
+// Detach leaves the session for none, as the user chose: Detached follows.
+type Detach struct{}
 
 func (ClientHello) Type() string   { return "hello" }
 func (Resize) Type() string        { return "resize" }
@@ -176,13 +182,13 @@ func (Switch) Type() string        { return "switch" }
 func (NewSession) Type() string    { return "new-session" }
 func (RenameSession) Type() string { return "rename-session" }
 func (KillSession) Type() string   { return "kill-session" }
+func (Detach) Type() string        { return "detach" }
 
 // Gateway to client.
 
-// ServerHello comes first, and again whenever the client switches session.
+// ServerHello comes first, before the client is attached to anything.
 type ServerHello struct {
-	V   int `json:"v"`
-	Mux Mux `json:"mux"`
+	V int `json:"v"`
 	// Uploads is the directory uploads are saved in, so a client can tell
 	// their paths from others in what it sends.
 	Uploads string `json:"uploads,omitempty"`
@@ -217,6 +223,21 @@ type KeyBar struct {
 type Command struct {
 	Text  string `json:"text"`
 	About string `json:"about,omitempty"`
+}
+
+// Attached says the client is attached to a session in Mux; its state
+// follows.
+type Attached struct {
+	Mux Mux `json:"mux"`
+}
+
+// Detached says the client is attached to nothing: it never was this
+// connection, it asked (Detach), the session or its multiplexer went
+// (Reason says), or one it asked for couldn't be had (likewise). The
+// sessions follow, and come again whenever they change, until it's
+// attached.
+type Detached struct {
+	Reason string `json:"reason,omitempty"`
 }
 
 // Mux is the multiplexer the session is in (tmux), its version, and what
@@ -365,18 +386,30 @@ type Notification struct {
 }
 
 // SessionList is the sessions in each multiplexer the gateway has, sent
-// when asked and after a session is started, renamed or ended.
+// when asked, after a session is started, renamed or ended, and whenever
+// they change while the client is attached to nothing (Detached).
 type SessionList struct {
 	Muxes []MuxSessions `json:"muxes"`
 }
 
 // MuxSessions is one multiplexer's sessions, in its own order, or why they
-// can't be listed.
+// can't be listed; whether it's running, and what can be done with its
+// sessions (CanNew...).
 type MuxSessions struct {
 	Name     string        `json:"name"`
+	Running  bool          `json:"running"`
 	Sessions []SessionInfo `json:"sessions"`
+	Can      []string      `json:"can,omitempty"`
 	Error    string        `json:"error,omitempty"`
 }
+
+// What can be done with a multiplexer's sessions: start one (and the
+// multiplexer with it, if it isn't running), rename one, end one.
+const (
+	CanNew    = "new"
+	CanRename = "rename"
+	CanKill   = "kill"
+)
 
 type SessionInfo struct {
 	ID      string `json:"id"`
@@ -385,6 +418,8 @@ type SessionInfo struct {
 }
 
 func (ServerHello) Type() string  { return "hello" }
+func (Attached) Type() string     { return "attached" }
+func (Detached) Type() string     { return "detached" }
 func (SessionList) Type() string  { return "sessions" }
 func (State) Type() string        { return "state" }
 func (Reset) Type() string        { return "reset" }
@@ -397,11 +432,11 @@ func (Notification) Type() string { return "notification" }
 
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Submit{}, Select{}, Focus{}, Split{}, New{}, Rename{}, Kill{},
-	Read{}, Picture{}, Upload{}, Ping{}, Away{}, Sessions{}, Switch{}, NewSession{}, RenameSession{}, KillSession{},
+	Read{}, Picture{}, Upload{}, Ping{}, Away{}, Sessions{}, Switch{}, NewSession{}, RenameSession{}, KillSession{}, Detach{},
 )
 
 var serverMessages = registry(
-	ServerHello{}, State{}, Reset{}, Error{}, Pong{}, Bye{}, Entries{}, Uploaded{}, Notification{}, SessionList{},
+	ServerHello{}, Attached{}, Detached{}, State{}, Reset{}, Error{}, Pong{}, Bye{}, Entries{}, Uploaded{}, Notification{}, SessionList{},
 )
 
 // DecodeClient decodes a message sent by a client. It returns a pointer to

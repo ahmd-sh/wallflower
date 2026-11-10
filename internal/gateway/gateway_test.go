@@ -231,8 +231,12 @@ func TestHelloStateOpenType(t *testing.T) {
 	each(t, func(t *testing.T, b backend) {
 		c := b.connect(t, 56, 20)
 		_, m := c.expect("hello", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.ServerHello); return ok })
-		if h := m.(*protocol.ServerHello); h.V != protocol.Version || h.Mux.Name != b.name || h.Mux.Version == "" || !slices.Equal(h.Mux.Can, b.can) {
+		if h := m.(*protocol.ServerHello); h.V != protocol.Version {
 			t.Errorf("hello = %+v", h)
+		}
+		_, m = c.expect("attached", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Attached); return ok })
+		if a := m.(*protocol.Attached); a.Mux.Name != b.name || a.Mux.Version == "" || !slices.Equal(a.Mux.Can, b.can) {
+			t.Errorf("attached = %+v", a)
 		}
 		s := c.state("phone-sized", func(s protocol.State) bool { p := activePane(s); return p.Cols == 56 && p.Rows == 20 })
 		p := activePane(s)
@@ -664,43 +668,80 @@ func TestBadHello(t *testing.T) {
 	}
 }
 
-// The client names the multiplexer, or gets the default; one the gateway
-// doesn't have is refused.
+// The client names the multiplexer it was in, or gets the default; where
+// the gateway hasn't one by that name, it's attached to nothing.
 func TestHelloPicksTheMux(t *testing.T) {
 	socket, _ := tmuxtest.Server(t, 80, 24)
-	opts := Options{Muxes: map[string]mux.Mux{"tmux": tmux.Server{Socket: socket}}, Mux: "tmux", Session: "t"}
-	for _, ask := range []string{"tmux", "rex"} {
-		var in, out bytes.Buffer
-		b, _ := protocol.AppendJSON(nil, protocol.ClientHello{V: protocol.Version, Cols: 80, Rows: 24, Mux: ask})
-		in.Write(b)
-		err := Serve(context.Background(), &in, &out, opts)
-		m, _ := protocol.DecodeServer(firstJSON(t, &out))
-		switch h := m.(type) {
-		case *protocol.ServerHello:
-			if ask != "tmux" || h.Mux.Name != "tmux" {
-				t.Errorf("asked for %s, got hello %+v", ask, h)
+	opts := Options{Muxes: map[string]mux.Mux{"tmux": tmux.Server{Socket: socket}}, Mux: "tmux"}
+	for _, ask := range []string{"tmux", "", "rex"} {
+		got := served(t, opts, protocol.ClientHello{V: protocol.Version, Cols: 80, Rows: 24, Mux: ask, Session: "t"})
+		switch m := got[1].(type) {
+		case *protocol.Attached:
+			if ask == "rex" || m.Mux.Name != "tmux" {
+				t.Errorf("asked for %q, got attached %+v", ask, m)
 			}
-		case *protocol.Bye:
-			if ask != "rex" || err == nil || !strings.Contains(h.Reason, `no multiplexer "rex" here (tmux)`) {
-				t.Errorf("asked for %s, got bye %q (%v)", ask, h.Reason, err)
+		case *protocol.Detached:
+			if ask != "rex" || !strings.Contains(m.Reason, `no multiplexer "rex" here (tmux)`) {
+				t.Errorf("asked for %q, got detached %q", ask, m.Reason)
 			}
 		default:
-			t.Errorf("asked for %s, got %+v", ask, m)
+			t.Errorf("asked for %q, got %+v", ask, got)
 		}
 	}
 }
 
-// A client that was last in a multiplexer that isn't running comes back to
-// the default one.
-func TestHelloFallsBackToTheDefaultMux(t *testing.T) {
+// A client that names no session, or one in a multiplexer that isn't
+// running, is attached to nothing, and has the sessions there are: a
+// multiplexer that isn't running says so, and whether a new session would
+// start it.
+func TestHelloWithNowhereToGo(t *testing.T) {
 	socket, _ := tmuxtest.Server(t, 80, 24)
-	opts := Options{Muxes: map[string]mux.Mux{"tmux": tmux.Server{Socket: socket}, "rex": rex.Server{Endpoint: filepath.Join(t.TempDir(), "none")}}, Mux: "tmux", Session: "t"}
+	opts := Options{Muxes: map[string]mux.Mux{"tmux": tmux.Server{Socket: socket}, "rex": rex.Server{Endpoint: filepath.Join(t.TempDir(), "none")}}, Mux: "tmux"}
+	for _, hello := range []protocol.ClientHello{
+		{V: protocol.Version, Cols: 80, Rows: 24},
+		{V: protocol.Version, Cols: 80, Rows: 24, Mux: "rex", Session: "night"},
+	} {
+		got := served(t, opts, hello)
+		if len(got) < 3 {
+			t.Fatalf("after %+v: %+v", hello, got)
+		}
+		d, ok := got[1].(*protocol.Detached)
+		if want := map[string]string{"": "", "night": "rex isn't running"}[hello.Session]; !ok || d.Reason != want {
+			t.Errorf("after %+v: %+v, want detached saying %q", hello, got[1], want)
+		}
+		l, _ := got[2].(*protocol.SessionList)
+		want := &protocol.SessionList{Muxes: []protocol.MuxSessions{
+			{Name: "rex", Sessions: []protocol.SessionInfo{}},
+			{Name: "tmux", Running: true, Sessions: []protocol.SessionInfo{{ID: "$0", Name: "t", Windows: 1}}, Can: []string{protocol.CanNew, protocol.CanRename, protocol.CanKill}},
+		}}
+		if !reflect.DeepEqual(l, want) {
+			t.Errorf("after %+v, sessions %+v, want %+v", hello, l, want)
+		}
+	}
+}
+
+// served is what the gateway says to a client that says hello, then
+// nothing more.
+func served(t *testing.T, opts Options, hello protocol.ClientHello) []protocol.Message {
+	t.Helper()
 	var in, out bytes.Buffer
-	b, _ := protocol.AppendJSON(nil, protocol.ClientHello{V: protocol.Version, Cols: 80, Rows: 24, Mux: "rex", Session: "night"})
+	b, _ := protocol.AppendJSON(nil, hello)
 	in.Write(b)
 	Serve(context.Background(), &in, &out, opts)
-	if m, _ := protocol.DecodeServer(firstJSON(t, &out)); m == nil || m.(*protocol.ServerHello).Mux.Name != "tmux" {
-		t.Errorf("hello %+v, want tmux's", m)
+	var got []protocol.Message
+	r := protocol.NewReader(&out)
+	for {
+		f, err := r.Next()
+		if err != nil {
+			return got
+		}
+		if f.Type == protocol.FrameJSON {
+			m, err := protocol.DecodeServer(f.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, m)
+		}
 	}
 }
 
@@ -713,16 +754,42 @@ func firstJSON(t *testing.T, r io.Reader) []byte {
 	return f.Data
 }
 
+// The multiplexer exiting leaves the client attached to nothing, still
+// connected, with its sessions: none, and whether a new one would start
+// it. tmux would, so the client can start it again; Rex's is Rex's.
 func TestMuxExit(t *testing.T) {
 	each(t, func(t *testing.T, b backend) {
 		c := b.connect(t, 60, 20)
 		c.state("state", anyState)
 		c.desk.exit()
-		_, m := c.expect("bye", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Bye); return ok })
-		if r := m.(*protocol.Bye).Reason; !strings.HasPrefix(r, b.name+" exited") {
-			t.Errorf("bye %q", r)
+		_, m := c.expect("detached", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Detached); return ok })
+		if r := m.(*protocol.Detached).Reason; !strings.HasPrefix(r, b.name+" exited") {
+			t.Errorf("detached %q", r)
 		}
+		l := c.listing("not running", func(l protocol.MuxSessions) bool { return !l.Running })
+		if len(l.Sessions) != 0 || slices.Contains(l.Can, protocol.CanNew) != (b.name == "tmux") {
+			t.Fatalf("listed %+v", l)
+		}
+		if b.name != "tmux" {
+			return
+		}
+		c.send(protocol.NewSession{Mux: "tmux", Name: "again"})
+		c.expect("attached", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Attached); return ok })
+		c.state("in the session it started", func(s protocol.State) bool { return s.Name == "again" && len(s.Windows) == 1 })
 	})
+}
+
+// Detached at the Mac, the client is attached to nothing, and told the
+// multiplexer let go of it, not that it exited: the session's still there.
+func TestDetachedAtTheMac(t *testing.T) {
+	c := tmuxBackend.connect(t, 60, 20)
+	c.state("state", anyState)
+	c.tmux("detach-client", "-s", "t")
+	_, m := c.expect("detached", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.Detached); return ok })
+	if r := m.(*protocol.Detached).Reason; !strings.HasPrefix(r, "tmux let go of the session") {
+		t.Errorf("detached %q", r)
+	}
+	c.sessions("the session, still there", func(l []protocol.SessionInfo) bool { return slices.Equal(names(l), []string{"t"}) })
 }
 
 func TestUpload(t *testing.T) {

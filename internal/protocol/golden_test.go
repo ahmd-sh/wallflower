@@ -50,6 +50,7 @@ func goldenClient(t *testing.T) []byte {
 		NewSession{Mux: "tmux"},
 		RenameSession{Mux: "tmux", Session: "$2", Name: "play"},
 		KillSession{Mux: "tmux", Session: "$2"},
+		Detach{},
 	} {
 		b = mustJSON(t, b, m)
 	}
@@ -60,7 +61,8 @@ func goldenClient(t *testing.T) []byte {
 func goldenServer(t *testing.T) []byte {
 	var b []byte
 	context := 17967
-	b = mustJSON(t, b, ServerHello{V: Version, Mux: Mux{Name: "tmux", Version: "3.8", Can: []string{CanBindings}}, Uploads: "/Users/me/Library/Caches/wallflower/uploads", Machine: "vishingstar"})
+	b = mustJSON(t, b, ServerHello{V: Version, Uploads: "/Users/me/Library/Caches/wallflower/uploads", Machine: "vishingstar"})
+	b = mustJSON(t, b, Attached{Mux: Mux{Name: "tmux", Version: "3.8", Can: []string{CanBindings}}})
 	b = mustJSON(t, b, State{Session: "$1", Name: "o", Windows: []Window{{
 		ID: "@1", Index: 1, Name: "base", Active: true,
 		Panes: []Pane{
@@ -94,9 +96,12 @@ func goldenServer(t *testing.T) []byte {
 	b = AppendPicture(b, "gone", nil)
 	b = mustJSON(t, b, Uploaded{ID: "u1", Path: "/Users/me/Library/Caches/wallflower/uploads/PXL-1.jpg"})
 	b = mustJSON(t, b, Uploaded{ID: "u2", Error: "too big"})
+	b = mustJSON(t, b, Detached{})
+	b = mustJSON(t, b, Detached{Reason: "tmux exited"})
 	b = mustJSON(t, b, SessionList{Muxes: []MuxSessions{
-		{Name: "rex", Sessions: []SessionInfo{}, Error: "rex: no server at /x/server.sock"},
-		{Name: "tmux", Sessions: []SessionInfo{{ID: "$1", Name: "o", Windows: 3}, {ID: "$2", Name: "work ✓", Windows: 1}}},
+		{Name: "rex", Sessions: []SessionInfo{}},
+		{Name: "tmux", Running: true, Sessions: []SessionInfo{{ID: "$1", Name: "o", Windows: 3}, {ID: "$2", Name: "work ✓", Windows: 1}}, Can: []string{CanNew, CanRename, CanKill}},
+		{Name: "zellij", Sessions: []SessionInfo{}, Can: []string{CanNew}, Error: "zellij: permission denied"},
 	}})
 	return mustJSON(t, b, Bye{Reason: "tmux exited"})
 }

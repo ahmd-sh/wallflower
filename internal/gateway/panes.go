@@ -25,6 +25,9 @@ type pane struct {
 
 // open (re)paints a pane and starts streaming its output.
 func (g *gateway) open(id string, history int) error {
+	if g.mux == nil {
+		return errNowhere
+	}
 	if history <= 0 {
 		history = protocol.DefaultHistory
 	}

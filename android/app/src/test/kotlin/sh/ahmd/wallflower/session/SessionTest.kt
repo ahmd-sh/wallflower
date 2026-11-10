@@ -13,12 +13,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import sh.ahmd.wallflower.protocol.Bye
@@ -33,6 +35,13 @@ import sh.ahmd.wallflower.protocol.Ping
 import sh.ahmd.wallflower.protocol.Pong
 import sh.ahmd.wallflower.protocol.Read
 import sh.ahmd.wallflower.protocol.ServerHello
+import sh.ahmd.wallflower.protocol.Attached
+import sh.ahmd.wallflower.protocol.Detach
+import sh.ahmd.wallflower.protocol.Detached
+import sh.ahmd.wallflower.protocol.MuxSessions
+import sh.ahmd.wallflower.protocol.NewSession
+import sh.ahmd.wallflower.protocol.SessionInfo
+import sh.ahmd.wallflower.protocol.SessionList
 import sh.ahmd.wallflower.protocol.ServerMessage
 import sh.ahmd.wallflower.protocol.State
 import sh.ahmd.wallflower.protocol.Submit
@@ -125,7 +134,8 @@ class SessionTest {
         assertEquals(ClientHello(VERSION, 56, 20), g.message<ClientHello>())
         session.read(setOf("%1"))
         assertEquals(Read("%1", on = true), g.message<Read>())
-        g.send(ServerHello(VERSION, TMUX, uploads = "/up", machine = "vishingstar"))
+        g.send(ServerHello(VERSION, uploads = "/up", machine = "vishingstar"))
+        g.send(Attached(TMUX))
         g.send(state)
         assertEquals("%1", g.message<Open>().pane)
         eventually { session.status.first { it is Status.Connected } }
@@ -138,7 +148,7 @@ class SessionTest {
     fun textTheGatewayConfirmedStaysSentAndWhatItDidntComesBack() {
         val g = connect()
         session.start(56, 20)
-        g.send(ServerHello(VERSION, TMUX))
+        g.send(ServerHello(VERSION))
         eventually { session.status.first { it is Status.Connected } }
 
         assertTrue(session.submit("%1", "say just: ok", clear = listOf("C-u")))
@@ -164,46 +174,163 @@ class SessionTest {
         val first = connect()
         session.start(56, 20)
         session.read(setOf("%1"))
-        first.send(ServerHello(VERSION, TMUX))
+        first.send(ServerHello(VERSION))
+        first.send(Attached(TMUX))
         first.send(state)
         first.message<Open>()
 
         val second = connect()
         first.close()
         assertEquals(Read("%1", on = true), second.message<Read>())
-        second.send(ServerHello(VERSION, TMUX))
+        second.send(ServerHello(VERSION))
+        second.send(Attached(TMUX))
         second.send(state)
         assertEquals("%1", second.message<Open>().pane)
     }
 
+    /** Connected and in [state]'s session, as the gateway has it. */
+    private fun inSession(): Gateway {
+        val g = connect()
+        session.start(56, 20)
+        g.send(ServerHello(VERSION))
+        g.send(Attached(TMUX))
+        g.send(state)
+        g.message<Open>()
+        eventually { session.place.first { it == Place("tmux", "\$1") } }
+        return g
+    }
+
+    /** The gateway done with what the phone asked: the pong for the ping after it. */
+    private fun Gateway.caughtUp() = send(Pong(message<Ping>().id))
+
     @Test
     fun aSwitchIsAnotherSessionOverTheSameConnectionAndWhereTheNextOneGoes() {
-        val first = connect()
-        session.start(56, 20)
-        first.send(ServerHello(VERSION, TMUX))
-        first.send(state)
-        assertEquals("%1", first.message<Open>().pane)
-        eventually { session.place.first { it == Place("tmux", "\$1") } }
-
+        val first = inSession()
         session.switchTo("rex", "s:2")
+        assertEquals(Place("rex", "s:2"), session.place.value) // there at once
         assertEquals(Switch("rex", "s:2"), first.message<Switch>())
-        first.send(ServerHello(VERSION, Mux("rex", "0.1")))
+        first.send(Attached(Mux("rex", "0.1")))
         first.send(State("s:2", "work", listOf(Window("w:1", 1, "Window", active = true, panes = listOf(Pane("b:1", 0, true, 56, 20, command = "zsh"))))))
+        first.caughtUp()
         assertEquals("b:1", first.message<Open>().pane)
-        eventually { session.place.first { it == Place("rex", "s:2") } }
+        assertEquals(Place("rex", "s:2"), session.place.value)
         assertEquals("w:1", session.viewing.value)
 
-        // Connecting again, it comes back here.
+        // Connecting again, it goes back there.
         val second = connect()
         first.close()
         assertEquals(ClientHello(VERSION, 56, 20, mux = "rex", session = "s:2"), second.message<ClientHello>())
     }
 
     @Test
+    fun withNowhereToGoItsOnTheMacsSessions() {
+        val g = connect()
+        session.start(56, 20)
+        assertEquals(ClientHello(VERSION, 56, 20), g.message<ClientHello>())
+        g.send(ServerHello(VERSION))
+        g.send(Detached())
+        g.send(SessionList(listOf(MuxSessions("tmux", running = true, sessions = listOf(SessionInfo("\$1", "o", 2))))))
+        eventually { session.sessions.first { it != null } }
+        assertNull(session.place.value)
+        assertNull(session.left.value)
+    }
+
+    @Test
+    fun leavingTheSessionIsTheUsersAndStaysLeftOnTheNextConnection() {
+        val first = inSession()
+        session.detach()
+        assertNull(session.place.value)
+        assertNull(session.state.value) // nothing of it stays
+        assertEquals(Detach, first.message<Detach>())
+        first.send(Detached())
+        first.caughtUp()
+
+        val second = connect()
+        first.close()
+        assertEquals(ClientHello(VERSION, 56, 20), second.message<ClientHello>())
+    }
+
+    @Test
+    fun aSessionThatGoesLeavesThePhoneInNoneSayingWhy() {
+        val g = inSession()
+        g.send(Detached("tmux exited"))
+        eventually { session.place.first { it == null } }
+        assertEquals("tmux exited", session.left.value)
+        assertNull(session.state.value)
+    }
+
+    @Test
+    fun theMacMovingThePhoneToAnotherSessionTakesItThere() {
+        val g = inSession()
+        g.send(state.copy(session = "\$2", name = "other"))
+        eventually { session.place.first { it == Place("tmux", "\$2") } }
+    }
+
+    @Test
+    fun aQuickTapThenBackEndsUpInNone() {
+        val g = inSession()
+        session.detach()
+        g.message<Detach>()
+        val left = g.message<Ping>()
+        session.switchTo("tmux", "\$2")
+        g.message<Switch>()
+        val went = g.message<Ping>()
+        session.detach()
+        g.message<Detach>()
+        val back = g.message<Ping>()
+        // The gateway, behind: what it says on the way doesn't move the phone.
+        g.send(Detached())
+        g.send(Pong(left.id))
+        g.send(Attached(TMUX))
+        g.send(state.copy(session = "\$2"))
+        g.send(Pong(went.id))
+        assertNull(session.place.value)
+        g.send(Detached())
+        g.send(Pong(back.id))
+        runBlocking { delay(200) }
+        assertNull(session.place.value)
+    }
+
+    @Test
+    fun aSwitchThatFailsLeavesThePhoneInNoneSayingWhy() {
+        val g = inSession()
+        session.detach()
+        g.message<Detach>()
+        g.send(Detached())
+        g.caughtUp()
+        session.switchTo("tmux", "\$9")
+        assertEquals(Place("tmux", "\$9"), session.place.value)
+        g.message<Switch>()
+        g.send(Detached("no tmux session \"\$9\""))
+        g.caughtUp()
+        eventually { session.place.first { it == null } }
+        assertEquals("no tmux session \"\$9\"", session.left.value)
+    }
+
+    @Test
+    fun aNewSessionIsGoneIntoOnceItsThere() {
+        val g = connect()
+        session.start(56, 20)
+        g.send(ServerHello(VERSION))
+        g.send(Detached())
+        g.send(SessionList(listOf(MuxSessions("tmux", running = true))))
+        eventually { session.sessions.first { it != null } }
+        session.newSession("tmux", " work ")
+        assertEquals("tmux", session.starting.value)
+        assertNull(session.place.value)
+        assertEquals(NewSession("tmux", "work"), g.message<NewSession>())
+        g.send(Attached(TMUX))
+        g.send(state.copy(session = "\$3", name = "work"))
+        g.caughtUp()
+        eventually { session.place.first { it == Place("tmux", "\$3") } }
+        assertNull(session.starting.value)
+    }
+
+    @Test
     fun aDroppedConnectionSaysWhyWhenItTriesNextAndSinceWhenItsDown() {
         val first = connect()
         session.start(56, 20)
-        first.send(ServerHello(VERSION, TMUX))
+        first.send(ServerHello(VERSION))
         eventually { session.status.first { it is Status.Connected } }
         first.send(Bye("tmux exited"))
         val down = eventually { session.status.first { it is Status.Disconnected && !it.trying } } as Status.Disconnected
@@ -213,7 +340,7 @@ class SessionTest {
         // Trying again (with no gateway yet), it's been down since the same moment.
         val trying = eventually { session.status.first { it is Status.Disconnected && it.trying } } as Status.Disconnected
         assertEquals(down.since, trying.since)
-        connect().send(ServerHello(VERSION, TMUX))
+        connect().send(ServerHello(VERSION))
         eventually { session.status.first { it is Status.Connected } }
     }
 
@@ -226,7 +353,7 @@ class SessionTest {
         val older = refused.blocked as Blocked.Outdated
         assertEquals(VERSION - 1 to VERSION, older.gateway to older.app)
 
-        connect().send(ServerHello(VERSION + 1, TMUX))
+        connect().send(ServerHello(VERSION + 1))
         session.retry()
         val newer = eventually { session.status.first { (it as? Status.NeedsUser)?.blocked?.let { b -> b is Blocked.Outdated && b.gateway == VERSION + 1 } == true } }
         assertEquals(VERSION, ((newer as Status.NeedsUser).blocked as Blocked.Outdated).app)
