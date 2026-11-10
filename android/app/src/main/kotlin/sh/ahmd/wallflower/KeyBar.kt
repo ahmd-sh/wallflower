@@ -14,9 +14,9 @@ import sh.ahmd.wallflower.program.Programs
  * names (`Escape`, `C-c`, or literal text). A [sticky] key waits for the next
  * key, from the bar or the keyboard, and goes with it. With [bindings], the
  * multiplexer's key bindings apply, as if typed on a keyboard attached to it;
- * `prefix` is its prefix key. A [cluster] gathers keys, each its own, in
- * places around its middle: [keys] up, left, the middle, right, down, and
- * the corner above right.
+ * `prefix` is its prefix key. A [cluster] gathers keys, each its own, laid
+ * out as arrow keys with two more above: [keys] up, left, the one top left,
+ * right, down, and the one top right.
  */
 @Serializable
 data class BarKey(
@@ -90,7 +90,7 @@ data class KeyBar(
             ?: default
 
     companion object {
-        /** The arrows around enter, with backspace above right, in one key; `arrows` by name. */
+        /** The arrows, with enter above left and backspace above right, in one key; `arrows` by name (the order is saved with a bar). */
         val ARROWS = BarKey("arrows", listOf("Up", "Left", "Enter", "Right", "Down", "BSpace"), cluster = true)
 
         /** Keys offered when editing a bar. */

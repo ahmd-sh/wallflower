@@ -1,9 +1,12 @@
 package sh.ahmd.wallflower.ui
 
+import android.os.SystemClock
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.widthIn
@@ -22,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +47,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -163,13 +169,13 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
             Glyph.Left -> rotate(-90f, c) { up() }
             Glyph.Right -> rotate(90f, c) { up() }
             Glyph.Arrows -> {
-                stroke(-1f to 0f, 1f to 0f)
-                stroke(0f to -1f, 0f to 1f)
-                val h = 0.4f
-                stroke(-h to -1f + h, 0f to -1f, h to -1f + h)
-                stroke(-h to 1f - h, 0f to 1f, h to 1f - h)
-                stroke(-1f + h to -h, -1f to 0f, -1f + h to h)
-                stroke(1f - h to -h, 1f to 0f, 1f - h to h)
+                // Arrow keys as a keyboard has them, one over three.
+                val k = this.size.width * 0.28f
+                val step = (this.size.width - k) / 2
+                val top = c.y - (k + step) / 2
+                for ((x, y) in listOf(0 to 0, -1 to 1, 0 to 1, 1 to 1)) {
+                    drawRoundRect(color, Offset(c.x - k / 2 + x * step, top + y * step), Size(k, k), CornerRadius(k * 0.25f))
+                }
             }
             Glyph.Backspace -> {
                 stroke(-1f to 0f, -0.45f to -0.75f, 1f to -0.75f, 1f to 0.75f, -0.45f to 0.75f, closed = true)
@@ -299,6 +305,49 @@ fun PopupMenu(
         }
     }
 }
+
+/**
+ * Whether a menu that a tap opens is [open]. A touch outside one that
+ * leaves the keyboard up puts it away and goes on to what's under it, so a
+ * press on what opened it, while it's open or just after, is to shut it.
+ */
+@Stable
+internal class Opener {
+    var open by mutableStateOf(false)
+    private var shut = 0L
+    private var shutting = false
+
+    /** A touch outside put it away. */
+    fun dismiss() {
+        open = false
+        shut = SystemClock.uptimeMillis()
+    }
+
+    /** As a press on what opens it starts: whether it's to shut it. */
+    fun pressed(): Boolean {
+        shutting = open || SystemClock.uptimeMillis() - shut < SHUT_MS
+        return shutting
+    }
+
+    /** A tap that began with [pressed]: it opens, [onOpen] first, or shuts. */
+    fun tapped(onOpen: () -> Unit) {
+        if (!shutting) onOpen()
+        open = !shutting
+    }
+}
+
+/** On what opens [opener]'s menu: a tap opens it, [onOpen] first, or shuts it. */
+internal fun Modifier.opens(opener: Opener, enabled: Boolean = true, onOpen: () -> Unit = {}) = this
+    .pointerInput(opener) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            opener.pressed()
+        }
+    }
+    .clickable(enabled = enabled) { opener.tapped(onOpen) }
+
+/** How soon after a touch outside put a menu away a press on what opened it is taken to have been for that. */
+private const val SHUT_MS = 300L
 
 /** How long a menu takes to open and to shut (Material's). */
 private const val MENU_IN_MS = 120L

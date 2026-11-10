@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -40,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
@@ -57,9 +60,11 @@ import sh.ahmd.wallflower.ui.GlyphIcon
 import sh.ahmd.wallflower.ui.MenuAction
 import sh.ahmd.wallflower.ui.Colors
 import sh.ahmd.wallflower.ui.Mono
+import sh.ahmd.wallflower.ui.Opener
 import sh.ahmd.wallflower.ui.Palette
 import sh.ahmd.wallflower.ui.PopupMenu
 import sh.ahmd.wallflower.ui.haptics
+import sh.ahmd.wallflower.ui.opens
 import sh.ahmd.wallflower.ui.wordSize
 import sh.ahmd.wallflower.ui.words
 
@@ -114,7 +119,11 @@ internal fun AttachmentsRow(state: TextFieldState, paths: Regex?, attachments: A
     }
 }
 
-/** + : photos, through the system's picker, or any file. The keyboard stays up for it, and comes back after ([onBack]). */
+/**
+ * + : photos, through the system's picker, or any file. The keyboard stays
+ * up for it, and comes back after ([onBack]). Open, it turns to ×, and
+ * tapped again, shuts.
+ */
 @Composable
 internal fun AttachButton(
     enabled: Boolean,
@@ -124,8 +133,9 @@ internal fun AttachButton(
     commands: List<Command> = emptyList(),
     onCommand: (Command) -> Unit = {},
 ) {
-    var open by remember { mutableStateOf(false) }
+    val menu = remember { Opener() }
     var wasTyping by remember { mutableStateOf(false) }
+    val turn by animateFloatAsState(if (menu.open) -45f else 0f, tween(TURN_MS), label = "plus")
     val picked: (List<Uri>) -> Unit = {
         if (it.isNotEmpty()) onAttach(it)
         if (wasTyping) onBack()
@@ -139,28 +149,25 @@ internal fun AttachButton(
                 .clip(CircleShape)
                 .background(Palette.bg2)
                 .border(1.dp, Palette.border, CircleShape)
-                .clickable(enabled = enabled) { // the menu's opening is felt
-                    wasTyping = typing()
-                    open = true
-                },
+                .opens(menu, enabled) { wasTyping = typing() }, // the menu's opening is felt
             contentAlignment = Alignment.Center,
-        ) { GlyphIcon(Glyph.Plus, if (enabled) Palette.fg else Palette.dim, size = 14.dp) }
+        ) { GlyphIcon(Glyph.Plus, if (enabled) Palette.fg else Palette.dim, Modifier.graphicsLayer { rotationZ = turn }, size = 14.dp) }
         PopupMenu(
-            expanded = open,
-            onDismiss = { open = false },
+            expanded = menu.open,
+            onDismiss = menu::dismiss,
             keepKeyboard = true,
             actions = listOf(
                 MenuAction("photos") {
-                    open = false
+                    menu.open = false
                     photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 },
                 MenuAction("files") {
-                    open = false
+                    menu.open = false
                     files.launch(arrayOf("*/*"))
                 },
             ) + commands.map { c ->
                 MenuAction(c.text, Palette.purple, font = Mono, detail = c.about) {
-                    open = false
+                    menu.open = false
                     onCommand(c)
                 }
             },
@@ -281,4 +288,5 @@ private fun TextFieldBuffer.cutUpload(start: Int, end: Int) {
 
 private const val CLIP = "" // the font's paperclip
 private const val MAX_ATTACH = 10
+private const val TURN_MS = 180
 private val TILE = 56.dp

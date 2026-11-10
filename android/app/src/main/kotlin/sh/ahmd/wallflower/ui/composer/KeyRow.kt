@@ -1,6 +1,5 @@
 package sh.ahmd.wallflower.ui.composer
 
-import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -24,7 +22,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import sh.ahmd.wallflower.ui.Above
 import sh.ahmd.wallflower.ui.Mono
-import sh.ahmd.wallflower.ui.chrome
+import sh.ahmd.wallflower.ui.Opener
 import sh.ahmd.wallflower.ui.glyphs
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -158,17 +156,17 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
 
 /**
  * Keys gathered in one ([BarKey.cluster]): pressed, they bubble up above
- * it, ↑ ← ⏎ → ↓ with ⌫ above right. Slid onto and let go of, one goes and
- * they close; tapped, they stay up to press, the arrows repeating while
- * held, till a tap anywhere else, or on this key again.
+ * it, ⏎ ↑ ⌫ over ← ↓ →, see-through so what's behind them shows. Slid onto
+ * and let go of, one goes and they close; tapped, they stay up to press,
+ * the arrows repeating while held, till a tap anywhere else, or on this
+ * key again.
  */
 @Composable
 private fun ClusterChip(key: BarKey, onKey: (BarKey) -> Unit) {
     val haptics = haptics()
-    var open by remember { mutableStateOf(false) }
+    val keys = remember { Opener() }
     var sliding by remember { mutableStateOf(false) }
     var over by remember { mutableIntStateOf(-1) }
-    var dismissed by remember { mutableLongStateOf(0L) }
     var chip by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val places = remember { arrayOfNulls<Rect>(PLACES.flatten().count { it >= 0 }) } // on screen, by place
     fun send(i: Int, again: Boolean = false) {
@@ -180,19 +178,18 @@ private fun ClusterChip(key: BarKey, onKey: (BarKey) -> Unit) {
         Pill(
             faceOf(key),
             on = false,
-            pressed = open,
+            pressed = keys.open,
             modifier = Modifier.height(36.dp).onGloballyPositioned { chip = it },
             input = Modifier.pointerInput(key) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     down.consume()
-                    // A tap on it while they're up puts them away (a touch outside may have already).
-                    if (open || SystemClock.uptimeMillis() - dismissed < TOGGLE_MS) {
-                        open = false
+                    if (keys.pressed()) {
+                        keys.open = false
                         waitForUpOrCancellation()
                         return@awaitEachGesture
                     }
-                    open = true
+                    keys.open = true
                     haptics.tick()
                     var moved = false
                     while (true) {
@@ -212,24 +209,21 @@ private fun ClusterChip(key: BarKey, onKey: (BarKey) -> Unit) {
                     }
                     if (moved) {
                         if (over >= 0) send(over)
-                        open = false
+                        keys.open = false
                     }
                     sliding = false
                     over = -1
                 }
             },
         )
-        if (open) {
-            val gap = with(LocalDensity.current) { 8.dp.roundToPx() }
+        if (keys.open) {
+            val gap = with(LocalDensity.current) { 16.dp.roundToPx() } // clear of the composer's edge
             Popup(
                 popupPositionProvider = remember(gap) { Above(gap) },
-                onDismissRequest = {
-                    open = false
-                    dismissed = SystemClock.uptimeMillis()
-                },
+                onDismissRequest = keys::dismiss,
                 properties = PopupProperties(focusable = false), // the keyboard stays up
             ) {
-                Column(Modifier.chrome().padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (row in PLACES) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             for (i in row) {
@@ -260,7 +254,7 @@ private fun Place(name: String, lit: Boolean, modifier: Modifier, onPress: (agai
         modifier
             .size(PLACE)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (lit || pressed) Palette.bg3 else Palette.bg2)
+            .background(if (lit || pressed) Palette.bg3.copy(alpha = 0.9f) else Palette.bg2.copy(alpha = 0.6f))
             .pointerInput(name) {
                 detectTapGestures(onPress = {
                     pressed = true
@@ -286,12 +280,9 @@ private fun Place(name: String, lit: Boolean, modifier: Modifier, onPress: (agai
     }
 }
 
-/** Where a cluster's keys go, by their place in it: up, left, the middle, right, down, above right. */
-private val PLACES = listOf(listOf(-1, 0, 5), listOf(1, 2, 3), listOf(-1, 4, -1))
+/** Where a cluster's keys go, row by row, by their place in it ([BarKey]): top left, up, top right; left, down, right. */
+private val PLACES = listOf(listOf(2, 0, 5), listOf(1, 4, 3))
 private val PLACE = 46.dp
-
-/** How soon after a touch outside put a cluster's keys away a tap on it is taken to have been for that. */
-private const val TOGGLE_MS = 300L
 
 /** The pencil that opens the bar's keys for editing. */
 @Composable
