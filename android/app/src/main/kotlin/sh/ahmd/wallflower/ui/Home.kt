@@ -233,20 +233,21 @@ private fun MuxSection(
 @Composable
 private fun SessionRow(info: SessionInfo, onClick: () -> Unit, onRename: (() -> Unit)?, onClose: (() -> Unit)?) {
     val haptics = haptics()
-    var menu by remember { mutableStateOf(false) }
+    val menu = rememberOpener()
     Box {
         Row(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
                 .background(Palette.bg1)
+                .slides(menu)
                 .combinedClickable(
                     hapticFeedbackEnabled = false,
                     onClick = {
                         haptics.tick()
                         onClick()
                     },
-                    onLongClick = if (onRename == null && onClose == null) null else ({ menu = true }),
+                    onLongClick = if (onRename == null && onClose == null) null else ({ menu.open = true }),
                 )
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -265,11 +266,10 @@ private fun SessionRow(info: SessionInfo, onClick: () -> Unit, onRename: (() -> 
             Text("›", color = Palette.grey, fontFamily = Mono, fontSize = 14.sp)
         }
         PopupMenu(
-            expanded = menu,
-            onDismiss = { menu = false },
+            menu,
             actions = listOfNotNull(
-                onRename?.let { MenuAction("rename") { menu = false; it() } },
-                onClose?.let { MenuAction("close", Palette.red) { menu = false; it() } },
+                onRename?.let { MenuAction("rename") { menu.open = false; it() } },
+                onClose?.let { MenuAction("close", Palette.red) { menu.open = false; it() } },
             ),
         )
     }

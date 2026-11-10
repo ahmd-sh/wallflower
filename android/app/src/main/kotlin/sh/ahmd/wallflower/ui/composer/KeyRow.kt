@@ -1,28 +1,21 @@
 package sh.ahmd.wallflower.ui.composer
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import sh.ahmd.wallflower.ui.Above
 import sh.ahmd.wallflower.ui.Mono
-import sh.ahmd.wallflower.ui.Opener
+import sh.ahmd.wallflower.ui.choice
+import sh.ahmd.wallflower.ui.opens
+import sh.ahmd.wallflower.ui.rememberOpener
 import sh.ahmd.wallflower.ui.glyphs
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -164,11 +157,7 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
 @Composable
 private fun ClusterChip(key: BarKey, onKey: (BarKey) -> Unit) {
     val haptics = haptics()
-    val keys = remember { Opener() }
-    var sliding by remember { mutableStateOf(false) }
-    var over by remember { mutableIntStateOf(-1) }
-    var chip by remember { mutableStateOf<LayoutCoordinates?>(null) }
-    val places = remember { arrayOfNulls<Rect>(PLACES.flatten().count { it >= 0 }) } // on screen, by place
+    val keys = rememberOpener()
     fun send(i: Int, again: Boolean = false) {
         val k = key.keys.getOrNull(i) ?: return
         if (again) haptics.repeat() else haptics.key()
@@ -179,42 +168,8 @@ private fun ClusterChip(key: BarKey, onKey: (BarKey) -> Unit) {
             faceOf(key),
             on = false,
             pressed = keys.open,
-            modifier = Modifier.height(36.dp).onGloballyPositioned { chip = it },
-            input = Modifier.pointerInput(key) {
-                awaitEachGesture {
-                    val down = awaitFirstDown()
-                    down.consume()
-                    if (keys.pressed()) {
-                        keys.open = false
-                        waitForUpOrCancellation()
-                        return@awaitEachGesture
-                    }
-                    keys.open = true
-                    haptics.tick()
-                    var moved = false
-                    while (true) {
-                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                        if (!moved && (change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
-                            moved = true
-                            sliding = true
-                        }
-                        if (moved) {
-                            val at = chip?.takeIf { it.isAttached }?.localToScreen(change.position)
-                            val now = if (at == null) -1 else places.indexOfFirst { it?.contains(at) == true }
-                            if (now != over && now >= 0) haptics.tick()
-                            over = now
-                        }
-                        change.consume()
-                        if (!change.pressed) break
-                    }
-                    if (moved) {
-                        if (over >= 0) send(over)
-                        keys.open = false
-                    }
-                    sliding = false
-                    over = -1
-                }
-            },
+            modifier = Modifier.height(36.dp),
+            input = Modifier.opens(keys) { haptics.tick() },
         )
         if (keys.open) {
             val gap = with(LocalDensity.current) { 16.dp.roundToPx() } // clear of the composer's edge
@@ -231,7 +186,7 @@ private fun ClusterChip(key: BarKey, onKey: (BarKey) -> Unit) {
                                 if (i < 0 || name == null) {
                                     Spacer(Modifier.size(PLACE))
                                 } else {
-                                    Place(name, lit = over == i, Modifier.onGloballyPositioned { places[i] = Rect(it.positionOnScreen(), it.size.toSize()) }) { again -> send(i, again) }
+                                    Place(name, lit = keys.over == i, Modifier.choice(keys, i) { send(i) }) { again -> send(i, again) }
                                 }
                             }
                         }

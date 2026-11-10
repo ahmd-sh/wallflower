@@ -60,11 +60,11 @@ import sh.ahmd.wallflower.ui.GlyphIcon
 import sh.ahmd.wallflower.ui.MenuAction
 import sh.ahmd.wallflower.ui.Colors
 import sh.ahmd.wallflower.ui.Mono
-import sh.ahmd.wallflower.ui.Opener
 import sh.ahmd.wallflower.ui.Palette
 import sh.ahmd.wallflower.ui.PopupMenu
 import sh.ahmd.wallflower.ui.haptics
 import sh.ahmd.wallflower.ui.opens
+import sh.ahmd.wallflower.ui.rememberOpener
 import sh.ahmd.wallflower.ui.wordSize
 import sh.ahmd.wallflower.ui.words
 
@@ -133,7 +133,7 @@ internal fun AttachButton(
     commands: List<Command> = emptyList(),
     onCommand: (Command) -> Unit = {},
 ) {
-    val menu = remember { Opener() }
+    val menu = rememberOpener()
     var wasTyping by remember { mutableStateOf(false) }
     val turn by animateFloatAsState(if (menu.open) -45f else 0f, tween(TURN_MS), label = "plus")
     val picked: (List<Uri>) -> Unit = {
@@ -153,8 +153,7 @@ internal fun AttachButton(
             contentAlignment = Alignment.Center,
         ) { GlyphIcon(Glyph.Plus, if (enabled) Palette.fg else Palette.dim, Modifier.graphicsLayer { rotationZ = turn }, size = 14.dp) }
         PopupMenu(
-            expanded = menu.open,
-            onDismiss = menu::dismiss,
+            menu,
             keepKeyboard = true,
             actions = listOf(
                 MenuAction("photos") {

@@ -29,10 +29,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -108,24 +106,23 @@ internal fun ConnectionButton(
     onSettings: () -> Unit,
     onExit: () -> Unit,
 ) {
-    var open by remember { mutableStateOf(false) }
+    val menu = rememberOpener()
     Box(Modifier.padding(end = 6.dp)) {
         Box(
             Modifier
                 .clip(RoundedCornerShape(8.dp))
-                .clickable { open = true }
+                .opens(menu)
                 .semantics { contentDescription = "connection to $machine" }
                 .padding(horizontal = 9.dp, vertical = 7.dp),
             contentAlignment = Alignment.Center,
         ) { ConnectionDot(status) }
         PopupMenu(
-            expanded = open,
-            onDismiss = { open = false },
+            menu,
             actions = listOfNotNull(
-                if (status.waiting) MenuAction("retry now", Palette.green) { open = false; onRetry() } else null,
-                onSessions?.let { MenuAction("sessions") { open = false; it() } },
-                MenuAction("settings") { open = false; onSettings() },
-                MenuAction("disconnect", Palette.red) { open = false; onExit() },
+                if (status.waiting) MenuAction("retry now", Palette.green) { menu.open = false; onRetry() } else null,
+                onSessions?.let { MenuAction("sessions") { menu.open = false; it() } },
+                MenuAction("settings") { menu.open = false; onSettings() },
+                MenuAction("disconnect", Palette.red) { menu.open = false; onExit() },
             ),
             header = {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

@@ -354,7 +354,7 @@ private fun ItemView(
 private fun Prompt(text: String, onEdit: (() -> Unit)?) {
     var open by remember { mutableStateOf(false) }
     var cut by remember { mutableStateOf(false) }
-    var menu by remember { mutableStateOf(false) }
+    val menu = rememberOpener()
     val copier = rememberCopier()
     val style = TextStyle(color = Palette.fg, fontFamily = words, fontSize = wordSize(14.sp, 15.sp), lineHeight = wordSize(21.sp, 22.sp))
     Column(Modifier.fillMaxWidth().padding(start = 40.dp), horizontalAlignment = Alignment.End) {
@@ -363,10 +363,11 @@ private fun Prompt(text: String, onEdit: (() -> Unit)?) {
                 .animateContentSize(Motion.spatial())
                 .clip(RoundedCornerShape(18.dp))
                 .background(Palette.bg2)
+                .slides(menu)
                 .combinedClickable(
                     hapticFeedbackEnabled = false, // the menu's opening is felt, as the setting allows
                     onClick = { open = !open },
-                    onLongClick = { menu = true },
+                    onLongClick = { menu.open = true },
                 )
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
@@ -380,11 +381,10 @@ private fun Prompt(text: String, onEdit: (() -> Unit)?) {
             // What's cut off is said on a line of its own, as something to open.
             if (cut && !open) Text("…", style = style.copy(color = Palette.blue, fontSize = 20.sp, fontWeight = FontWeight.Bold, lineHeight = 16.sp))
             PopupMenu(
-                expanded = menu,
-                onDismiss = { menu = false },
+                menu,
                 actions = listOfNotNull(
-                    onEdit?.let { edit -> MenuAction("edit") { menu = false; edit() } },
-                    MenuAction("copy") { menu = false; copier.copy(text) },
+                    onEdit?.let { edit -> MenuAction("edit") { menu.open = false; edit() } },
+                    MenuAction("copy") { menu.open = false; copier.copy(text) },
                 ),
             )
         }
@@ -450,10 +450,14 @@ private fun CopyIcon(modifier: Modifier = Modifier, text: () -> String) {
     }
 }
 
-/** How much of the program's context the conversation takes; tapped, it offers to compact it. */
+/**
+ * How much of the program's context the conversation takes; tapped or
+ * held, it offers to compact it (held, as it's in a list that scrolls, the
+ * finger can slide on to that).
+ */
 @Composable
 private fun ContextButton(tokens: Int, onCompact: (() -> Unit)?) {
-    var open by remember { mutableStateOf(false) }
+    val menu = rememberOpener()
     Box {
         Text(
             "context ${count(tokens)}",
@@ -461,15 +465,20 @@ private fun ContextButton(tokens: Int, onCompact: (() -> Unit)?) {
             style = Type.caption,
             modifier = Modifier
                 .clip(RoundedCornerShape(6.dp))
-                .clickable(enabled = onCompact != null) { open = true } // the menu's opening is felt
+                .slides(menu)
+                .combinedClickable(
+                    enabled = onCompact != null,
+                    hapticFeedbackEnabled = false, // the menu's opening is felt
+                    onClick = { menu.open = true },
+                    onLongClick = { menu.open = true },
+                )
                 .padding(vertical = 4.dp, horizontal = 2.dp),
         )
         PopupMenu(
-            expanded = open,
-            onDismiss = { open = false },
+            menu,
             actions = listOf(
                 MenuAction("compact") {
-                    open = false
+                    menu.open = false
                     onCompact?.invoke()
                 },
             ),

@@ -1,15 +1,10 @@
 package sh.ahmd.wallflower.ui
 
-import android.os.SystemClock
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,12 +15,10 @@ import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,18 +39,13 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.takeOrElse
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.PopupProperties
 
 /** wallflower's icons; from [Escape] on, keys'; from [Hexagon] on, programs' (with [Terminal], [Spark] and [Edit]: see [glyphOf]). */
 enum class Glyph {
@@ -242,116 +230,6 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
         }
     }
 }
-
-/** A menu's choice: what it says, in what color (unspecified, the words') and [font], what it's about beneath, and what it does. */
-class MenuAction(
-    val label: String,
-    val color: Color = Color.Unspecified,
-    val font: FontFamily? = null,
-    val detail: String? = null,
-    val onClick: () -> Unit,
-)
-
-/**
- * A menu dropping from what opened it, rounded and compact, its choices
- * ruled apart beneath an optional [header]. Felt as it opens and shuts.
- */
-@Composable
-fun PopupMenu(
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    actions: List<MenuAction>,
-    header: (@Composable () -> Unit)? = null,
-    /** Leave the keyboard up while it's open, rather than taking focus. */
-    keepKeyboard: Boolean = false,
-) {
-    val haptics = haptics()
-    var felt by remember { mutableStateOf(expanded) }
-    LaunchedEffect(expanded) {
-        if (expanded != felt) haptics.slide(if (expanded) MENU_IN_MS else MENU_OUT_MS)
-        felt = expanded
-    }
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(16.dp),
-        containerColor = Palette.bg1,
-        tonalElevation = 0.dp,
-        shadowElevation = 6.dp,
-        border = BorderStroke(1.dp, Palette.border),
-        properties = PopupProperties(focusable = !keepKeyboard),
-    ) {
-        Column(Modifier.widthIn(min = 150.dp).padding(horizontal = 4.dp)) {
-            header?.let {
-                Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) { it() }
-                Rule(Modifier.padding(horizontal = 12.dp))
-            }
-            actions.forEachIndexed { i, action ->
-                if (i > 0) Rule(Modifier.padding(horizontal = 12.dp))
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable {
-                            haptics.tick()
-                            action.onClick()
-                        }
-                        .padding(horizontal = 12.dp, vertical = 9.dp),
-                ) {
-                    Text(action.label, color = action.color.takeOrElse { Palette.fg }, style = Type.body, fontFamily = action.font)
-                    action.detail?.let { Text(it, color = Palette.grey, style = Type.label) }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Whether a menu that a tap opens is [open]. A touch outside one that
- * leaves the keyboard up puts it away and goes on to what's under it, so a
- * press on what opened it, while it's open or just after, is to shut it.
- */
-@Stable
-internal class Opener {
-    var open by mutableStateOf(false)
-    private var shut = 0L
-    private var shutting = false
-
-    /** A touch outside put it away. */
-    fun dismiss() {
-        open = false
-        shut = SystemClock.uptimeMillis()
-    }
-
-    /** As a press on what opens it starts: whether it's to shut it. */
-    fun pressed(): Boolean {
-        shutting = open || SystemClock.uptimeMillis() - shut < SHUT_MS
-        return shutting
-    }
-
-    /** A tap that began with [pressed]: it opens, [onOpen] first, or shuts. */
-    fun tapped(onOpen: () -> Unit) {
-        if (!shutting) onOpen()
-        open = !shutting
-    }
-}
-
-/** On what opens [opener]'s menu: a tap opens it, [onOpen] first, or shuts it. */
-internal fun Modifier.opens(opener: Opener, enabled: Boolean = true, onOpen: () -> Unit = {}) = this
-    .pointerInput(opener) {
-        awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            opener.pressed()
-        }
-    }
-    .clickable(enabled = enabled) { opener.tapped(onOpen) }
-
-/** How soon after a touch outside put a menu away a press on what opened it is taken to have been for that. */
-private const val SHUT_MS = 300L
-
-/** How long a menu takes to open and to shut (Material's). */
-private const val MENU_IN_MS = 120L
-private const val MENU_OUT_MS = 75L
 
 /** Asks before closing something. "Don't ask again" comes back with the answer. */
 @Composable

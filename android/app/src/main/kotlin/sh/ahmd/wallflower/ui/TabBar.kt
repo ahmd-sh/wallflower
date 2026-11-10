@@ -26,9 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,7 +84,6 @@ internal fun TabBar(
     }
     val at = remember { Animatable(index.coerceAtLeast(0).toFloat()) }
     LaunchedEffect(index) { if (index >= 0) at.animateTo(index.toFloat(), Motion.spatial()) }
-    var menu by remember { mutableStateOf<String?>(null) }
     val colors = Palette
     Row(
         Modifier
@@ -134,17 +131,19 @@ internal fun TabBar(
                 val number by animateColorAsState(if (on) Palette.orange else Palette.dim, Motion.effect(), label = "tab")
                 val name by animateColorAsState(if (on) Palette.fg else Palette.grey, Motion.effect(), label = "tab")
                 val agent = activityOf(w)
+                val menu = rememberOpener()
                 Box {
                     Row(
                         Modifier
                             .clip(RoundedCornerShape(8.dp))
+                            .slides(menu)
                             .combinedClickable(
                                 hapticFeedbackEnabled = false, // the menu's opening is felt, as the setting allows
                                 onClick = {
                                     if (!on) haptics.tick()
                                     onSelect(w)
                                 },
-                                onLongClick = { menu = w.id },
+                                onLongClick = { menu.open = true },
                             )
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -154,11 +153,10 @@ internal fun TabBar(
                         if (agent != null) AgentDot(agent, Modifier.padding(start = 6.dp))
                     }
                     PopupMenu(
-                        expanded = menu == w.id,
-                        onDismiss = { menu = null },
+                        menu,
                         actions = listOf(
-                            MenuAction("rename") { menu = null; onRename(w) },
-                            MenuAction("close", Palette.red) { menu = null; onClose(w) },
+                            MenuAction("rename") { menu.open = false; onRename(w) },
+                            MenuAction("close", Palette.red) { menu.open = false; onClose(w) },
                         ),
                     )
                 }
