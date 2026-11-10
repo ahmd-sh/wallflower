@@ -134,23 +134,25 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     val place by current.place.collectAsStateWithLifecycle()
     // Pages draw over the terminal, which keeps its place underneath.
     Box(Modifier.fillMaxSize()) {
-        key(current) {
-            Crossfade(place == null, animationSpec = Motion.effect(), label = "home") { home ->
-                if (home) {
-                    LaunchedEffect(Unit) { program = null; programId = null }
-                    HomeScreen(current, mac, model, unlock, onSettings = { screen = Screen.Settings }, onExit = onExit)
-                } else {
-                    TerminalScreen(
-                        current,
-                        mac,
-                        model,
-                        unlock,
-                        onProgram = { command, id -> program = command; programId = id },
-                        onSessions = current::detach,
-                        onSettings = { screen = Screen.Settings },
-                        onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
-                        onExit = onExit,
-                    )
+        FloatingHost {
+            key(current) {
+                Crossfade(place == null, animationSpec = Motion.effect(), label = "home") { home ->
+                    if (home) {
+                        LaunchedEffect(Unit) { program = null; programId = null }
+                        HomeScreen(current, mac, model, unlock, onSettings = { screen = Screen.Settings }, onExit = onExit)
+                    } else {
+                        TerminalScreen(
+                            current,
+                            mac,
+                            model,
+                            unlock,
+                            onProgram = { command, id -> program = command; programId = id },
+                            onSessions = current::detach,
+                            onSettings = { screen = Screen.Settings },
+                            onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
+                            onExit = onExit,
+                        )
+                    }
                 }
             }
         }

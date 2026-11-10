@@ -7,11 +7,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
-import sh.ahmd.wallflower.ui.Above
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import sh.ahmd.wallflower.ui.FloatAbove
+import sh.ahmd.wallflower.ui.frosted
 import sh.ahmd.wallflower.ui.Mono
 import sh.ahmd.wallflower.ui.choice
 import sh.ahmd.wallflower.ui.opens
@@ -149,7 +150,7 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
 
 /**
  * Keys gathered in one ([BarKey.cluster]): pressed, they bubble up above
- * it, ⏎ ↑ ⌫ over ← ↓ →, see-through so what's behind them shows. Slid onto
+ * it, ⏎ ↑ ⌫ over ← ↓ →, frosted so what's behind them shows. Slid onto
  * and let go of, one goes and they close; tapped, they stay up to press,
  * the arrows repeating while held, till a tap anywhere else, or on this
  * key again.
@@ -158,6 +159,7 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
 private fun ClusterChip(key: BarKey, onKey: (BarKey) -> Unit) {
     val haptics = haptics()
     val keys = rememberOpener()
+    var chip by remember { mutableStateOf(Rect.Zero) }
     fun send(i: Int, again: Boolean = false) {
         val k = key.keys.getOrNull(i) ?: return
         if (again) haptics.repeat() else haptics.key()
@@ -168,16 +170,11 @@ private fun ClusterChip(key: BarKey, onKey: (BarKey) -> Unit) {
             faceOf(key),
             on = false,
             pressed = keys.open,
-            modifier = Modifier.height(36.dp),
+            modifier = Modifier.height(36.dp).onGloballyPositioned { chip = it.boundsInWindow() },
             input = Modifier.opens(keys) { haptics.tick() },
         )
         if (keys.open) {
-            val gap = with(LocalDensity.current) { 16.dp.roundToPx() } // clear of the composer's edge
-            Popup(
-                popupPositionProvider = remember(gap) { Above(gap) },
-                onDismissRequest = keys::dismiss,
-                properties = PopupProperties(focusable = false), // the keyboard stays up
-            ) {
+            FloatAbove(chip, gap = 16.dp, onDismiss = keys::dismiss) { // clear of the composer's edge
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (row in PLACES) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -209,7 +206,8 @@ private fun Place(name: String, lit: Boolean, modifier: Modifier, onPress: (agai
         modifier
             .size(PLACE)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (lit || pressed) Palette.bg3.copy(alpha = 0.9f) else Palette.bg2.copy(alpha = 0.6f))
+            .frosted(8.dp)
+            .background(if (lit || pressed) Palette.bg3.copy(alpha = 0.85f) else Palette.bg2.copy(alpha = 0.45f))
             .pointerInput(name) {
                 detectTapGestures(onPress = {
                     pressed = true
