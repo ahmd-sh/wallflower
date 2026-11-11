@@ -1,6 +1,6 @@
 # Plugins of your own
 
-wallflower ships plugins for Claude Code and shells. Others are yours to
+wallflower ships plugins for Claude Code, Codex and shells. Others are yours to
 add, without rebuilding anything: a JSON file each in
 `~/.config/wallflower/plugins/` (or the gateway's `-plugins` directory),
 read when a connection starts.
@@ -44,9 +44,10 @@ its stderr.
 The `view` program runs while the gateway does, and speaks JSON, a message
 a line, on its stdin and stdout. It's told:
 
-- `{"find": [{"id": "%1", "tty": "/dev/ttys003", "command": "aider"}, …]}`,
-  every moment or so: the panes there are. Say which you read, and what each
-  is doing if you know:
+- `{"find": [{"id": "%1", "tty": "/dev/ttys003", "command": "aider", "title": "aider", "path": "/Users/me/dev/x"}, …]}`,
+  every moment or so: the panes there are, with the title the program gave
+  its terminal and the directory it's in, when the multiplexer says. Say
+  which you read, and what each is doing if you know:
   `{"found": {"%1": {"activity": "working", "since": 1730000000000}}}`. The
   gateway doesn't wait: what you said last stands until you say again. Read
   what you're sent promptly; messages that pile up unread are dropped.

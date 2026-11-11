@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/ahmd-sh/wallflower/internal/claude"
+	"github.com/ahmd-sh/wallflower/internal/codex"
 	"github.com/ahmd-sh/wallflower/internal/mobileview"
 )
 
@@ -24,15 +25,21 @@ type Program struct {
 // Runs says whether a pane's command is the program's.
 func (p Program) Runs(command string) bool { return slices.Contains(p.Commands, command) }
 
-// Builtin is the programs wallflower ships: Claude Code (with its mobile
-// view, read from claudeDir, if that's set), zsh, and other shells.
-func Builtin(claudeDir string) []Program {
+// Builtin is the programs wallflower ships: Claude Code and Codex (with
+// their mobile views, read from claudeDir and codexDir, if they're set),
+// zsh, and other shells.
+func Builtin(claudeDir, codexDir string) []Program {
 	cc := Program{ID: "claude", Commands: []string{"claude"}}
 	if claudeDir != "" {
 		cc.View = claude.New(claudeDir)
 	}
+	cx := Program{ID: "codex", Commands: []string{"codex"}}
+	if codexDir != "" {
+		cx.View = codex.New(codexDir)
+	}
 	return []Program{
 		cc,
+		cx,
 		{ID: "zsh", Commands: []string{"zsh"}},
 		{ID: "shell", Commands: []string{"bash", "fish", "sh", "dash", "ksh", "tcsh", "nu"}},
 	}

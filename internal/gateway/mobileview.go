@@ -52,7 +52,7 @@ func (g *gateway) matches(s *mux.Session) map[string]match {
 	var panes []mobileview.Pane
 	for _, w := range s.Windows {
 		for _, p := range w.Panes {
-			panes = append(panes, mobileview.Pane{ID: p.ID, TTY: p.TTY, Command: g.program(p)})
+			panes = append(panes, mobileview.Pane{ID: p.ID, TTY: p.TTY, Command: g.program(p), Title: p.Title, Path: p.Path})
 		}
 	}
 	found := map[string]match{}
@@ -97,7 +97,7 @@ func (g *gateway) read(id string) {
 	for _, w := range g.windows() {
 		for _, wp := range w.Panes {
 			if wp.ID == id {
-				p = mobileview.Pane{ID: id, TTY: wp.TTY, Command: g.program(wp)}
+				p = mobileview.Pane{ID: id, TTY: wp.TTY, Command: g.program(wp), Title: wp.Title, Path: wp.Path}
 			}
 		}
 	}

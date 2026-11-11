@@ -50,13 +50,14 @@ func gatewayFlags(fs *flag.FlagSet) func() (gateway.Options, error) {
 	socket := fs.String("L", "", "tmux socket name, or path if it contains a slash")
 	rexServer := fs.String("rex", "", "Rex server's socket (default: Rex.app's)")
 	claudeDir := fs.String("claude", defaultClaudeDir(), "Claude Code's data, for its mobile views (empty: none)")
+	codexDir := fs.String("codex", defaultCodexDir(), "Codex's data, for its mobile views (empty: none)")
 	plugins := fs.String("plugins", defaultPluginDir(), "plugins of your own, a JSON file each (docs/plugins.md)")
 	return func() (gateway.Options, error) {
 		muxes := map[string]mux.Mux{"tmux": tmux.Server{Socket: *socket}, "rex": rex.Server{Endpoint: *rexServer}}
 		if muxes[*multiplexer] == nil {
 			return gateway.Options{}, fmt.Errorf("no multiplexer %q: tmux or rex", *multiplexer)
 		}
-		builtin := program.Builtin(*claudeDir)
+		builtin := program.Builtin(*claudeDir, *codexDir)
 		own, errs := program.Load(*plugins, builtin)
 		for _, err := range errs {
 			fmt.Fprintln(os.Stderr, "wallflower:", err)
@@ -81,6 +82,17 @@ func defaultPluginDir() string {
 		return ""
 	}
 	return filepath.Join(home, ".config", "wallflower", "plugins")
+}
+
+func defaultCodexDir() string {
+	if dir := os.Getenv("CODEX_HOME"); dir != "" {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".codex")
 }
 
 func defaultClaudeDir() string {

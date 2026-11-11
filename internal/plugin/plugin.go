@@ -105,9 +105,13 @@ type pane struct {
 	ID      string `json:"id"`
 	TTY     string `json:"tty"`
 	Command string `json:"command"`
+	Title   string `json:"title,omitempty"`
+	Path    string `json:"path,omitempty"`
 }
 
-func paneOf(p mobileview.Pane) pane { return pane{ID: p.ID, TTY: p.TTY, Command: p.Command} }
+func paneOf(p mobileview.Pane) pane {
+	return pane{ID: p.ID, TTY: p.TTY, Command: p.Command, Title: p.Title, Path: p.Path}
+}
 
 // Find asks the program which panes it reads, and says what it said last,
 // without waiting: it's asked every moment or so, on the gateway's one

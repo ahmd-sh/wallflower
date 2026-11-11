@@ -67,11 +67,14 @@ type Update struct {
 	Requeued bool
 }
 
-// A Pane is what a Source is told of a pane.
+// A Pane is what a Source is told of a pane: its program's terminal, the
+// program, the title it gave its terminal, and where it's working.
 type Pane struct {
 	ID      string
 	TTY     string
 	Command string
+	Title   string
+	Path    string
 }
 
 // Found is a pane a Source reads, and what its program is doing, if it

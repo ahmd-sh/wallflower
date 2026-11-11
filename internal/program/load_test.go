@@ -22,7 +22,7 @@ func TestLoad(t *testing.T) {
 	} {
 		os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600)
 	}
-	got, errs := Load(dir, Builtin(""))
+	got, errs := Load(dir, Builtin("", ""))
 	want := []Program{{
 		ID: "aider", Commands: []string{"aider"},
 		Client: &Client{Keys: &Keys{Name: "aider", Keys: []string{"Escape", "C-c"}}, Commands: []Command{{"/undo", "undo the last change"}}, Newline: []string{"M-Enter"}},
