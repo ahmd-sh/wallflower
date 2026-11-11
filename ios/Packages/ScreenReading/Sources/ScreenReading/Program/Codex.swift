@@ -112,13 +112,18 @@ public final class Codex: Program {
     /// What it asks takes the composer's place: an approval, or the picker for
     /// its questions. No rule opens it: the conversation's rows come right
     /// before, each its own • item (↪ for an answer), and aren't what it asks.
+    /// Asked whether to trust a folder, a number doesn't answer: 1 only moves
+    /// to trust, which Enter confirms, and 2 leaves at once.
     public func prompt(_ screen: Screen) -> Prompt? {
         if composer(screen) != nil { return nil }
         guard var p = Prompt.read(screen) else { return nil }
         let from = (p.lines.lastIndex { let t = $0.text.trimmedStart(); return t.startsWith("•") || t.startsWith("↪") } ?? -1) + 1
         p.lines = Array(p.lines.dropFirst(from).drop { $0.text.isBlank })
+        p.byCursor = p.lines.contains { Codex.trust.find($0.text) != nil }
         return p
     }
+
+    private static let trust = Pattern("(?i)\\btrust\\b")
 
     /// While it works, Codex says so on a row of its own above the composer
     /// (or its questions): a mark, its word, then how long and how to stop

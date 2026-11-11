@@ -65,6 +65,15 @@ final class CodexTests: XCTestCase {
         XCTAssertEqual("Would you like to run the following command?", p.lines.first?.text.trimmingCharacters(in: .whitespaces))
     }
 
+    func testAFolderToTrustIsPickedByTheCursorAsANumberOnlyMovesToTrust() throws {
+        let p = try XCTUnwrap(codex.prompt(screen("trust")))
+        XCTAssertEqual(["Trust and continue", "Back to Agent Command Center"], p.options.map(\.label))
+        XCTAssertEqual(["Enter"], p.keys(p.options[0]))
+        XCTAssertEqual(["Down", "Enter"], p.keys(p.options[1]))
+        let approval = try XCTUnwrap(codex.prompt(screen("approval")))
+        XCTAssertEqual(["1"], approval.keys(approval.options[0])) // elsewhere a number answers
+    }
+
     func testItsTitleIsTheConversationsNameThenTheProjects() {
         XCTAssertEqual("Approve touch command", codex.label("Approve touch command | wallflower"))
         XCTAssertEqual("Approve touch command", codex.label("⠴ Approve touch command | wallflower"))

@@ -16,20 +16,23 @@
 ///
 /// A menu can have a box beside it previewing the option under the cursor,
 /// as Claude Code's questions do: the menu is what's left of it, and a
-/// number only moves the cursor (`previewed`).
+/// number only moves the cursor (`previewed`). Where a number isn't an
+/// answer at all, the cursor and Enter alone pick (`byCursor`).
 public struct Prompt: Hashable, Sendable {
     public var lines: [Line]
     public var options: [Option]
     public var tabs: [Tab]
     public var quote: String
     public var previewed: Bool
+    public var byCursor: Bool
 
-    public init(lines: [Line], options: [Option], tabs: [Tab], quote: String = "", previewed: Bool = false) {
+    public init(lines: [Line], options: [Option], tabs: [Tab], quote: String = "", previewed: Bool = false, byCursor: Bool = false) {
         self.lines = lines
         self.options = options
         self.tabs = tabs
         self.quote = quote
         self.previewed = previewed
+        self.byCursor = byCursor
     }
 
     public struct Line: Hashable, Sendable {
@@ -82,7 +85,7 @@ public struct Prompt: Hashable, Sendable {
     /// (a multiple choice's toggles) unless `previewed`, or the cursor moved
     /// there and Enter.
     public func keys(_ option: Option) -> [String] {
-        if let n = option.number, (1...9).contains(n) { return previewed ? [String(n), "Enter"] : [String(n)] }
+        if let n = option.number, (1...9).contains(n), !byCursor { return previewed ? [String(n), "Enter"] : [String(n)] }
         let from = max(options.firstIndex { $0.current } ?? -1, 0)
         if option.scroll != 0 {
             // One past the last shown that way, which scrolls the list.

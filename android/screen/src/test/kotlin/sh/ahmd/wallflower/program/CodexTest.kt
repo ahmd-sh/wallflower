@@ -75,6 +75,15 @@ class CodexTest {
     }
 
     @Test
+    fun aFolderToTrustIsPickedByTheCursorAsANumberOnlyMovesToTrust() {
+        val p = Codex.prompt(screen("trust"))!!
+        assertEquals(listOf("Trust and continue", "Back to Agent Command Center"), p.options.map { it.label })
+        assertEquals(listOf("Enter"), p.keys(p.options[0]))
+        assertEquals(listOf("Down", "Enter"), p.keys(p.options[1]))
+        assertEquals(listOf("1"), Codex.prompt(screen("approval"))!!.let { it.keys(it.options[0]) }) // elsewhere a number answers
+    }
+
+    @Test
     fun itsTitleIsTheConversationsNameThenTheProjects() {
         assertEquals("Approve touch command", Codex.label("Approve touch command | wallflower"))
         assertEquals("Approve touch command", Codex.label("⠴ Approve touch command | wallflower"))

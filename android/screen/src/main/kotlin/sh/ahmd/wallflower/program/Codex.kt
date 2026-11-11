@@ -122,13 +122,18 @@ object Codex : Program {
      * What it asks takes the composer's place: an approval, or the picker for
      * its questions. No rule opens it: the conversation's rows come right
      * before, each its own • item (↪ for an answer), and aren't what it asks.
+     * Asked whether to trust a folder, a number doesn't answer: 1 only moves
+     * to trust, which Enter confirms, and 2 leaves at once.
      */
     override fun prompt(screen: Screen): Prompt? {
         if (composer(screen) != null) return null
         val p = Prompt.read(screen) ?: return null
         val from = p.lines.indexOfLast { it.text.trimStart().let { t -> t.startsWith("•") || t.startsWith("↪") } } + 1
-        return p.copy(lines = p.lines.drop(from).dropWhile { it.text.isBlank() })
+        val lines = p.lines.drop(from).dropWhile { it.text.isBlank() }
+        return p.copy(lines = lines, byCursor = lines.any { trust.containsMatchIn(it.text) })
     }
+
+    private val trust = Regex("""(?i)\btrust\b""")
 
     /**
      * While it works, Codex says so on a row of its own above the composer

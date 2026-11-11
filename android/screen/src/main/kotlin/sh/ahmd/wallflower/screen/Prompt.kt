@@ -19,7 +19,8 @@ package sh.ahmd.wallflower.screen
  *
  * A menu can have a box beside it previewing the option under the cursor,
  * as Claude Code's questions do: the menu is what's left of it, and a
- * number only moves the cursor ([previewed]).
+ * number only moves the cursor ([previewed]). Where a number isn't an
+ * answer at all, the cursor and Enter alone pick ([byCursor]).
  */
 data class Prompt(
     val lines: List<Line>,
@@ -27,6 +28,7 @@ data class Prompt(
     val tabs: List<Tab>,
     val quote: String = "",
     val previewed: Boolean = false,
+    val byCursor: Boolean = false,
 ) {
     data class Line(val text: String, val code: Boolean)
 
@@ -55,7 +57,7 @@ data class Prompt(
      */
     fun keys(option: Option): List<String> {
         val n = option.number
-        if (n != null && n in 1..9) return if (previewed) listOf(n.toString(), "Enter") else listOf(n.toString())
+        if (n != null && n in 1..9 && !byCursor) return if (previewed) listOf(n.toString(), "Enter") else listOf(n.toString())
         val from = options.indexOfFirst { it.current }.coerceAtLeast(0)
         if (option.scroll != 0) {
             // One past the last shown that way, which scrolls the list.
