@@ -37,6 +37,12 @@ final class NoticeTests: XCTestCase {
         }
     }
 
+    func testClaudeShowingItsTranscriptOrAnAnswerAsideIsNone() {
+        for capture in ["claude-transcript.ansi", "claude-btw.ansi", "claude-btw-answering.ansi"] {
+            XCTAssertNil(Claude.shared.notice(title: "Claude Code", body: "Claude is waiting for your input", screen: captured(capture, 54)), capture)
+        }
+    }
+
     func testClaudeWhoseScreenCouldntBeReadIsOneNotice() {
         XCTAssertEqual(input, Claude.shared.notice(title: "Claude Code", body: "Claude is waiting for your input", screen: nil))
     }

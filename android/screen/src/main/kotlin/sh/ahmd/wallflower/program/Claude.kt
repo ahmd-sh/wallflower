@@ -238,10 +238,11 @@ object Claude : Program {
      * besides (done and waiting, an agent finished, a push), each its own
      * way, or with only the bell, as it's set to. What it asks always takes
      * its prompt box's place: so one notice while the box is gone, or the
-     * screen couldn't be read; none while it's there.
+     * screen couldn't be read; none while it's there, or a view of Claude's
+     * own is in its place, as that's asking nothing.
      */
     override fun notice(title: String?, body: String?, screen: Screen?): Notice? =
-        if (screen == null || line(screen) == null) Notice("Claude Code", "Claude needs your input") else null
+        if (screen == null || line(screen) == null && aside(screen) == null) Notice("Claude Code", "Claude needs your input") else null
 
     /**
      * Claude runs in vim mode, and where it can't be seen it may be in

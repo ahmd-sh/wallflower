@@ -231,9 +231,10 @@ public final class Claude: Program {
     /// besides (done and waiting, an agent finished, a push), each its own
     /// way, or with only the bell, as it's set to. What it asks always takes
     /// its prompt box's place: so one notice while the box is gone, or the
-    /// screen couldn't be read; none while it's there.
+    /// screen couldn't be read; none while it's there, or a view of Claude's
+    /// own is in its place, as that's asking nothing.
     public func notice(title: String?, body: String?, screen: Screen?) -> Notice? {
-        if let screen, line(screen) != nil { return nil }
+        if let screen, line(screen) != nil || aside(screen) != nil { return nil }
         return Notice(title: "Claude Code", body: "Claude needs your input")
     }
 
