@@ -114,7 +114,7 @@ public final class Codex: Program {
         guard var p = Prompt.read(screen) else { return nil }
         let from = (p.lines.lastIndex { let t = $0.text.trimmedStart(); return t.startsWith("•") || t.startsWith("↪") } ?? -1) + 1
         p.lines = Array(p.lines.dropFirst(from).drop { $0.text.isBlank })
-        p.byCursor = p.lines.contains { Codex.trust.find($0.text) != nil }
+        if p.lines.contains(where: { Codex.trust.find($0.text) != nil }) { p.numbers = .ignored }
         return p
     }
 

@@ -19,17 +19,27 @@ package sh.ahmd.wallflower.screen
  *
  * A menu can have a box beside it previewing the option under the cursor,
  * as Claude Code's questions do: the menu is what's left of it, and a
- * number only moves the cursor ([previewed]). Where a number isn't an
- * answer at all, the cursor and Enter alone pick ([byCursor]).
+ * number only moves the cursor ([Numbers.Move]).
  */
 data class Prompt(
     val lines: List<Line>,
     val options: List<Option>,
     val tabs: List<Tab>,
     val quote: String = "",
-    val previewed: Boolean = false,
-    val byCursor: Boolean = false,
+    /** What a number pressed does in it. */
+    val numbers: Numbers = Numbers.Answer,
 ) {
+    enum class Numbers {
+        /** Answers at once (a multiple choice's toggles). */
+        Answer,
+
+        /** Moves the cursor to it, for Enter to pick. */
+        Move,
+
+        /** Nothing an answer can count on: the cursor and Enter alone pick (Codex's folder trust, where 1 only moves to trust and 2 leaves at once). */
+        Ignored,
+    }
+
     data class Line(val text: String, val code: Boolean)
 
     data class Option(
@@ -50,14 +60,10 @@ data class Prompt(
     /** A question's chip, with its mark (☐ ☒ ✔) as shown. */
     data class Tab(val label: String, val current: Boolean)
 
-    /**
-     * Keys that pick [option]: its number, which these menus take at once
-     * (a multiple choice's toggles) unless [previewed], or the cursor moved
-     * there and Enter.
-     */
+    /** Keys that pick [option]: its number, with Enter where a number only moves to it, or the cursor moved there and Enter. */
     fun keys(option: Option): List<String> {
         val n = option.number
-        if (n != null && n in 1..9 && !byCursor) return if (previewed) listOf(n.toString(), "Enter") else listOf(n.toString())
+        if (n != null && n in 1..9 && numbers != Numbers.Ignored) return if (numbers == Numbers.Move) listOf(n.toString(), "Enter") else listOf(n.toString())
         val from = options.indexOfFirst { it.current }.coerceAtLeast(0)
         if (option.scroll != 0) {
             // One past the last shown that way, which scrolls the list.
@@ -220,7 +226,7 @@ data class Prompt(
             }
             if (options.count { it.number != null } < 2 || options.none { it.current }) return null
             val (lines, tabs, quote) = about(rows, top)
-            return Prompt(lines, options, tabs, quote, previewed = beside != null) to y
+            return Prompt(lines, options, tabs, quote, if (beside != null) Numbers.Move else Numbers.Answer) to y
         }
 
         /** The cell a box beside the menu on row [top] starts at, if there's one: ┌ on its first option's row, └ under it. */

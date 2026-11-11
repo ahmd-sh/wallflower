@@ -125,7 +125,7 @@ object Codex : Program {
         val p = Prompt.read(screen) ?: return null
         val from = p.lines.indexOfLast { it.text.trimStart().let { t -> t.startsWith("•") || t.startsWith("↪") } } + 1
         val lines = p.lines.drop(from).dropWhile { it.text.isBlank() }
-        return p.copy(lines = lines, byCursor = lines.any { trust.containsMatchIn(it.text) })
+        return p.copy(lines = lines, numbers = if (lines.any { trust.containsMatchIn(it.text) }) Prompt.Numbers.Ignored else p.numbers)
     }
 
     private val trust = Regex("""(?i)\btrust\b""")

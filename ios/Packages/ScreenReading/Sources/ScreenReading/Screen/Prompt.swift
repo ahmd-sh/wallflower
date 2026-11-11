@@ -16,23 +16,30 @@
 ///
 /// A menu can have a box beside it previewing the option under the cursor,
 /// as Claude Code's questions do: the menu is what's left of it, and a
-/// number only moves the cursor (`previewed`). Where a number isn't an
-/// answer at all, the cursor and Enter alone pick (`byCursor`).
+/// number only moves the cursor (`Numbers.move`).
 public struct Prompt: Hashable, Sendable {
     public var lines: [Line]
     public var options: [Option]
     public var tabs: [Tab]
     public var quote: String
-    public var previewed: Bool
-    public var byCursor: Bool
+    /// What a number pressed does in it.
+    public var numbers: Numbers
 
-    public init(lines: [Line], options: [Option], tabs: [Tab], quote: String = "", previewed: Bool = false, byCursor: Bool = false) {
+    public enum Numbers: Hashable, Sendable {
+        /// Answers at once (a multiple choice's toggles).
+        case answer
+        /// Moves the cursor to it, for Enter to pick.
+        case move
+        /// Nothing an answer can count on: the cursor and Enter alone pick (Codex's folder trust, where 1 only moves to trust and 2 leaves at once).
+        case ignored
+    }
+
+    public init(lines: [Line], options: [Option], tabs: [Tab], quote: String = "", numbers: Numbers = .answer) {
         self.lines = lines
         self.options = options
         self.tabs = tabs
         self.quote = quote
-        self.previewed = previewed
-        self.byCursor = byCursor
+        self.numbers = numbers
     }
 
     public struct Line: Hashable, Sendable {
@@ -81,11 +88,9 @@ public struct Prompt: Hashable, Sendable {
         }
     }
 
-    /// Keys that pick `option`: its number, which these menus take at once
-    /// (a multiple choice's toggles) unless `previewed`, or the cursor moved
-    /// there and Enter.
+    /// Keys that pick `option`: its number, with Enter where a number only moves to it, or the cursor moved there and Enter.
     public func keys(_ option: Option) -> [String] {
-        if let n = option.number, (1...9).contains(n), !byCursor { return previewed ? [String(n), "Enter"] : [String(n)] }
+        if let n = option.number, (1...9).contains(n), numbers != .ignored { return numbers == .move ? [String(n), "Enter"] : [String(n)] }
         let from = max(options.firstIndex { $0.current } ?? -1, 0)
         if option.scroll != 0 {
             // One past the last shown that way, which scrolls the list.
@@ -261,7 +266,7 @@ public struct Prompt: Hashable, Sendable {
         }
         if options.filter({ $0.number != nil }).count < 2 || !options.contains(where: { $0.current }) { return nil }
         let (lines, tabs, quote) = about(rows, top)
-        return (Prompt(lines: lines, options: options, tabs: tabs, quote: quote, previewed: beside != nil), y)
+        return (Prompt(lines: lines, options: options, tabs: tabs, quote: quote, numbers: beside != nil ? .move : .answer), y)
     }
 
     /// The cell a box beside the menu on row `top` starts at, if there's one: ┌ on its first option's row, └ under it.
