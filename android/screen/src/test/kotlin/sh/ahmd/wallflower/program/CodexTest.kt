@@ -57,7 +57,7 @@ class CodexTest {
         assertNull(Codex.asked(s))
         val p = Codex.prompt(s)!!
         assertEquals(listOf("Red", "Blue", "Green", "Other"), p.options.map { it.label })
-        assertEquals("Which colour do you pick?", p.lines.lastOrNull { it.text.isNotBlank() }?.text)
+        assertEquals(listOf("Which colour do you pick?"), p.lines.map { it.text }.filter { it.isNotBlank() }) // not the conversation's rows above
         assertEquals(listOf("2"), p.keys(p.options[1])) // a number answers it at once
         assertEquals("Working", Codex.status(s))
     }
@@ -71,6 +71,7 @@ class CodexTest {
         assertEquals("Yes, proceed (y)", p.options[0].label)
         assertEquals("No, and tell Codex what to do differently (esc)", p.options[2].label)
         assertEquals(true, p.options[0].current)
+        assertEquals("Would you like to run the following command?", p.lines.first().text.trim())
     }
 
     @Test

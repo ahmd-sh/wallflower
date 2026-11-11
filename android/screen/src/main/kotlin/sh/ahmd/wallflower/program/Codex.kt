@@ -118,8 +118,17 @@ object Codex : Program {
 
     private val option = Regex("""^›\s+\d{1,2}\.\s.*""")
 
-    /** What it asks takes the composer's place: an approval, or the picker for its questions. */
-    override fun prompt(screen: Screen): Prompt? = if (composer(screen) != null) null else Prompt.read(screen)
+    /**
+     * What it asks takes the composer's place: an approval, or the picker for
+     * its questions. No rule opens it: the conversation's rows come right
+     * before, each its own • item (↪ for an answer), and aren't what it asks.
+     */
+    override fun prompt(screen: Screen): Prompt? {
+        if (composer(screen) != null) return null
+        val p = Prompt.read(screen) ?: return null
+        val from = p.lines.indexOfLast { it.text.trimStart().let { t -> t.startsWith("•") || t.startsWith("↪") } } + 1
+        return p.copy(lines = p.lines.drop(from).dropWhile { it.text.isBlank() })
+    }
 
     /**
      * While it works, Codex says so on a row of its own above the composer

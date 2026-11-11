@@ -49,7 +49,7 @@ final class CodexTests: XCTestCase {
         XCTAssertNil(codex.asked(s))
         let p = try XCTUnwrap(codex.prompt(s))
         XCTAssertEqual(["Red", "Blue", "Green", "Other"], p.options.map(\.label))
-        XCTAssertEqual("Which colour do you pick?", p.lines.last { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }?.text)
+        XCTAssertEqual(["Which colour do you pick?"], p.lines.map(\.text).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) // not the conversation's rows above
         XCTAssertEqual(["2"], p.keys(p.options[1])) // a number answers it at once
         XCTAssertEqual("Working", codex.status(s))
     }
@@ -62,6 +62,7 @@ final class CodexTests: XCTestCase {
         XCTAssertEqual("Yes, proceed (y)", p.options[0].label)
         XCTAssertEqual("No, and tell Codex what to do differently (esc)", p.options[2].label)
         XCTAssertTrue(p.options[0].current)
+        XCTAssertEqual("Would you like to run the following command?", p.lines.first?.text.trimmingCharacters(in: .whitespaces))
     }
 
     func testItsTitleIsTheConversationsNameThenTheProjects() {

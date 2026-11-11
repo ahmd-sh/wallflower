@@ -109,8 +109,16 @@ public final class Codex: Program {
 
     private static let option = Pattern("^›\\s+\\d{1,2}\\.\\s.*")
 
-    /// What it asks takes the composer's place: an approval, or the picker for its questions.
-    public func prompt(_ screen: Screen) -> Prompt? { composer(screen) != nil ? nil : Prompt.read(screen) }
+    /// What it asks takes the composer's place: an approval, or the picker for
+    /// its questions. No rule opens it: the conversation's rows come right
+    /// before, each its own • item (↪ for an answer), and aren't what it asks.
+    public func prompt(_ screen: Screen) -> Prompt? {
+        if composer(screen) != nil { return nil }
+        guard var p = Prompt.read(screen) else { return nil }
+        let from = (p.lines.lastIndex { let t = $0.text.trimmedStart(); return t.startsWith("•") || t.startsWith("↪") } ?? -1) + 1
+        p.lines = Array(p.lines.dropFirst(from).drop { $0.text.isBlank })
+        return p
+    }
 
     /// While it works, Codex says so on a row of its own above the composer
     /// (or its questions): a mark, its word, then how long and how to stop
