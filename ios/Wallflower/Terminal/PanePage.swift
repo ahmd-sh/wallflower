@@ -75,7 +75,9 @@ struct TerminalHost: UIViewRepresentable {
  * ([reading]), which pauses the terminal underneath. With no pane
  * ([actions] nil), an empty terminal that measures the grid until there
  * are panes. [current]: the page on screen, which gets the [prompt] the
- * pane's screen offers, and what its program says it's doing ([status]).
+ * pane's screen offers, what its program says it's doing ([status]), what
+ * it shows [aside] of its line (with what's been read of an [answer]), and
+ * its [mode] (with those it goes round, [modes]), which picked goes to [onMode].
  */
 struct PanePage: View {
     @Environment(\.palette) private var palette
@@ -90,6 +92,11 @@ struct PanePage: View {
     let status: String?
     /** Questions the program asked, waiting to be brought up. */
     var asked: Asked? = nil
+    let aside: Aside?
+    let answer: [String]
+    let mode: Mode?
+    let modes: [Mode]
+    let onMode: (String) -> Void
     let nudged: Int
     /** The message held to edit, if picking is for it. */
     let held: String?
@@ -123,6 +130,11 @@ struct PanePage: View {
                     doing: current ? status : nil,
                     asked: current ? asked : nil,
                     nudged: current ? nudged : 0,
+                    aside: current ? aside : nil,
+                    answer: answer,
+                    mode: current ? mode : nil,
+                    modes: modes,
+                    onMode: onMode,
                     onKeys: { keys in
                         onPrompt()
                         actions.keys(keys)

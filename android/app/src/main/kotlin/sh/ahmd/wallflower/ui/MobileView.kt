@@ -71,6 +71,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -98,6 +99,8 @@ import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.items
 import sh.ahmd.wallflower.read.trace
 import sh.ahmd.wallflower.program.Asked
+import sh.ahmd.wallflower.program.Aside
+import sh.ahmd.wallflower.program.Mode
 import sh.ahmd.wallflower.screen.Prompt
 
 /**
@@ -106,7 +109,10 @@ import sh.ahmd.wallflower.screen.Prompt
  * wanted. The newest is at the bottom, which stays in view as entries come.
  * Below it, while the program works, a line says so; when its screen offers
  * a [prompt] (a permission, a question), that's there to answer, and the keys
- * picking an option go to [onKeys], and the option to [onPicked]. Sideways
+ * picking an option go to [onKeys], and the option to [onPicked]. What the
+ * program shows [aside] of its line, where keys are its own, is said at the
+ * foot, with the keys that put it away. Its [mode] goes beside how full its
+ * context is, to pick another of those it goes round ([modes]). Sideways
  * drags go to [swipe], to move between panes as on the terminal. The
  * conversation's [title], if its tab doesn't say it, sits at the top.
  */
@@ -129,6 +135,12 @@ fun MobileView(
     nudged: Long = 0,
     /** A message asked back to edit is being found in what the program lists, which isn't the user's to answer yet. */
     seeking: Boolean = false,
+    aside: Aside? = null,
+    /** Of an answer aside, what's been read of it, as it's scrolled. */
+    answer: List<String> = emptyList(),
+    mode: Mode? = null,
+    modes: List<Mode> = emptyList(),
+    onMode: (String) -> Unit = {},
     onKeys: (List<String>) -> Unit = {},
     onPicked: (Prompt, Prompt.Option) -> Unit = { _, _ -> },
     /** Sends the program its compact command, from the context button; null while it can't. */
@@ -190,6 +202,8 @@ fun MobileView(
         // The card opening and shutting, felt even where the status line leaves with it.
         val feel = rememberFold()
         SideEffect { feel.shown(status == Status.Asking) }
+        val feelAside = rememberFold()
+        SideEffect { feelAside.shown(aside != null) }
         val list = rememberLazyListState()
         val scope = rememberCoroutineScope()
         // At the bottom, new entries glide into view; scrolled up to read, the list stays put.
@@ -202,7 +216,7 @@ fun MobileView(
             list.interactionSource.interactions.collect { if (it is DragInteraction.Start) following = false }
         }
         LaunchedEffect(list) { snapshotFlow { atBottom && !list.isScrollInProgress }.collect { if (it) following = true } }
-        LaunchedEffect(items.size, items.lastOrNull(), status, reading.queued.size) { if (following) list.animateScrollToItem(0) }
+        LaunchedEffect(items.size, items.lastOrNull(), status, reading.queued.size, aside != null, answer.size) { if (following) list.animateScrollToItem(0) }
         // Editing a message asks the program at the foot, where what it asks comes.
         val edit = onEdit?.let { e ->
             { said: Entry.Said ->
@@ -228,17 +242,39 @@ fun MobileView(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 48.dp, bottom = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        // How full the context is goes beside the last reply's copy; with no copy to go beside, on its own.
+                        // What's aside of the program's line takes its place, at the foot.
+                        if (aside != null) {
+                            item(key = "aside") {
+                                AnimatedContent(
+                                    aside,
+                                    Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect()),
+                                    transitionSpec = { fadeIn(Motion.effect()) togetherWith fadeOut(Motion.effect()) using SizeTransform(clip = false) },
+                                    contentKey = { it::class },
+                                    label = "aside",
+                                ) { a ->
+                                    AsideCard(a, answer, nudged, onKeys, Modifier.onSizeChanged { s -> feelAside.laidOut(s.height) })
+                                }
+                            }
+                        }
+                        // The mode, and how full the context is, go beside the last reply's copy; with no copy to go beside, on their own.
                         val newest = items.lastOrNull()
-                        val context: (@Composable () -> Unit)? =
-                            if (reading.context > 0) ({ ContextButton(reading.context, onCompact) }) else null
+                        val footer: (@Composable () -> Unit)? = if (reading.context > 0 || mode != null) {
+                            {
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    mode?.let { ModeButton(it, modes, onMode) }
+                                    if (reading.context > 0) ContextButton(reading.context, onCompact)
+                                }
+                            }
+                        } else {
+                            null
+                        }
                         val besideCopy = newest?.copies(ongoing = status != null) == true
-                        if (context != null && !besideCopy) {
+                        if (footer != null && !besideCopy) {
                             item(key = "context") {
                                 Box(
                                     Modifier.fillMaxWidth().animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect()),
                                     contentAlignment = Alignment.CenterEnd,
-                                ) { context() }
+                                ) { footer() }
                             }
                         }
                         // What waits for the program to take it is below its working, as Claude shows it.
@@ -260,7 +296,7 @@ fun MobileView(
                                 ) { now ->
                                     when (now) {
                                         Status.Asking -> shown?.let { p ->
-                                            PromptCard(p, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }, nudged) { picked -> onPicked(p, picked) }
+                                            PromptCard(p, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }, nudged.takeIf { aside == null } ?: 0) { picked -> onPicked(p, picked) }
                                         }
                                         Status.Working -> Working(since, if (stopping) "stopping" else doing)
                                         Status.Waiting -> Waiting(asked) { asked?.let { onKeys(it.keys) } }
@@ -271,7 +307,7 @@ fun MobileView(
                         }
                         items(items.asReversed(), key = { it.key }, contentType = { it::class }) {
                             Box(Modifier.animateItem(fadeInSpec = Motion.effect(), placementSpec = Motion.spatial(), fadeOutSpec = Motion.effect())) {
-                                ItemView(it, picture, ongoing = status != null && it === newest, beside = context.takeIf { _ -> it === newest }, onEdit = edit)
+                                ItemView(it, picture, ongoing = status != null && it === newest, beside = footer.takeIf { _ -> it === newest }, onEdit = edit)
                             }
                         }
                         if (reading.more) item(key = "more") { Note("earlier messages are in the terminal") }
@@ -491,6 +527,56 @@ private fun ContextButton(tokens: Int, onCompact: (() -> Unit)?) {
             ),
         )
     }
+}
+
+/**
+ * The mode the program's in, marked and colored as it shows it; tapped or
+ * held, the others it goes round, from the next on, to step to.
+ */
+@Composable
+private fun ModeButton(mode: Mode, modes: List<Mode>, onMode: (String) -> Unit) {
+    val menu = rememberOpener()
+    Box {
+        Text(
+            said(mode),
+            color = modeColor(mode.name),
+            style = Type.caption,
+            maxLines = 1,
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .slides(menu)
+                .combinedClickable(
+                    hapticFeedbackEnabled = false, // the menu's opening is felt
+                    onClick = { menu.open = true },
+                    onLongClick = { menu.open = true },
+                )
+                .padding(vertical = 4.dp, horizontal = 2.dp),
+        )
+        PopupMenu(
+            menu,
+            header = { Text("mode · shift+tab", color = Palette.dim, style = Type.caption) },
+            actions = modes.map { m ->
+                MenuAction(said(m), modeColor(m.name), detail = "on".takeIf { m.name == mode.name }) {
+                    menu.open = false
+                    if (m.name != mode.name) onMode(m.name)
+                }
+            },
+        )
+    }
+}
+
+/** A mode as the program shows it, its mark drawn as text (⏸ is an emoji too). */
+private fun said(mode: Mode) =
+    (mode.mark.map { "$it\uFE0E" }.joinToString("") + " " + mode.name).trim()
+
+/** A mode's color, as Claude colors its own (unknown ones grey). */
+@Composable
+private fun modeColor(name: String) = when (name) {
+    "auto" -> Palette.yellow
+    "accept edits" -> Palette.purple
+    "plan" -> Palette.aqua
+    "bypass permissions" -> Palette.red
+    else -> Palette.grey
 }
 
 private fun count(n: Int) = when {
@@ -920,6 +1006,107 @@ private fun Waiting(asked: Asked?, onBring: () -> Unit) {
         )
     }
 }
+
+/**
+ * What the program shows aside of its line, whose keys are its own: a view
+ * of its own, said so, with a way back; or an answer to a question asked
+ * aside, as far as it's been read ([answer]), with esc to close it, and a way
+ * down it while there may be more. Something sent while it's up waits: the
+ * card says so a moment ([nudged]).
+ */
+@Composable
+private fun AsideCard(aside: Aside, answer: List<String>, nudged: Long, onKeys: (List<String>) -> Unit, modifier: Modifier = Modifier) {
+    val haptics = haptics()
+    // Something sent while it's up, not before it came.
+    val before = remember { nudged }
+    val held by produceState(false, nudged) {
+        if (nudged != 0L && nudged != before) {
+            value = true
+            delay(HELD_MS)
+            value = false
+        }
+    }
+    val leave = {
+        haptics.tick()
+        onKeys(aside.leave)
+    }
+    when (aside) {
+        is Aside.View -> Row(
+            modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Palette.bg1).padding(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(6.dp).clip(CircleShape).background(Palette.blue))
+            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                Text("the terminal shows the ${aside.name}", color = Palette.fg, style = Type.label)
+                Crossfade(held, animationSpec = Motion.effect(), label = "held") {
+                    if (it) {
+                        Text("go back first, then send", color = Palette.orange, style = Type.caption)
+                    } else {
+                        Text("what's typed goes to it till you're back", color = Palette.grey, style = Type.caption)
+                    }
+                }
+            }
+            Chip("back", Palette.blue, onClick = leave)
+        }
+        is Aside.Answer -> Box(modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Palette.bg1).padding(10.dp)) {
+            Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.padding(end = 44.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("by the way", color = Palette.purple, style = Type.caption)
+                    Text(aside.question, color = Palette.grey, style = Type.caption, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp))
+                }
+                if (held) Text("close this first (esc), then send", color = Palette.orange, fontFamily = words, fontSize = wordSize(12.sp, 13.sp))
+                val rows = aside.rows
+                if (rows == null) {
+                    Working(0, "answering")
+                } else {
+                    val text = remember(answer, aside.width) { aside.text(answer) }
+                    SelectionContainer {
+                        Text(text, color = Palette.fg, fontFamily = words, fontSize = wordSize(14.sp, 15.sp), lineHeight = wordSize(21.sp, 22.sp), modifier = Modifier.animateContentSize(Motion.spatial()))
+                    }
+                    // Taller than its room, down a page at a time, but for a row or two, so what shows next meets what's been read; till a page brings nothing.
+                    var ended by remember(aside.question) { mutableStateOf(false) }
+                    var asked by remember(aside.question) { mutableStateOf<Int?>(null) }
+                    LaunchedEffect(asked, answer.size) {
+                        val at = asked ?: return@LaunchedEffect
+                        if (answer.size <= at) {
+                            delay(MORE_MS)
+                            ended = true
+                        }
+                        asked = null
+                    }
+                    if (aside.taller && !ended) {
+                        Chip("more ↓", Palette.blue) {
+                            haptics.tick()
+                            asked = answer.size
+                            onKeys(List(maxOf(1, (rows.size - 2) / aside.step)) { aside.down }.flatten())
+                        }
+                    }
+                }
+            }
+            Chip("esc", Palette.grey, Modifier.align(Alignment.TopEnd), mono = true, onClick = leave)
+        }
+    }
+}
+
+/** A small rounded button, as the cards' esc. */
+@Composable
+private fun Chip(text: String, color: Color, modifier: Modifier = Modifier, mono: Boolean = false, onClick: () -> Unit) = Text(
+    text,
+    color = color,
+    fontFamily = if (mono) Mono else words,
+    fontSize = 12.sp,
+    modifier = modifier
+        .clip(RoundedCornerShape(14.dp))
+        .background(Palette.bg2)
+        .clickable(onClick = onClick)
+        .padding(horizontal = 10.dp, vertical = 3.dp),
+)
+
+/** How long something sent while an aside is up says it's waiting. */
+private const val HELD_MS = 3_000L
+
+/** How long after asking for more of an answer nothing new means there's no more. */
+private const val MORE_MS = 1_200L
 
 @Composable
 private fun Hint(text: String) = Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {

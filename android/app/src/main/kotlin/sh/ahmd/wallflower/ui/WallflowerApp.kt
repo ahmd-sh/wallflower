@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -46,8 +47,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import kotlin.math.abs
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.withTimeoutOrNull
 import sh.ahmd.wallflower.AppModel
+import sh.ahmd.wallflower.program.Mode
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.program.Walk
 import sh.ahmd.wallflower.protocol.Pane
@@ -343,6 +347,35 @@ private fun TerminalScreen(
             }
         }
     }
+    // A mode picked is stepped to a key at a time, each step as far as the screen shows it went, and no further round than where it started.
+    var moding by remember(pane?.id) { mutableStateOf<String?>(null) }
+    val cycle = actions?.program?.takeIf { it.nextMode != null }?.let(Cycles::of)
+    LaunchedEffect(screen.mode, cycle) { screen.mode?.let { cycle?.saw(it) } }
+    LaunchedEffect(moding) {
+        val to = moding ?: return@LaunchedEffect
+        val keys = actions?.program?.nextMode
+        val from = screen.mode
+        if (keys != null && from != null && cycle != null) {
+            var at: Mode = from
+            for (i in 0 until MODE_STEPS) {
+                // Only at its line: a menu, or what's aside of it, would take the key as its own (shift+tab allows edits, in some).
+                if (at.name == to || screen.line == null || screen.aside != null) break
+                actions.keys(keys)
+                // Not moved: something's over its line, which takes the key.
+                val next = withTimeoutOrNull(MODE_STEP_MS) { snapshotFlow { screen.mode }.first { it != null && it != at } } ?: break
+                cycle.stepped(at, next)
+                at = next
+                if (at == from) {
+                    cycle.missed(to) // round, and it wasn't there
+                    break
+                }
+                if (at.name != to) haptics.repeat()
+            }
+            if (at.name == to) haptics.confirm() else haptics.reject()
+        }
+        moding = null
+    }
+
     // What a prompt did shows in the line it leaves, a moment after it goes, whoever answered it: a rewind restored at the Mac, say.
     var asked by remember(pane?.id) { mutableStateOf<Prompt?>(null) }
     var gone by remember(pane?.id) { mutableLongStateOf(0L) }
@@ -467,6 +500,10 @@ private fun TerminalScreen(
             line = { screen.line },
             status = screen.status,
             asked = screen.asked,
+            aside = screen.aside,
+            answer = screen.answer,
+            mode = screen.mode?.let { m -> cycle?.from(m)?.let { m to it } },
+            onMode = { moding = it },
             nudged = nudged,
             seeking = seeking != null,
             onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
@@ -560,7 +597,9 @@ private fun TerminalScreen(
                 {
                     if (pane != null && actions != null) {
                         // A menu the program's waiting on would take what's typed as picks, and Enter as its choice: what's sent waits, unless it's for writing in.
-                        val holding = screen.prompt?.takeIf { mobileView && activity == Activity.Waiting }?.options?.none { it.current && it.muted && it.scroll == 0 } == true
+                        // So would what it shows aside of its line, whose keys are its own.
+                        val holding = mobileView && screen.aside != null ||
+                            screen.prompt?.takeIf { mobileView && activity == Activity.Waiting }?.options?.none { it.current && it.muted && it.scroll == 0 } == true
                         val uploads by model.uploads.items.collectAsStateWithLifecycle()
                         val uploadDir by model.uploads.dir.collectAsStateWithLifecycle()
                         val profile = bar.profileFor(pane.command, pane.program)
@@ -672,6 +711,10 @@ private fun TerminalScreen(
         }
     }
 }
+
+/** How many steps a mode picked is gone round to at most, and how long each may take to show. */
+private const val MODE_STEPS = 8
+private const val MODE_STEP_MS = 2_000L
 
 /** How long the connection is down before the screen says so. */
 internal const val DOWN_UNSAID_MS = 1_500L

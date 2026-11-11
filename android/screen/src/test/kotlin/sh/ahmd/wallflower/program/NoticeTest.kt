@@ -42,6 +42,13 @@ class NoticeTest {
     }
 
     @Test
+    fun claudeShowingItsTranscriptOrAnAnswerAsideIsNone() {
+        for (capture in listOf("claude-transcript.ansi", "claude-btw.ansi", "claude-btw-answering.ansi")) {
+            assertNull(capture, Claude.notice("Claude Code", "Claude is waiting for your input", captured(capture, 54)))
+        }
+    }
+
+    @Test
     fun claudeWhoseScreenCouldntBeReadIsOneNotice() {
         assertEquals(input, Claude.notice("Claude Code", "Claude is waiting for your input", null))
     }

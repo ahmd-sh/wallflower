@@ -41,6 +41,8 @@ struct TerminalScreen: View {
     @State private var nudged = 0
     @State private var overview = false
     @State private var seeker = Seeker()
+    /** The mode picked, being stepped to. */
+    @State private var moding: String?
 
     var body: some View {
         let place = session.place
@@ -154,6 +156,15 @@ struct TerminalScreen: View {
             if let id, phase == .active, model.opening == nil { model.seen(id) }
             typed = false
             seeker.reset()
+            moding = nil
+        }
+        .onChange(of: screen.mode) { _, m in
+            if let m, let program = actions?.program, program.nextMode != nil { Cycles.of(program).saw(m) }
+        }
+        .task(id: moding) {
+            guard let to = moding else { return }
+            await walk(to: to, actions: actions)
+            moding = nil
         }
         .onChange(of: screen.prompt) { _, p in
             seeker.prompt(p, actions: actions)
@@ -252,6 +263,11 @@ struct TerminalScreen: View {
             line: { screen.line },
             status: current ? screen.status : nil,
             asked: current ? screen.asked : nil,
+            aside: current ? screen.aside : nil,
+            answer: screen.answer,
+            mode: current ? screen.mode : nil,
+            modes: current ? modes(actions) : [],
+            onMode: { moding = $0 },
             nudged: nudged,
             held: seeker.editing,
             handle: handle,
@@ -283,7 +299,9 @@ struct TerminalScreen: View {
 
     private func composer(pane: Pane, actions: PaneActions, mobile: Bool, activity: Activity?, bar: KeyBar, connected: Bool) -> some View {
         // A menu the program's waiting on would take what's typed as picks, and Enter as its choice: what's sent waits, unless it's for writing in.
-        let holding = mobile && activity == .waiting && (screen.prompt.map { p in !p.options.contains { $0.current && $0.muted && $0.scroll == 0 } } ?? false)
+        // So would what it shows aside of its line, whose keys are its own.
+        let holding = mobile && screen.aside != nil ||
+            mobile && activity == .waiting && (screen.prompt.map { p in !p.options.contains { $0.current && $0.muted && $0.scroll == 0 } } ?? false)
         let profile = bar.profile(for: pane.command, program: pane.program)
         return Composer(
             text: Binding(get: { model.drafts.text(pane.id) }, set: { model.drafts.set(pane.id, $0) }),
@@ -376,6 +394,47 @@ struct TerminalScreen: View {
         if r.arg("newtab") != nil { session.newWindow() }
     }
 
+    // MARK: Modes
+
+    /** The modes the pane's program goes round, from the one it's in, as far as they've been seen. */
+    private func modes(_ actions: PaneActions?) -> [Mode] {
+        guard let mode = screen.mode, let program = actions?.program, program.nextMode != nil else { return [] }
+        return Cycles.of(program).from(mode)
+    }
+
+    /** A mode picked is stepped to a key at a time, each step as far as the screen shows it went, and no further round than where it started. */
+    private func walk(to: String, actions: PaneActions?) async {
+        guard let actions, let keys = actions.program.nextMode, let from = screen.mode else { return }
+        let cycle = Cycles.of(actions.program)
+        var at = from
+        for _ in 0..<modeSteps {
+            // Only at its line: a menu, or what's aside of it, would take the key as its own (shift+tab allows edits, in some).
+            if at.name == to || screen.line == nil || screen.aside != nil { break }
+            actions.keys(keys)
+            // Not moved: something's over its line, which takes the key.
+            guard let next = await moved(from: at) else { break }
+            cycle.stepped(from: at, to: next)
+            at = next
+            if at == from {
+                cycle.missed(to) // round, and it wasn't there
+                break
+            }
+            if at.name != to { haptics.repeating() }
+        }
+        if Task.isCancelled { return }
+        if at.name == to { haptics.confirm() } else { haptics.reject() }
+    }
+
+    /** The mode once it's moved on from [at]; nil if it hasn't in a while. */
+    private func moved(from at: Mode) async -> Mode? {
+        let until = Date().addingTimeInterval(modeStepSeconds)
+        while Date() < until && !Task.isCancelled {
+            if let m = screen.mode, m != at { return m }
+            try? await Task.sleep(for: .milliseconds(40))
+        }
+        return nil
+    }
+
     /** A notification tapped shows its pane. */
     private func open() {
         guard let id = model.opening, let windows = session.state?.windows, let w = windows.first(where: { w in w.panes.contains { $0.id == id } }) else { return }
@@ -430,6 +489,10 @@ struct TerminalScreen: View {
         return "\(p!.command) in pane \(p!.index) will be killed."
     }
 }
+
+/** How many steps a mode picked is gone round to at most, and how long each may take to show. */
+private let modeSteps = 8
+private let modeStepSeconds: TimeInterval = 2
 
 /** Keeps the shown pane's screen read. */
 private struct Watch: ViewModifier {
