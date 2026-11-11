@@ -10,7 +10,10 @@ import WallflowerDesign
  * wanted. The newest is at the bottom, which stays in view as entries come.
  * Below it, while the program works, a line says so; when its screen offers
  * a [prompt] (a permission, a question), that's there to answer, and the keys
- * picking an option go to [onKeys], and the option to [onPicked]. Sideways
+ * picking an option go to [onKeys], and the option to [onPicked]. What the
+ * program shows [aside] of its line, where keys are its own, is said at the
+ * foot, with the keys that put it away. Its [mode] goes beside how full its
+ * context is, to pick another of those it goes round ([modes]). Sideways
  * drags go to [onSwipe] and [onSwipeEnd], to move between panes as on the
  * terminal. The conversation's [title], if its tab doesn't say it, sits at
  * the top.
@@ -29,6 +32,12 @@ public struct MobileView: View {
     let nudged: Int
     /** A message asked back to edit is being found in what the program lists, which isn't the user's to answer yet. */
     let seeking: Bool
+    let aside: Aside?
+    /** Of an answer aside, what's been read of it, as it's scrolled. */
+    let answer: [String]
+    let mode: Mode?
+    let modes: [Mode]
+    let onMode: (String) -> Void
     let onKeys: ([String]) -> Void
     let onPicked: (Prompt, Prompt.Option) -> Void
     /** Sends the program its compact command, from the context button; nil while it can't. */
@@ -46,6 +55,7 @@ public struct MobileView: View {
     @State private var unread = false
     @State private var stopping = false
     @State private var feel = Fold()
+    @State private var feelAside = Fold()
 
     public init(
         reading: Reading,
@@ -56,6 +66,11 @@ public struct MobileView: View {
         doing: String? = nil,
         nudged: Int = 0,
         seeking: Bool = false,
+        aside: Aside? = nil,
+        answer: [String] = [],
+        mode: Mode? = nil,
+        modes: [Mode] = [],
+        onMode: @escaping (String) -> Void = { _ in },
         onKeys: @escaping ([String]) -> Void = { _ in },
         onPicked: @escaping (Prompt, Prompt.Option) -> Void = { _, _ in },
         onCompact: (() -> Void)? = nil,
@@ -73,6 +88,11 @@ public struct MobileView: View {
         self.doing = doing
         self.nudged = nudged
         self.seeking = seeking
+        self.aside = aside
+        self.answer = answer
+        self.mode = mode
+        self.modes = modes
+        self.onMode = onMode
         self.onKeys = onKeys
         self.onPicked = onPicked
         self.onCompact = onCompact
@@ -115,12 +135,18 @@ public struct MobileView: View {
                         since: since,
                         doing: stopping ? "stopping" : doing,
                         nudged: nudged,
+                        aside: aside,
+                        answer: answer,
+                        mode: mode,
+                        modes: modes,
+                        onMode: onMode,
                         picture: picture,
                         onKeys: onKeys,
                         onPicked: onPicked,
                         onCompact: onCompact,
                         onEdit: onEdit,
-                        feel: feel
+                        feel: feel,
+                        feelAside: feelAside
                     )
                 }
             }
@@ -163,6 +189,7 @@ public struct MobileView: View {
         }
         // The card opening and shutting, felt even where the status line leaves with it.
         .onChange(of: status == .asking, initial: true) { _, open in feel.shown(open, haptics) }
+        .onChange(of: aside != nil, initial: true) { _, open in feelAside.shown(open, haptics) }
     }
 }
 
@@ -198,6 +225,14 @@ private struct Context {
     let onCompact: (() -> Void)?
 }
 
+/** What goes beside the last reply's copy, or on its own: the mode the program's in, to pick another of those it goes round, and how full its context is. */
+private struct Footer {
+    let mode: Mode?
+    let modes: [Mode]
+    let onMode: (String) -> Void
+    let context: Context?
+}
+
 /** The conversation, newest at the bottom; following the newest until the user drags, and again once they've let go at it. */
 private struct Conversation: View {
     /** How many items are laid out, the latest: all at once, as a lazy list's scroll watchers chased its corrected heights. */
@@ -210,12 +245,18 @@ private struct Conversation: View {
     let since: Int64
     let doing: String?
     let nudged: Int
+    let aside: Aside?
+    let answer: [String]
+    let mode: Mode?
+    let modes: [Mode]
+    let onMode: (String) -> Void
     let picture: (String) async -> Data?
     let onKeys: ([String]) -> Void
     let onPicked: (Prompt, Prompt.Option) -> Void
     let onCompact: (() -> Void)?
     let onEdit: ((String, String) -> Void)?
     let feel: Fold
+    let feelAside: Fold
 
     @Environment(\.palette) private var palette
     @Environment(\.haptics) private var haptics
@@ -243,13 +284,15 @@ private struct Conversation: View {
         var status: Status?
         var queued: [String]
         var context: Bool
+        var aside: Bool
     }
 
     var body: some View {
-        // How full the context is goes beside the last reply's copy; with no copy to go beside, on its own.
+        // The mode, and how full the context is, go beside the last reply's copy; with no copy to go beside, on their own.
         let context = reading.context > 0 ? Context(tokens: reading.context, onCompact: onCompact) : nil
+        let footer = context != nil || mode != nil ? Footer(mode: mode, modes: modes, onMode: onMode, context: context) : nil
         let besideCopy = items.last?.copies(ongoing: status != nil) == true
-        let alone = context != nil && !besideCopy
+        let alone = footer != nil && !besideCopy
         // Editing a message asks the program at the foot, where what it asks comes.
         let edit = onEdit.map { e in
             { (id: String, text: String) in
@@ -268,7 +311,7 @@ private struct Conversation: View {
                         item: item,
                         picture: picture,
                         ongoing: status != nil && newest,
-                        beside: newest ? context : nil,
+                        beside: newest ? footer : nil,
                         onEdit: edit
                     )
                 }
@@ -278,7 +321,7 @@ private struct Conversation: View {
                         switch status {
                         case .asking:
                             if let asking {
-                                PromptCard(prompt: asking, onKeys: onKeys, nudged: nudged) { picked in onPicked(asking, picked) }
+                                PromptCard(prompt: asking, onKeys: onKeys, nudged: aside == nil ? nudged : 0) { picked in onPicked(asking, picked) }
                                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { feel.laidOut($0, haptics) }
                                     .transition(.opacity)
                             }
@@ -294,14 +337,21 @@ private struct Conversation: View {
                 ForEach(Array(reading.queued.enumerated()), id: \.offset) { _, text in
                     Queued(text: text)
                 }
-                if alone, let context {
-                    ContextButton(context: context).frame(maxWidth: .infinity, alignment: .trailing)
+                if alone, let footer {
+                    FooterView(footer: footer).frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                // What's aside of the program's line takes its place, at the foot.
+                if let aside {
+                    AsideCard(aside: aside, answer: answer, nudged: nudged, onKeys: onKeys)
+                        .id(asideKey(aside))
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { feelAside.laidOut($0, haptics) }
+                        .transition(.opacity)
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 48)
             .padding(.bottom, 12)
-            .animation(Motion.spatial, value: Listed(keys: items.map(\.key), status: status, queued: reading.queued, context: alone))
+            .animation(Motion.spatial, value: Listed(keys: items.map(\.key), status: status, queued: reading.queued, context: alone, aside: aside != nil))
         }
         .scrollPosition($position)
         .defaultScrollAnchor(.bottom)
@@ -350,7 +400,7 @@ private struct ItemView: View {
     let item: Item
     let picture: (String) async -> Data?
     let ongoing: Bool
-    let beside: Context?
+    let beside: Footer?
     let onEdit: ((String, String) -> Void)?
 
     var body: some View {
@@ -438,7 +488,7 @@ private struct UserPrompt: View {
 private struct Reply: View {
     let text: String
     let copyable: Bool
-    let beside: Context?
+    let beside: Footer?
     @Environment(\.palette) private var palette
     @Environment(\.haptics) private var haptics
     @State private var copier = Copier()
@@ -463,7 +513,7 @@ private struct Reply: View {
                     .buttonStyle(Pressable())
                     .animation(Motion.effect, value: copier.copied)
                     Spacer(minLength: 0)
-                    if let beside { ContextButton(context: beside) }
+                    if let beside { FooterView(footer: beside) }
                 }
             }
         }
@@ -514,6 +564,68 @@ private struct ContextButton: View {
         } else {
             label
         }
+    }
+}
+
+private struct FooterView: View {
+    let footer: Footer
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let mode = footer.mode { ModeButton(mode: mode, modes: footer.modes, onMode: footer.onMode) }
+            if let context = footer.context { ContextButton(context: context) }
+        }
+    }
+}
+
+/**
+ * The mode the program's in, marked and colored as it shows it; tapped or
+ * held, the others it goes round, from the next on, to step to.
+ */
+private struct ModeButton: View {
+    let mode: Mode
+    let modes: [Mode]
+    let onMode: (String) -> Void
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        Menu {
+            Section("mode · shift+tab") {
+                ForEach(modes, id: \.name) { m in
+                    Button {
+                        if m.name != mode.name { onMode(m.name) }
+                    } label: {
+                        if m.name == mode.name { Label(said(m), systemImage: "checkmark") } else { Text(said(m)) }
+                    }
+                }
+            }
+        } label: {
+            Text(said(mode))
+                .words(.caption)
+                .foregroundColor(modeColor(mode.name, palette))
+                .lineLimit(1)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 2)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+    }
+}
+
+/** A mode as the program shows it, its mark drawn as text (⏸ is an emoji too). */
+private func said(_ mode: Mode) -> String {
+    (mode.mark.unicodeScalars.map { "\($0)\u{FE0E}" }.joined() + " " + mode.name).trimmingCharacters(in: .whitespaces)
+}
+
+/** A mode's color, as Claude colors its own (unknown ones grey). */
+private func modeColor(_ name: String, _ palette: Colors) -> Color {
+    switch name {
+    case "auto": palette.yellow
+    case "accept edits": palette.purple
+    case "plan": palette.aqua
+    case "bypass permissions": palette.red
+    default: palette.grey
     }
 }
 
@@ -967,6 +1079,175 @@ private struct Waiting: View {
         .padding(.vertical, 2)
     }
 }
+
+/** Which aside it is: an answer's question, or a view's name; its card starts afresh with another. */
+private func asideKey(_ aside: Aside) -> String {
+    switch aside {
+    case .view(let v): "view " + v.name
+    case .answer(let a): "answer " + a.question
+    }
+}
+
+/**
+ * What the program shows aside of its line, whose keys are its own: a view
+ * of its own, said so, with a way back; or an answer to a question asked
+ * aside, as far as it's been read ([answer]), with esc to close it, and a way
+ * down it while there may be more. Something sent while it's up waits: the
+ * card says so a moment, with a shake ([nudged]).
+ */
+private struct AsideCard: View {
+    let aside: Aside
+    let answer: [String]
+    let nudged: Int
+    let onKeys: ([String]) -> Void
+
+    @Environment(\.palette) private var palette
+    @Environment(\.look) private var look
+    @Environment(\.haptics) private var haptics
+    @State private var held = false
+    @State private var holds = 0
+    /** Rows read when more was last asked for, till more comes. */
+    @State private var asked: Int?
+    /** More was asked for and nothing came: it's all there. */
+    @State private var ended = false
+
+    var body: some View {
+        card
+            .keyframeAnimator(initialValue: CGFloat(0), trigger: holds) { card, x in
+                card.offset(x: x)
+            } keyframes: { _ in
+                KeyframeTrack {
+                    CubicKeyframe(-6, duration: 0.06)
+                    CubicKeyframe(5, duration: 0.08)
+                    CubicKeyframe(-3, duration: 0.08)
+                    SpringKeyframe(0, duration: 0.25, spring: .init(response: 0.25, dampingRatio: 0.6))
+                }
+            }
+            .onChange(of: nudged) { holds += 1 }
+            .task(id: holds) {
+                guard holds > 0 else { return }
+                withAnimation(Motion.effect) { held = true }
+                try? await Task.sleep(for: .seconds(asideHeldSeconds))
+                if !Task.isCancelled { withAnimation(Motion.effect) { held = false } }
+            }
+            .onChange(of: answer.count) { _, n in if let at = asked, n > at { asked = nil } }
+            .task(id: asked) {
+                guard let at = asked else { return }
+                try? await Task.sleep(for: .seconds(moreSeconds))
+                if !Task.isCancelled && answer.count <= at {
+                    ended = true
+                    asked = nil
+                }
+            }
+    }
+
+    private func leave() {
+        haptics.tick()
+        onKeys(aside.leave)
+    }
+
+    @ViewBuilder
+    private var card: some View {
+        switch aside {
+        case .view(let v):
+            HStack(spacing: 0) {
+                Circle().fill(palette.blue).frame(width: 6, height: 6)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("the terminal shows the \(v.name)")
+                        .words(.label)
+                        .foregroundColor(palette.fg)
+                    Text(held ? "go back first, then send" : "what's typed goes to it till you're back")
+                        .words(.caption)
+                        .foregroundColor(held ? palette.orange : palette.grey)
+                        .contentTransition(.opacity)
+                }
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Chip(text: "back", color: palette.blue, action: leave)
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 8)
+            .padding(.vertical, 8)
+            .background(palette.bg1)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+        case .answer(let a):
+            ZStack(alignment: .topTrailing) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Text("by the way")
+                            .words(.caption)
+                            .foregroundColor(palette.purple)
+                        Text(a.question)
+                            .words(.caption)
+                            .foregroundColor(palette.grey)
+                            .lineLimit(1)
+                    }
+                    .padding(.trailing, 44)
+                    .padding(.top, 2)
+                    if held {
+                        Text("close this first (esc), then send")
+                            .font(look.words(look.size(mono: 12, sans: 13)))
+                            .foregroundColor(palette.orange)
+                            .transition(.opacity)
+                    }
+                    if let rows = a.rows {
+                        let size = look.size(mono: 14, sans: 15)
+                        Text(a.text(answer))
+                            .font(look.words(size))
+                            .lineSpacing(Leading.words(look, size, look.size(mono: 21, sans: 22)))
+                            .foregroundColor(palette.fg)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                        // Taller than its room, down a page at a time, but for a row or two, so what shows next meets what's been read; till a page brings nothing.
+                        if a.taller && !ended {
+                            Chip(text: "more ↓", color: palette.blue) {
+                                haptics.tick()
+                                asked = answer.count
+                                onKeys(Array(repeating: a.down, count: max(1, (rows.count - 2) / a.step)).flatMap { $0 })
+                            }
+                        }
+                    } else {
+                        Working(since: 0, doing: "answering")
+                    }
+                }
+                .padding(.horizontal, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Chip(text: "esc", color: palette.grey, mono: true, action: leave)
+            }
+            .padding(10)
+            .background(palette.bg1)
+            .clipShape(RoundedRectangle(cornerRadius: 24))
+        }
+    }
+}
+
+/** A small rounded button, as the cards' esc. */
+private struct Chip: View {
+    let text: String
+    let color: Color
+    var mono = false
+    let action: () -> Void
+    @Environment(\.palette) private var palette
+    @Environment(\.look) private var look
+
+    var body: some View {
+        Button(action: action) {
+            Text(text)
+                .font(mono ? Fonts.mono(12) : look.words(12))
+                .foregroundColor(color)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .background(RoundedRectangle(cornerRadius: 14).fill(palette.bg2))
+        }
+        .buttonStyle(Pressable())
+    }
+}
+
+/** How long something sent while an aside is up says it's waiting. */
+private let asideHeldSeconds: Double = 3
+
+/** How long after asking for more of an answer nothing new means there's no more. */
+private let moreSeconds: Double = 1.2
 
 private struct Hint: View {
     let text: String
