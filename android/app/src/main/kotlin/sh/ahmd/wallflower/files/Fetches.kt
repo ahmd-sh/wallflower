@@ -13,13 +13,17 @@ import java.util.concurrent.ConcurrentHashMap
  * its own under its own name, so a share names it right. One a listing
  * described (its size and when it changed) is fetched once while the app
  * runs; the rest, whenever they're shown. What's left from before goes
- * when the app starts.
+ * when the app starts, once whatever it was shared with has had time to
+ * take it.
  */
 class Fetches(private val dir: File) {
     private val kept = ConcurrentHashMap<String, File>()
 
     init {
-        Thread { dir.listFiles()?.forEach { it.deleteRecursively() } }.start()
+        Thread {
+            val old = System.currentTimeMillis() - KEPT_MS
+            dir.listFiles()?.filter { it.lastModified() < old }?.forEach { it.deleteRecursively() }
+        }.start()
     }
 
     /** Where a file of [name] goes: somewhere new, so it can't meet another. */
@@ -36,6 +40,8 @@ class Fetches(private val dir: File) {
     private fun key(path: String, size: Long?, mtime: Long?) = if (size == null || mtime == null || mtime == 0L) null else "$path\u0000$size\u0000$mtime"
 
     companion object {
+        private const val KEPT_MS = 60 * 60 * 1000L
+
         /** Offers [file] to another app through the system's share sheet. */
         fun share(context: Context, file: File) {
             val uri = FileProvider.getUriForFile(context, context.packageName + ".files", file)
