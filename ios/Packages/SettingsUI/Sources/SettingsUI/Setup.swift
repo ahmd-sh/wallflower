@@ -3,13 +3,17 @@ import SwiftUI
 import WallflowerDesign
 
 /**
- * Setting wallflower up: what it is, in a line, then the computer to reach and
- * this phone's key to let in there. With a way back ([onBack]) in place of
- * the welcome, it edits the computer from settings.
+ * Setting wallflower up: what it is, in a line, then pairing with the
+ * computer by the code `wallflower setup` shows there, or setting it up by
+ * hand: the computer to reach, and this phone's key to let in there. With a
+ * way back ([onBack]) in place of the welcome, it edits the computer from
+ * settings, where a code pairs again, or with another. [pairing] names the
+ * computer while pairing with it goes on, and [pairError] says why it didn't.
  */
 public struct SetupScreen: View {
     @Environment(\.palette) private var palette
     @Environment(\.look) private var look
+    @Environment(\.haptics) private var haptics
     let host: Host?
     let hasKey: Bool
     let fingerprint: String?
@@ -17,10 +21,15 @@ public struct SetupScreen: View {
     let createKey: () -> String?
     let unlockSeconds: Int?
     let newKey: (Int) -> String?
+    let pairing: String?
+    let pairError: String?
+    let onPair: (Pairing) -> Void
     let onBack: (() -> Void)?
     let onConnect: (Host) -> Void
+    @State private var scanning = false
+    @State private var byHand = false
 
-    public init(host: Host?, hasKey: Bool, fingerprint: String?, authorizeCommand: @escaping () -> String, createKey: @escaping () -> String?, unlockSeconds: Int?, newKey: @escaping (Int) -> String?, onBack: (() -> Void)?, onConnect: @escaping (Host) -> Void) {
+    public init(host: Host?, hasKey: Bool, fingerprint: String?, authorizeCommand: @escaping () -> String, createKey: @escaping () -> String?, unlockSeconds: Int?, newKey: @escaping (Int) -> String?, pairing: String?, pairError: String?, onPair: @escaping (Pairing) -> Void, onBack: (() -> Void)?, onConnect: @escaping (Host) -> Void) {
         self.host = host
         self.hasKey = hasKey
         self.fingerprint = fingerprint
@@ -28,38 +37,91 @@ public struct SetupScreen: View {
         self.createKey = createKey
         self.unlockSeconds = unlockSeconds
         self.newKey = newKey
+        self.pairing = pairing
+        self.pairError = pairError
+        self.onPair = onPair
         self.onBack = onBack
         self.onConnect = onConnect
     }
 
     public var body: some View {
         let form = SetupForm(host: host, hasKey: hasKey, fingerprint: fingerprint, authorizeCommand: authorizeCommand, createKey: createKey, unlockSeconds: unlockSeconds, newKey: newKey, onConnect: onConnect)
-        if let onBack {
-            Page("computer", onBack: onBack) { form }
-        } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    VStack(spacing: 0) {
-                        Flower(sway: true).frame(width: 128, height: 128)
-                        Text("wallflower")
-                            .font(look.words(look.size(mono: 24, sans: 30), weight: .bold))
-                            .foregroundColor(palette.fg)
-                        Text("Your computer's terminals, made for your phone.")
-                            .words(.body)
-                            .foregroundColor(palette.grey)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 16)
-                    .padding(.bottom, 8)
+        Group {
+            if let onBack {
+                Page("computer", onBack: onBack) {
+                    Paragraph("To pair again, or with another computer, run this there, then scan the code it shows.")
+                    Code("wallflower pair")
+                    WordButton("scan a code", action: scan)
+                    progress
                     form
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 20)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        VStack(spacing: 0) {
+                            Flower(sway: true).frame(width: 128, height: 128)
+                            Text("wallflower")
+                                .font(look.words(look.size(mono: 24, sans: 30), weight: .bold))
+                                .foregroundColor(palette.fg)
+                            Text("Your computer's terminals, made for your phone.")
+                                .words(.body)
+                                .foregroundColor(palette.grey)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 16)
+                        .padding(.bottom, 8)
+                        Text("On your computer, run this. It gets it ready, then shows a code.")
+                            .words(.label)
+                            .foregroundColor(palette.fg)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Code("wallflower setup")
+                        WordButton("scan the code", primary: true, action: scan)
+                        progress
+                        Button {
+                            haptics.tick()
+                            withAnimation(Motion.effect) { byHand.toggle() }
+                        } label: {
+                            Text("set up by hand").words(.label).foregroundColor(palette.grey).padding(.vertical, 6).contentShape(Rectangle())
+                        }
+                        .buttonStyle(Pressable())
+                        .padding(.top, 8)
+                        if byHand { form }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 20)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .background(palette.bg0.ignoresSafeArea())
             }
-            .scrollDismissesKeyboard(.interactively)
-            .background(palette.bg0.ignoresSafeArea())
         }
+        .sheet(isPresented: $scanning) {
+            PairScanner(onPair: { p in
+                scanning = false
+                onPair(p)
+            }, onClose: { scanning = false })
+            .environment(\.palette, palette)
+            .environment(\.look, look)
+            .environment(\.haptics, haptics)
+        }
+    }
+
+    /** Pairing under way, with whom; or why it didn't work. */
+    @ViewBuilder
+    private var progress: some View {
+        if let pairing {
+            HStack(spacing: 8) {
+                BreathingDot(color: palette.orange, breathing: true)
+                Text("pairing with \(pairing)…").words(.label).foregroundColor(palette.fg)
+            }
+        } else if let pairError {
+            Text(pairError).words(.label).foregroundColor(palette.red).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func scan() {
+        guard pairing == nil else { return }
+        scanning = true
     }
 }
 

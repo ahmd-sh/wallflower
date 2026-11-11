@@ -39,12 +39,17 @@ private let command = "wallflower authorize 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXN
 
 #Preview("welcome") {
     let _ = Fonts.register()
-    SetupScreen(host: nil, hasKey: false, fingerprint: nil, authorizeCommand: { command }, createKey: { nil }, unlockSeconds: nil, newKey: { _ in nil }, onBack: nil, onConnect: { _ in })
+    SetupScreen(host: nil, hasKey: false, fingerprint: nil, authorizeCommand: { command }, createKey: { nil }, unlockSeconds: nil, newKey: { _ in nil }, pairing: nil, pairError: nil, onPair: { _ in }, onBack: nil, onConnect: { _ in })
+}
+
+#Preview("pairing") {
+    let _ = Fonts.register()
+    SetupScreen(host: nil, hasKey: true, fingerprint: nil, authorizeCommand: { command }, createKey: { nil }, unlockSeconds: nil, newKey: { _ in nil }, pairing: "studio", pairError: nil, onPair: { _ in }, onBack: nil, onConnect: { _ in })
 }
 
 #Preview("computer") {
     let _ = Fonts.register()
-    SetupScreen(host: computer, hasKey: true, fingerprint: "SHA256:q3MrS9fZ0v4nWbGQ1yQ7c2eHk8p0tLxR5uJm6aDdV1E", authorizeCommand: { command }, createKey: { nil }, unlockSeconds: 300, newKey: { _ in nil }, onBack: {}, onConnect: { _ in })
+    SetupScreen(host: computer, hasKey: true, fingerprint: "SHA256:q3MrS9fZ0v4nWbGQ1yQ7c2eHk8p0tLxR5uJm6aDdV1E", authorizeCommand: { command }, createKey: { nil }, unlockSeconds: 300, newKey: { _ in nil }, pairing: nil, pairError: "The code has run out or been used: run wallflower pair on the computer for a new one.", onPair: { _ in }, onBack: {}, onConnect: { _ in })
 }
 
 #Preview("blocked") {

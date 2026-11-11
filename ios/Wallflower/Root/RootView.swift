@@ -174,6 +174,7 @@ struct RootView: View {
         SetupScreen(
             host: model.host, hasKey: model.hasKey, fingerprint: model.hasKey ? model.key.fingerprint : nil,
             authorizeCommand: model.authorizeCommand, createKey: model.createKey, unlockSeconds: model.unlockSeconds, newKey: model.newKey,
+            pairing: model.pairing, pairError: model.pairError, onPair: { model.pair($0) { go(nil) } },
             onBack: onBack
         ) { h in
             model.configure(h)
