@@ -26,6 +26,10 @@ import WallflowerDesign
  * then its path goes in, shown as its name. + also offers the program's
  * [commands], which start the draft.
  *
+ * Held ctrl, or the shortcuts key, offers the pane's [shortcuts]: one picked
+ * goes to [onShortcut], but text alone, with no Enter to send it, starts the
+ * draft as a command does (or goes at its end, if it isn't one).
+ *
  * With [typing], the keyboard types straight into the pane instead, as a
  * terminal's does: no box, no +, just the key bar and the button ([onEnter],
  * pressing [sendKeys], which it shows if they aren't Enter; or stopping the
@@ -67,6 +71,9 @@ struct Composer: View {
     let onEnter: () -> Void
     let onStop: () -> Void
     let onEditKeys: () -> Void
+    var shortcuts: [BarKey] = []
+    var onShortcut: (BarKey) -> Void = { _ in }
+    var onEditShortcuts: () -> Void = {}
 
     @FocusState private var focused: Bool
     @State private var sent = false
@@ -84,11 +91,8 @@ struct Composer: View {
             }
             HStack(spacing: 0) {
                 if !typing {
-                    PlusButton(enabled: connected, commands: commands, onAttach: onAttach) { c in
-                        let rest = text.replacingOccurrences(of: #"^/[^\s]+\s*"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
-                        take(rest.isEmpty ? c.text + " " : c.text + " " + rest)
-                    }
-                    .padding(.trailing, 6)
+                    PlusButton(enabled: connected, commands: commands, onAttach: onAttach) { c in start(c.text) }
+                        .padding(.trailing, 6)
                 } else if typingActive {
                     Button(action: onHideKeyboard) {
                         GlyphIcon(.down, palette.grey, size: 14)
@@ -98,7 +102,14 @@ struct Composer: View {
                     .buttonStyle(Pressable())
                     .padding(.trailing, 6)
                 }
-                KeyRow(keys: keys, armed: sticky.armed, onKey: onKey, onEdit: onEditKeys)
+                KeyRow(keys: keys, armed: sticky.armed, shortcuts: shortcuts, onKey: onKey, onShortcut: { key in
+                    sticky.drop()
+                    if !typing, !key.bindings, case .text(let s, enter: false) = KeyBar.steps(key.keys).first, key.keys.count == 1 {
+                        start(s)
+                    } else {
+                        onShortcut(key)
+                    }
+                }, onEdit: onEditKeys, onEditShortcuts: onEditShortcuts)
                 SendButton(action: action, connected: connected, label: action == .run && sendKeys != ["Enter"] ? sendKeys : nil, onSend: { enter in
                     if onSend(text, enter) {
                         text = ""
@@ -200,6 +211,13 @@ struct Composer: View {
     private func take(_ s: String) {
         text = s
         focused = true
+    }
+
+    /** A command starts the draft, in place of one it started with; other text goes at its end. */
+    private func start(_ s: String) {
+        guard s.hasPrefix("/") else { return take(text + s) }
+        let rest = text.replacingOccurrences(of: #"^/[^\s]+\s*"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+        take(rest.isEmpty ? s + " " : s + " " + rest)
     }
 }
 

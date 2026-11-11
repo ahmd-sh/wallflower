@@ -86,6 +86,25 @@ struct PaneActions {
         session.submit(pane.id, text, enter: enter, clear: line.map { program.clear($0, keys: clearKeys, unseen: unseen) } ?? [])
     }
 
+    /**
+     * A shortcut, picked from the bar: its keys, through the multiplexer's
+     * bindings if it says. Text it starts with that Enter sends goes in
+     * place of what [line] holds, as the box's does, so a command runs as
+     * itself whatever's in the line (and in vim mode's NORMAL, where it
+     * can't be seen); other text is typed where the cursor is.
+     */
+    func shortcut(_ key: BarKey, line: InputLine?) {
+        if key.bindings { return keys(key.keys, bindings: true) }
+        for (i, step) in KeyBar.steps(key.keys).enumerated() {
+            switch step {
+            case .keys(let k): keys(k)
+            case .text(let text, enter: false): type(text)
+            case .text(let text, enter: true) where i == 0: send(text, enter: true, line: line, unseen: true)
+            case .text(let text, enter: true): _ = session.submit(pane.id, text)
+            }
+        }
+    }
+
     /** Compacts its conversation, if its program can; it's under the mobile view, so unseen. */
     var compact: ((InputLine?) -> Void)? {
         guard let command = program.compact else { return nil }

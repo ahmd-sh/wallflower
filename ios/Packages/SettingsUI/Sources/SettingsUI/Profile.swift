@@ -6,7 +6,8 @@ import Wire
 /**
  * A profile of the key bar to change: its name and programs (the default's
  * for everything else), its keys to move, remove and add (custom ones too),
- * and what stop, the send button, the return key and clear press.
+ * its shortcuts (a page of their own), and what stop, the send button, the
+ * return key and clear press.
  */
 public struct ProfileScreen: View {
     @Environment(\.palette) private var palette
@@ -16,26 +17,31 @@ public struct ProfileScreen: View {
     let programId: String?
     let mux: Mux?
     let onBack: () -> Void
+    let onShortcuts: () -> Void
     let onOpen: (ProfileRef) -> Void
     /** Gone back already: the profile went from under the page. */
     @State private var left = false
     /** The profile as it was when deleted, shown as the page goes. */
     @State private var deleted: KeyProfile?
 
-    public init(store: KeyBarStore, ref: ProfileRef, program: String?, programId: String?, mux: Mux?, onBack: @escaping () -> Void, onOpen: @escaping (ProfileRef) -> Void) {
+    public init(
+        store: KeyBarStore, ref: ProfileRef, program: String?, programId: String?, mux: Mux?,
+        onBack: @escaping () -> Void, onShortcuts: @escaping () -> Void, onOpen: @escaping (ProfileRef) -> Void
+    ) {
         self.store = store
         self.ref = ref
         self.program = program
         self.programId = programId
         self.mux = mux
         self.onBack = onBack
+        self.onShortcuts = onShortcuts
         self.onOpen = onOpen
     }
 
     public var body: some View {
         Group {
             if let profile = deleted ?? store.bar.profile(at: ref) {
-                ProfileEditor(store: store, ref: ref, profile: profile, program: program, programId: programId, mux: mux, onBack: onBack, onOpen: onOpen) {
+                ProfileEditor(store: store, ref: ref, profile: profile, program: program, programId: programId, mux: mux, onBack: onBack, onShortcuts: onShortcuts, onOpen: onOpen) {
                     deleted = profile
                     onBack()
                 }
@@ -65,6 +71,7 @@ private struct ProfileEditor: View {
     let programId: String?
     let mux: Mux?
     let onBack: () -> Void
+    let onShortcuts: () -> Void
     let onOpen: (ProfileRef) -> Void
     let onDelete: () -> Void
     @State private var selected: Int?
@@ -76,7 +83,10 @@ private struct ProfileEditor: View {
     @State private var sends = ""
     @State private var bound = false
 
-    init(store: KeyBarStore, ref: ProfileRef, profile: KeyProfile, program: String?, programId: String?, mux: Mux?, onBack: @escaping () -> Void, onOpen: @escaping (ProfileRef) -> Void, onDelete: @escaping () -> Void) {
+    init(
+        store: KeyBarStore, ref: ProfileRef, profile: KeyProfile, program: String?, programId: String?, mux: Mux?,
+        onBack: @escaping () -> Void, onShortcuts: @escaping () -> Void, onOpen: @escaping (ProfileRef) -> Void, onDelete: @escaping () -> Void
+    ) {
         self.store = store
         self.ref = ref
         self.profile = profile
@@ -84,6 +94,7 @@ private struct ProfileEditor: View {
         self.programId = programId
         self.mux = mux
         self.onBack = onBack
+        self.onShortcuts = onShortcuts
         self.onDelete = onDelete
         self.onOpen = onOpen
         _name = State(initialValue: profile.name)
@@ -136,6 +147,9 @@ private struct ProfileEditor: View {
                 }
             }
 
+            Section("shortcuts")
+            PageRow("shortcuts", shortcutsSummary(profile, shipped: shippedFor(store.bar, ref, profile, program: program, programId: programId)), action: onShortcuts)
+
             Section("stop")
             Paragraph("What the send button sends when the mobile view's box is empty.")
             KeyChoices(choices: stops.map { keys in KeyChoice(keys: keys, selected: profile.stop == keys) { save { $0.stop = keys } } })
@@ -160,20 +174,10 @@ private struct ProfileEditor: View {
             KeyChoices(choices: KeyBar.common.filter { bindings || !$0.bindings }.map { k in KeyChoice(k, id: k, selected: false) { save { $0.keys.append(k) } } })
 
             Section("custom")
-            Paragraph(
-                "Key names, space-separated; anything else is typed as is (Escape :w Enter). C- is ctrl, M- alt and S- shift, "
-                    + "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is shift tab, BSpace backspace, DC delete, IC insert; F1 to F12 work too. Tap one to add it."
-            )
-            let keys = sends.split(separator: " ").map(String.init)
+            Paragraph(keyNamesHelp + " Tap one to add it.")
+            let keys = KeyBar.keys(of: sends)
             Field("sends", value: $sends)
-            Flow(spacing: 6) {
-                ForEach(names, id: \.self) { n in
-                    Chip(n, selected: false) {
-                        let joins = sends.isEmpty || sends.hasSuffix(" ") || isHeld(sends.components(separatedBy: " ").last ?? "")
-                        sends = joins ? sends + n : "\(sends) \(n)"
-                    }
-                }
-            }
+            KeyNames(sends: $sends)
             Field(label.trimmingCharacters(in: .whitespaces).isEmpty && !keys.isEmpty ? "label (blank: \(KeyBar.label(of: keys)))" : "label", value: $label)
             if bindings {
                 Toggle("through \(mux?.name ?? "the multiplexer")'s key bindings (C-j to change pane; prefix is your prefix)", on: bound) { bound = $0 }
@@ -250,7 +254,26 @@ private struct KeyID: Hashable {
 private let stops = ["C-c", "Escape", "C-d", "q"].map { [$0] }
 private let presses = ["Enter", "C-j", "M-Enter"].map { [$0] }
 
-/** wallflower's names (tmux's) for what a custom key sends, beyond text. */
+/** How a custom key's keys are written. */
+let keyNamesHelp = "Key names, space-separated; the words between them are typed as they are (Escape :w Enter). C- is ctrl, M- alt and S- shift, "
+    + "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is shift tab, BSpace backspace, DC delete, IC insert; F1 to F12 work too."
+
+/** wallflower's names (tmux's) for what a custom key sends, beyond text, to tap onto the end of [sends]: joined to a modifier written last (C-), else a word of its own. */
+struct KeyNames: View {
+    @Binding var sends: String
+
+    var body: some View {
+        Flow(spacing: 6) {
+            ForEach(names, id: \.self) { n in
+                Chip(n, selected: false) {
+                    let joins = sends.isEmpty || sends.hasSuffix(" ") || isHeld(sends.components(separatedBy: " ").last ?? "")
+                    sends = joins ? sends + n : "\(sends) \(n)"
+                }
+            }
+        }
+    }
+}
+
 private let names = [
     "C-", "M-", "S-", "Enter", "Escape", "Tab", "BTab", "BSpace", "Space",
     "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "DC", "IC",

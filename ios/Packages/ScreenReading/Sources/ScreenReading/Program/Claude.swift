@@ -24,9 +24,23 @@ public final class Claude: Program {
 
     public let keyBar: KeyDefaults? = KeyDefaults(
         name: "claude code",
-        keys: ["Escape", "BTab", "Up", "Down", "Enter", "1", "2", "3", "C-o", "C-c"],
+        keys: ["Escape", "ctrl", "BTab", "Up", "Down", "Enter", "1", "2", "3", "C-o", "C-c"],
         stop: ["C-c"] // vim mode's INSERT takes Esc to leave it, not to stop Claude
     )
+
+    /// Its keys (ctrl ones: vim mode takes an alt key's Esc apart, so the
+    /// model and fast mode go by command), then its commands, run as sent;
+    /// /btw starts what's sent, the question to ask.
+    public let shortcuts: [Shortcut] = [
+        Shortcut(["C-o"], label: "transcript"),
+        Shortcut(["BTab"], label: "mode"),
+        Shortcut(["C-t"], label: "todos"),
+        Shortcut(["C-b"], label: "background"),
+        Shortcut(["C-s"], label: "stash"),
+        Shortcut(["C-x", "C-s"], label: "send now"), // what's queued, without waiting for the turn
+        Shortcut(["C-l"], label: "redraw"),
+    ] + ["/compact", "/clear", "/context", "/model", "/rewind", "/usage", "/diff", "/resume", "/tasks", "/recap", "/plan"]
+        .map { Shortcut([$0, "Enter"]) } + [Shortcut(["/btw"])]
 
     /// The prompt box: between two rules, a first row starting `❯ ` (or `! `
     /// in shell mode) and rows indented to match. Claude wraps long lines

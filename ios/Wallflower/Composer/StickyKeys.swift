@@ -23,6 +23,9 @@ final class StickyKeys {
         }
     }
 
+    /** What's armed waits no more: something else went instead (a shortcut). */
+    func drop() { armed = nil }
+
     /** A character typed into the box while one's armed: it goes with it instead. */
     func intercept(_ c: Character) { press(.typed(c)) }
 

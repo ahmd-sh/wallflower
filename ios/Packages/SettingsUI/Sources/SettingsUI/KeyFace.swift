@@ -14,6 +14,7 @@ enum FacePart: Hashable {
 /** How [key] shows: as [faceOf] its keys, unless the user wrote its label. */
 func faceOf(_ key: BarKey) -> Face {
     if key.cluster { return [.glyph(.arrows)] }
+    if key.shortcuts { return [.glyph(.bolt)] }
     if key.hasOwnLabel { return faceOf(key.keys) }
     return [.text(key.label)]
 }

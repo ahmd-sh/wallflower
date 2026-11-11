@@ -74,6 +74,9 @@ public protocol Program: AnyObject, Sendable {
 
     /// The key bar its panes get until the user sets them one; programs with the same one share it.
     var keyBar: KeyDefaults? { get }
+
+    /// Shortcuts its panes offer, held ctrl or the shortcuts key on the bar, besides the user's own.
+    var shortcuts: [Shortcut] { get }
 }
 
 extension Program {
@@ -119,11 +122,14 @@ extension Program {
     public func label(_ title: String) -> String? { nil }
 
     public var keyBar: KeyDefaults? { nil }
+
+    public var shortcuts: [Shortcut] { [] }
 }
 
 /// A key bar a program ships: its `name`, its `keys` by wallflower's names
-/// (`arrows`: the arrows around enter, in one key), and what the send button
-/// presses when there's nothing to send (`stop`).
+/// (`arrows`: the arrows around enter, in one key; `ctrl`, `alt`: sticky,
+/// held ctrl offering the shortcuts; `shortcuts`: the shortcuts, tapped), and
+/// what the send button presses when there's nothing to send (`stop`).
 public struct KeyDefaults: Hashable, Sendable {
     public var name: String
     public var keys: [String]
@@ -133,6 +139,19 @@ public struct KeyDefaults: Hashable, Sendable {
         self.name = name
         self.keys = keys
         self.stop = stop
+    }
+}
+
+/// A shortcut a program ships: the `keys` it sends by wallflower's names, text
+/// typed as it is (`/compact` then `Enter` runs it, `/btw` alone starts what's
+/// sent), and its `label`, if not the keys as the bar shows them.
+public struct Shortcut: Hashable, Sendable {
+    public var keys: [String]
+    public var label: String?
+
+    public init(_ keys: [String], label: String? = nil) {
+        self.keys = keys
+        self.label = label
     }
 }
 
@@ -211,20 +230,22 @@ public enum Effect: Sendable {
 
 /// A program the phone has no half of its own for, as a plugin the user gave
 /// the gateway describes it, in data, since the phone loads no code: its key
-/// bar, commands, and the keys that start a new line and empty one. It reads
-/// a line only from prompt marks (OSC 133), if it makes them.
+/// bar, commands, shortcuts, and the keys that start a new line and empty
+/// one. It reads a line only from prompt marks (OSC 133), if it makes them.
 public final class Supplied: Program {
     public let keyBar: KeyDefaults?
     public let commands: [Command]
     public let newlineKeys: [String]?
     public let clearKeys: [String]
+    public let shortcuts: [Shortcut]
     private let shell: Shell
 
-    public init(keyBar: KeyDefaults?, commands: [Command], newlineKeys: [String]?, clearKeys: [String]) {
+    public init(keyBar: KeyDefaults?, commands: [Command], newlineKeys: [String]?, clearKeys: [String], shortcuts: [Shortcut] = []) {
         self.keyBar = keyBar
         self.commands = commands
         self.newlineKeys = newlineKeys
         self.clearKeys = clearKeys
+        self.shortcuts = shortcuts
         self.shell = Shell(clearKeys: clearKeys, keyBar: keyBar)
     }
 
@@ -233,13 +254,24 @@ public final class Supplied: Program {
 
 /// The programs wallflower ships, and those the gateway's plugins describe, by the id the gateway names a pane's program by.
 public enum Programs {
-    private static let shells = KeyDefaults(name: "shell", keys: ["Tab", "arrows", "C-r", "C-c", "C-d", "Escape"])
+    private static let shells = KeyDefaults(name: "shell", keys: ["ctrl", "Tab", "arrows", "C-r", "C-c", "C-d", "Escape"])
+
+    /// Commands more than keys: a shell's keys are its own (zsh's vi mode
+    /// takes an alt key's Esc to leave insert; the dotfiles' zshrc has ^W run
+    /// the suggestion), but these do the same in any.
+    private static let shellShortcuts = [
+        Shortcut(["clear", "Enter"]),
+        Shortcut(["cd -", "Enter"]),
+        Shortcut(["!!", "Enter"]),
+        Shortcut(["C-z"], label: "suspend"),
+        Shortcut(["fg", "Enter"]),
+    ]
     private static let other = Shell()
 
     public static let builtin: [(id: String, program: any Program)] = [
         ("claude", Claude.shared),
-        ("zsh", Shell(clearKeys: ["C-x", "C-u"], keyBar: shells)), // kill-buffer, as the dotfiles' zshrc binds it
-        ("shell", Shell(keyBar: shells)),
+        ("zsh", Shell(clearKeys: ["C-x", "C-u"], keyBar: shells, shortcuts: shellShortcuts)), // kill-buffer, as the dotfiles' zshrc binds it
+        ("shell", Shell(keyBar: shells, shortcuts: shellShortcuts)),
     ]
 
     private static let builtinById = Dictionary(uniqueKeysWithValues: builtin.map { ($0.id, $0.program) })
