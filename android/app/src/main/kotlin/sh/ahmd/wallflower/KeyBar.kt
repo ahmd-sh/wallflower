@@ -84,9 +84,11 @@ data class KeyBar(
     val profiles: List<KeyProfile>,
     val default: KeyProfile,
 ) {
+    /** The profile for a pane's program: one of these, or the bar its plugin ships (a bar saved before it shipped has none for it), or the default. */
     fun profileFor(command: String, program: String? = null): KeyProfile =
         profiles.firstOrNull { it.matches(command, program) }
-            ?: Programs.supplied(program)?.keyBar?.let { d -> KeyProfile(d.name, listOfNotNull(program), d.keys.map(::key), stop = d.stop) }
+            ?: (Programs.supplied(program) ?: program?.lowercase()?.let { Programs.builtin[it] })?.keyBar
+                ?.let { d -> KeyProfile(d.name, listOfNotNull(program), d.keys.map(::key), stop = d.stop) }
             ?: default
 
     companion object {

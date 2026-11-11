@@ -451,6 +451,7 @@ private fun TerminalScreen(
             prompt = screen.prompt,
             line = { screen.line },
             status = screen.status,
+            asked = screen.asked,
             nudged = nudged,
             seeking = seeking != null,
             onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },

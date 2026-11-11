@@ -22,6 +22,15 @@ class KeyBarTest {
     }
 
     @Test
+    fun aBarSavedBeforeAProgramShippedGivesItItsOwn() {
+        val saved = bar.copy(profiles = bar.profiles.filter { "codex" !in it.programs })
+        val codex = saved.profileFor("codex", "codex")
+        assertEquals("codex", codex.name)
+        assertEquals(listOf("Escape"), codex.stop) // ^C would quit it
+        assertEquals(listOf("esc", "⇧←", "⇧tab", "arrows", "tab", "1", "2", "3", "^t"), codex.keys.map { it.label })
+    }
+
+    @Test
     fun theProgramsShippedBringTheirBars() {
         val claude = bar.profileFor("claude", "claude")
         assertEquals(listOf("esc", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"), claude.keys.map { it.label })

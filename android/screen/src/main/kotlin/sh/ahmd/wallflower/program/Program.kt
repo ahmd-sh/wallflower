@@ -19,6 +19,9 @@ interface Program {
     /** What the program says on its screen it's doing, in its own words, while it works; null if it doesn't say. */
     fun status(screen: Screen): String? = null
 
+    /** Questions the program asked that wait on its screen for the user to bring them up; null if none do. */
+    fun asked(screen: Screen): Asked? = null
+
     /**
      * What the program's notification says on the phone: a desktop
      * notification ([title], [body]), or its terminal's bell (no [body]),
@@ -107,6 +110,9 @@ data class KeyDefaults(val name: String, val keys: List<String>, val stop: List<
 /** A command a program takes, as the + offers it: its [text], and what it's [about]. */
 data class Command(val text: String, val about: String)
 
+/** Questions waiting to be answered ("2 questions"), and the keys that bring them up. */
+data class Asked(val what: String, val keys: List<String>)
+
 /** What brings back a message the user sent: [Keys], or a [Command] sent as if typed. */
 sealed interface Recall {
     data class Keys(val keys: List<String>) : Recall
@@ -157,6 +163,7 @@ object Programs {
 
     val builtin: Map<String, Program> = linkedMapOf(
         "claude" to Claude,
+        "codex" to Codex,
         "zsh" to Shell(listOf("C-x", "C-k"), shells), // kill-buffer, as zsh binds it for emacs mode
         "shell" to Shell(keyBar = shells),
     )

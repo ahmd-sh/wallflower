@@ -12,17 +12,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import sh.ahmd.wallflower.program.Asked
 import sh.ahmd.wallflower.program.Program
 import sh.ahmd.wallflower.screen.InputLine
 import sh.ahmd.wallflower.screen.Prompt
 import sh.ahmd.wallflower.terminal.Terminal
 
-/** What the shown pane's screen says: its program's input line, what it says it's doing, and a prompt to answer while one can be. */
+/** What the shown pane's screen says: its program's input line, what it says it's doing, questions it asked waiting to be brought up, and a prompt to answer while one can be. */
 @Stable
 internal class PaneScreen {
     var line: InputLine? by mutableStateOf(null)
     var status: String? by mutableStateOf(null)
     var prompt: Prompt? by mutableStateOf(null)
+    var asked: Asked? by mutableStateOf(null)
     val ticks = Channel<Unit>(Channel.CONFLATED)
 
     /** Reads it again soon. */
@@ -49,6 +51,7 @@ internal fun rememberPaneScreen(pane: String?, terminal: Terminal?, program: Pro
         screen.line = null
         screen.status = null
         screen.prompt = null
+        screen.asked = null
     }
     LaunchedEffect(asks, activity) { screen.reread() }
     LaunchedEffect(terminal) {
@@ -61,12 +64,13 @@ internal fun rememberPaneScreen(pane: String?, terminal: Terminal?, program: Pro
                 val a = asking
                 val read = withContext(Dispatchers.Default) {
                     val s = terminal?.screen()
-                    Triple(s?.let(p::line), s?.let(p::status), s?.takeIf { a }?.let(p::prompt))
+                    Read(s?.let(p::line), s?.let(p::status), s?.takeIf { a }?.let(p::prompt), s?.let(p::asked))
                 }
-                screen.line = read.first
+                screen.line = read.line
                 // A screen without the program's line is between drawings, or covered by what it asks: it doesn't say it stopped.
-                if (read.first != null || read.second != null) screen.status = read.second
-                screen.prompt = read.third
+                if (read.line != null || read.status != null) screen.status = read.status
+                screen.prompt = read.prompt
+                screen.asked = read.asked
                 delay(EVERY_MS)
             }
         } finally {
@@ -75,5 +79,7 @@ internal fun rememberPaneScreen(pane: String?, terminal: Terminal?, program: Pro
     }
     return screen
 }
+
+private class Read(val line: InputLine?, val status: String?, val prompt: Prompt?, val asked: Asked?)
 
 private const val EVERY_MS = 80L

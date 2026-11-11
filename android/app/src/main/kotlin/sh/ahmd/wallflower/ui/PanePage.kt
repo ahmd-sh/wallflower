@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import sh.ahmd.wallflower.program.Asked
 import sh.ahmd.wallflower.program.Recall
 import sh.ahmd.wallflower.read.Entry
 import sh.ahmd.wallflower.read.Reading
@@ -25,8 +26,8 @@ import sh.ahmd.wallflower.terminal.TerminalView
  * ([reading]), which pauses the terminal underneath, as the cards covering
  * it do. With no pane ([actions] null), an empty terminal that measures the
  * grid until there are panes. [current]: the page on screen, which gets the
- * [prompt] the pane's screen offers, and what its program says it's doing
- * ([status]), can compact (with its [line]), and animates; its terminal view goes to [onView]. A tap on the terminal
+ * [prompt] the pane's screen offers, what its program says it's doing
+ * ([status]) and the questions it asked waiting to be brought up ([asked]), can compact (with its [line]), and animates; its terminal view goes to [onView]. A tap on the terminal
  * goes to [onTap]. While a message asked back is looked for ([seeking]), what it's looked for in isn't asked. A message asked back to edit goes to the program, and
  * [onRecalled] once it's on its way, [listed] if it's to be found in what the program lists. Keys from the prompt's card go to
  * [onPrompt] too. The conversation's title shows unless
@@ -44,6 +45,7 @@ internal fun PanePage(
     prompt: Prompt?,
     line: () -> InputLine?,
     status: String? = null,
+    asked: Asked? = null,
     nudged: Long = 0,
     seeking: Boolean = false,
     onGridSize: (cols: Int, rows: Int, ahead: Boolean) -> Unit,
@@ -82,6 +84,7 @@ internal fun PanePage(
             swipe = swipe,
             prompt = if (current) prompt else null,
             doing = if (current) status else null,
+            asked = if (current) asked else null,
             nudged = if (current) nudged else 0,
             seeking = current && seeking,
             onKeys = { keys ->

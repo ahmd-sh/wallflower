@@ -97,6 +97,7 @@ import sh.ahmd.wallflower.read.Party
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.items
 import sh.ahmd.wallflower.read.trace
+import sh.ahmd.wallflower.program.Asked
 import sh.ahmd.wallflower.screen.Prompt
 
 /**
@@ -122,6 +123,8 @@ fun MobileView(
     prompt: Prompt? = null,
     /** What the program says it's doing, in its words, while it works. */
     doing: String? = null,
+    /** Questions it asked that wait on its screen to be brought up, which [onKeys] does. */
+    asked: Asked? = null,
     /** When something sent was held for the prompt to be answered first (System.nanoTime); 0 if it wasn't. */
     nudged: Long = 0,
     /** A message asked back to edit is being found in what the program lists, which isn't the user's to answer yet. */
@@ -163,6 +166,10 @@ fun MobileView(
                 delay(UNREAD_MS)
                 unread = true
             }
+        }
+        // What waits to be brought up isn't on its way to the screen: it says so at once.
+        LaunchedEffect(activity, asked != null) {
+            if (activity == Activity.Waiting && asked != null) unread = true
         }
         // Stopped from here, it says so at once, until the program says it's stopped or a few seconds pass.
         val stopping by produceState(false, reading.stopped) {
@@ -256,7 +263,7 @@ fun MobileView(
                                             PromptCard(p, onKeys, Modifier.onSizeChanged { s -> feel.laidOut(s.height) }, nudged) { picked -> onPicked(p, picked) }
                                         }
                                         Status.Working -> Working(since, if (stopping) "stopping" else doing)
-                                        Status.Waiting -> Waiting()
+                                        Status.Waiting -> Waiting(asked) { asked?.let { onKeys(it.keys) } }
                                         Status.Seeking -> Working(0, "finding your message")
                                     }
                                 }
@@ -876,16 +883,40 @@ private fun duration(seconds: Long) = when {
     else -> "${seconds / 3_600}h ${seconds % 3_600 / 60}m"
 }
 
-/** The program needs an answer that isn't on its screen as a menu wallflower can read. */
+/**
+ * The program needs an answer that isn't on its screen as a menu wallflower
+ * can read; or it [asked] questions that wait to be brought up, which a tap
+ * on them does ([onBring]), and then they're a menu.
+ */
 @Composable
-private fun Waiting() {
+private fun Waiting(asked: Asked?, onBring: () -> Unit) {
     Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(6.dp).clip(CircleShape).background(Palette.orange))
+        if (asked == null) {
+            Text(
+                "waiting for you · answer in the terminal",
+                color = Palette.grey,
+                style = Type.label,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+            return@Row
+        }
+        Text("${asked.what} for you", color = Palette.grey, style = Type.label, modifier = Modifier.padding(start = 8.dp))
+        val haptics = haptics()
         Text(
-            "waiting for you · answer in the terminal",
-            color = Palette.grey,
+            "answer",
+            color = Palette.orange,
             style = Type.label,
-            modifier = Modifier.padding(start = 8.dp),
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .padding(start = 10.dp)
+                .clip(CircleShape)
+                .background(Palette.orange.copy(alpha = 0.14f))
+                .clickable {
+                    haptics.tick()
+                    onBring()
+                }
+                .padding(horizontal = 12.dp, vertical = 4.dp),
         )
     }
 }

@@ -1,0 +1,36 @@
+[2m  Worked for 40s • 10:58 AM
+[0m
+[48;5;8m
+[1;2m› [0m[48;5;8mAsk me one multiple-choice question (a colour) with the
+  question tool, then run: sleep 40
+
+[49m
+[38;2;99;168;248m? Which colour do you pick?[39m
+
+  [38;2;148;226;213m• [39mRed
+  [38;2;148;226;213m• [39mBlue
+  [38;2;148;226;213m• [39mGreen
+
+[48;5;8m
+[38;2;99;168;248m↪ [2mRe: Which colour do you pick?[0m[48;5;8m
+
+  Green
+
+[49m
+[1m[38;2;128;128;128m•[0m [2mWorking[0m [2m(38s • [0;1mesc[0;2m to interrupt) · 1 background terminal runn…
+[0m
+[1;7m› /model         [0;7mchoose what model and reasoning effort to use[1m
+[0m  /presets       [2mrun or save reusable prompts and slash commands
+[0m  /daybreak      [2mLearn about broader access for cybersecurity[0m
+                 [2mwork[0m
+  /ide           [2minclude current selection, open files, and[0m
+                 [2mother context from your IDE[0m
+  /permissions   [2mchoose what Codex is allowed to do[0m
+  /keymap        [2mremap TUI shortcuts[0m
+  /vim           [2mtoggle Vim mode for the composer[0m
+  /experimental  [2mtoggle experimental features[0m
+
+[1m›[0m /
+
+  [38;2;246;226;183mGPT-6-Luna default[39m · [38;2;171;223;167m~/dev/wallflower[39m · [38;2;166;227;161mApprove touch command[39m
+  [1mtab[0m to queue message
