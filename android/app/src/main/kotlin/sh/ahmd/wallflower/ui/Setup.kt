@@ -138,19 +138,24 @@ private fun ScanCode(label: String, primary: Boolean, createKey: () -> String?, 
     error?.let { Text(it, color = Palette.red, style = Type.label) }
 }
 
-/** Opens Google's code scanner, for QR codes: [onCode] gets what it read, [onError] why it couldn't open. Backing out does nothing. */
+/**
+ * Opens Google's code scanner, for QR codes: [onCode] gets what it read,
+ * [onError] why it couldn't scan. Backing out does nothing: the scanner
+ * says so as cancelled, or as failing (INTERNAL) on some phones.
+ */
 private fun scan(context: Context, onError: (String) -> Unit, onCode: (String) -> Unit) {
     val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
     GmsBarcodeScanning.getClient(context, options).startScan()
         .addOnSuccessListener { code -> code.rawValue?.let(onCode) }
         .addOnFailureListener { e ->
-            onError(
-                if ((e as? MlKitException)?.errorCode == MlKitException.UNAVAILABLE) {
-                    "The scanner is still downloading, the first time: try again in a moment."
-                } else {
-                    "The scanner didn't open: it comes with Google Play services. The phone's camera can open the code too."
-                },
-            )
+            when ((e as? MlKitException)?.errorCode) {
+                MlKitException.CODE_SCANNER_CANCELLED, MlKitException.CODE_SCANNER_TASK_IN_PROGRESS, MlKitException.INTERNAL -> Unit
+                MlKitException.UNAVAILABLE, MlKitException.CODE_SCANNER_UNAVAILABLE ->
+                    onError("The scanner is still downloading, the first time: try again in a moment.")
+                MlKitException.CODE_SCANNER_GOOGLE_PLAY_SERVICES_VERSION_TOO_OLD ->
+                    onError("The scanner needs a newer Google Play services. The phone's camera can open the code too.")
+                else -> onError("The scanner stopped: try again, or open the code with the phone's camera.")
+            }
         }
 }
 
