@@ -110,6 +110,16 @@ data class KeyBar(
             }
             ?: default
 
+    /**
+     * A profile of its own for a pane's program that has none: the bar its
+     * plugin ships, as it is (Codex's, with Esc to stop it, as ^C quits it),
+     * or the default's keys for one that ships none.
+     */
+    fun madeFor(command: String, program: String?): KeyProfile =
+        (Programs.supplied(program) ?: program?.lowercase()?.let { Programs.builtin[it] })?.keyBar
+            ?.let { d -> KeyProfile(d.name, listOfNotNull(program), d.keys.map(::key), stop = d.stop) }
+            ?: KeyProfile(command, listOf(command), default.keys, default.stop)
+
     companion object {
         /** The arrows, with enter above left and backspace above right, in one key; `arrows` by name (the order is saved with a bar). */
         val ARROWS = BarKey("arrows", listOf("Up", "Left", "Enter", "Right", "Down", "BSpace"), cluster = true)

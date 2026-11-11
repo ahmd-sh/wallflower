@@ -698,7 +698,13 @@ private fun TerminalScreen(
                             onStop = actions::stop,
                             onEditKeys = onEditKeys,
                             shortcuts = profile.shortcutsFor(actions.program),
-                            onShortcut = {
+                            onShortcut = shortcut@{
+                                // What a menu's waiting on would take a shortcut's text as picks (a hotkey's letter), and its Enter or shift+tab as an answer.
+                                if (holding) {
+                                    haptics.reject()
+                                    nudged = System.nanoTime()
+                                    return@shortcut
+                                }
                                 if (!mobileView) view?.scrollToBottom()
                                 actions.shortcut(it, screen.line)
                             },

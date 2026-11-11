@@ -97,8 +97,9 @@ internal class Files(private val link: Link) {
     /**
      * Fetches the file at [path] into [to] (only the first [limit] bytes, if
      * given) and returns what the gateway said of it: its whole path, and how
-     * much came. Cancelled, the gateway stops sending it; what came is
-     * removed whenever it doesn't all come.
+     * much came. However it ends short (cancelled, or the phone can't write
+     * it), the gateway's told to stop sending it, as what it sends waits on
+     * what's said to have come; and what came is removed.
      */
     suspend fun fetch(path: String, to: File, limit: Long? = null, progress: (Long, Long) -> Unit = { _, _ -> }): FetchedFile {
         val ended = link.ended() ?: throw IOException("not connected")
@@ -109,12 +110,10 @@ internal class Files(private val link: Link) {
         try {
             if (!link.send(Fetch(id, path, limit), on = ended)) throw IOException("the connection dropped")
             return f.done.unlessLost(ended).also { whole = true }
-        } catch (e: CancellationException) {
-            link.send(Cancel(id), on = ended)
-            throw e
         } finally {
             fetching.remove(id)
             if (!whole) {
+                link.send(Cancel(id), on = ended)
                 f.finish(CancellationException())
                 to.delete()
             }

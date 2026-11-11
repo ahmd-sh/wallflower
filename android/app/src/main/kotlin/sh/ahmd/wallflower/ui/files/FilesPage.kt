@@ -152,7 +152,7 @@ internal fun FilesPage(
         val job = scope.launch {
             try {
                 val f = fetches.kept(path, entry.size, entry.mtime) ?: fetches.place(entry.name).also { f ->
-                    session.fetch(path, f) { got, of -> sharing = sharing?.copy(got = got, of = of) }
+                    session.fetch(path, f) { got, of -> sharing = sharing?.takeIf { it.job === coroutineContext[Job] }?.copy(got = got, of = of) ?: sharing }
                     fetches.keep(path, entry.size, entry.mtime, f)
                 }
                 Fetches.share(context, f)
@@ -161,7 +161,8 @@ internal fun FilesPage(
             } catch (e: Exception) {
                 haptics.reject()
             } finally {
-                sharing = null
+                // A share replaced finishes after the one that replaced it began: what's shown is that one's.
+                if (sharing?.job === coroutineContext[Job]) sharing = null
             }
         }
         sharing = Sharing(entry.name, 0, entry.size, job)

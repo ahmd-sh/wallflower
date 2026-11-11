@@ -34,8 +34,10 @@ final class Files {
     /**
      * The file at [path] (all of it, or its first [limit] bytes), written to
      * [to] as it comes; [progress] hears the bytes that have, of how many.
-     * Returns what the gateway said of it. Cancelled, the gateway stops
-     * sending it. Throws why it couldn't be had, or if the connection drops.
+     * Returns what the gateway said of it. However it ends short (cancelled,
+     * or the phone can't write it), the gateway's told to stop sending it, as
+     * what it sends waits on what's said to have come, and what came is
+     * removed. Throws why it couldn't be had, or if the connection drops.
      */
     func fetch(_ path: String, limit: Int64?, to url: URL, progress: @escaping @MainActor (Int64, Int64) -> Void) async throws -> FileReply {
         guard let link, let live = link.current() else { throw TransferError("not connected") }
@@ -61,14 +63,18 @@ final class Files {
             fetches.drop(id)
             throw TransferError("the connection dropped")
         }
-        return try await withTaskCancellationHandler {
-            try await reply.value()
-        } onCancel: { [fetches] in
-            fetches.drop(id)
-            Task { @MainActor [weak link] in
-                link?.send(.cancel(id: id), on: live)
-                reply.fail(CancellationError())
+        do {
+            return try await withTaskCancellationHandler {
+                try await reply.value()
+            } onCancel: { [fetches] in
+                fetches.drop(id)
+                Task { @MainActor in reply.fail(CancellationError()) }
             }
+        } catch {
+            fetches.drop(id)
+            link.send(.cancel(id: id), on: live)
+            try? FileManager.default.removeItem(at: url)
+            throw error
         }
     }
 }

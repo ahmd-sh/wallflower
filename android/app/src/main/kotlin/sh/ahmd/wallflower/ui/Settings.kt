@@ -327,7 +327,7 @@ fun ProfileScreen(
                 if (!program.isNullOrEmpty() && bar.refFor(program, programId) == ProfileRef.Default) {
                     Button("make a profile for $program", primary = true) {
                         val index = bar.profiles.size
-                        store.update { it.copy(profiles = it.profiles + KeyProfile(program, listOf(program), profile.keys, profile.stop)) }
+                        store.update { it.copy(profiles = it.profiles + it.madeFor(program, programId)) }
                         onOpen(ProfileRef.At(index))
                     }
                 }

@@ -28,6 +28,12 @@ class KeyBarTest {
         assertEquals("codex", codex.name)
         assertEquals(listOf("Escape"), codex.stop) // ^C would quit it
         assertEquals(listOf("esc", "ctrl", "⇧←", "⇧tab", "arrows", "tab", "1", "2", "3"), codex.keys.map { it.label })
+        // Made a profile of its own, it's that bar, not the default's with ^C.
+        val made = saved.madeFor("codex", "codex")
+        assertEquals(listOf("Escape"), made.stop)
+        assertEquals(listOf("codex"), made.programs)
+        assertEquals(codex.keys, made.keys)
+        assertEquals(listOf("hntui"), saved.madeFor("hntui", null).programs)
     }
 
     @Test

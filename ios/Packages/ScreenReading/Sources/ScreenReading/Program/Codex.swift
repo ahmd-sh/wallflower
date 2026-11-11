@@ -29,15 +29,15 @@ public final class Codex: Program {
         stop: ["Escape"]
     )
 
-    /// Its keys (← and its agents, and Esc Esc and its rewind, from an empty
-    /// composer), then its commands, run as sent; /side starts what's sent,
-    /// the question to ask aside.
+    /// Its keys (← and its agents, from an empty composer), then its
+    /// commands, run as sent; /side starts what's sent, the question to ask
+    /// aside. Not Esc Esc and its rewind: two Escs that come together it
+    /// takes for one.
     public let shortcuts: [Shortcut] = [
         Shortcut(["BTab"], label: "mode"),
         Shortcut(["F4"], label: "activity"),
         Shortcut(["S-Left"], label: "answer questions"),
         Shortcut(["Left"], label: "agents"),
-        Shortcut(["Escape", "Escape"], label: "rewind"),
         Shortcut(["M-,"], label: "less reasoning"),
         Shortcut(["M-."], label: "more reasoning"),
     ] + ["/model", "/new", "/resume", "/compact", "/diff", "/review", "/status", "/plan", "/recap", "/agents"]

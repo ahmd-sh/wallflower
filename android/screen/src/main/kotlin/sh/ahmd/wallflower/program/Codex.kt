@@ -34,16 +34,16 @@ object Codex : Program {
     )
 
     /**
-     * Its keys (← and its agents, and Esc Esc and its rewind, from an empty
-     * composer), then its commands, run as sent; /side starts what's sent,
-     * the question to ask aside.
+     * Its keys (← and its agents, from an empty composer), then its
+     * commands, run as sent; /side starts what's sent, the question to ask
+     * aside. Not Esc Esc and its rewind: two Escs that come together it
+     * takes for one.
      */
     override val shortcuts = listOf(
         Shortcut(listOf("BTab"), "mode"),
         Shortcut(listOf("F4"), "activity"),
         Shortcut(listOf("S-Left"), "answer questions"),
         Shortcut(listOf("Left"), "agents"),
-        Shortcut(listOf("Escape", "Escape"), "rewind"),
         Shortcut(listOf("M-,"), "less reasoning"),
         Shortcut(listOf("M-."), "more reasoning"),
     ) + listOf("/model", "/new", "/resume", "/compact", "/diff", "/review", "/status", "/plan", "/recap", "/agents")

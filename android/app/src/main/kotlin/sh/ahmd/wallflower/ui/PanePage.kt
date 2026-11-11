@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
@@ -90,7 +91,10 @@ internal fun PanePage(
     // Pictures the program mentions by their paths open in the viewer, found from where the pane is.
     val viewer = LocalViewer.current
     val pane = actions.pane
-    val paths = if (viewer?.canFetch == true) { path: String -> viewer.open(Viewed.OnMac(ImagePaths.resolve(path, pane.path)), pane.id) } else null
+    val can = viewer?.canFetch == true
+    val paths: ((String) -> Unit)? = remember(viewer, can, pane.path, pane.id) { // the same while they are, as a new one would redraw the whole conversation
+        if (can && viewer != null) { path: String -> viewer.open(Viewed.OnMac(ImagePaths.resolve(path, pane.path)), pane.id) } else null
+    }
     AnimatedVisibility(reading != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
         val compact = actions.compact
         CompositionLocalProvider(LocalPicturePaths provides paths) { MobileView(

@@ -152,6 +152,16 @@ public struct KeyBar: Codable, Hashable, Sendable {
             ?? self.default
     }
 
+    /// A profile of its own for a pane's program that has none: the bar its
+    /// plugin ships, as it is (Codex's, with Esc to stop it, as ^C quits it),
+    /// or the default's keys for one that ships none.
+    public func madeFor(command: String, program: String?) -> KeyProfile {
+        if let d = (Programs.supplied(program) ?? program.flatMap { Programs.builtin(id: $0) })?.keyBar {
+            return KeyProfile(name: d.name, programs: program.map { [$0] } ?? [command], keys: d.keys.map(KeyBar.key), stop: d.stop)
+        }
+        return KeyProfile(name: command, programs: [command], keys: self.default.keys, stop: self.default.stop)
+    }
+
     /// The arrows, with enter above left and backspace above right, in one key; `arrows` by name (the order is saved with a bar).
     public static let arrows = BarKey(label: "arrows", keys: ["Up", "Left", "Enter", "Right", "Down", "BSpace"], cluster: true)
 

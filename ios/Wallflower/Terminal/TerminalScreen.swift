@@ -380,6 +380,12 @@ struct TerminalScreen: View {
             onEditKeys: onEditKeys,
             shortcuts: profile.shortcuts(for: actions.program),
             onShortcut: { key in
+                // What a menu's waiting on would take a shortcut's text as picks (a hotkey's letter), and its Enter or shift+tab as an answer.
+                if holding {
+                    haptics.reject()
+                    nudged += 1
+                    return
+                }
                 typed = key.keys.last != "Enter"
                 if !mobile { handle.scrollToBottom() }
                 actions.shortcut(key, line: screen.line)

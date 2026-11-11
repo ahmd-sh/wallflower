@@ -149,6 +149,8 @@ final class Sharer {
     var shared: Shared?
     var failed: String?
     @ObservationIgnored private var task: Task<Void, Never>?
+    /** Which share the state is the latest's: one replaced finishes after, and mustn't clear the new one's. */
+    @ObservationIgnored private var latest = UUID()
 
     /** Shares a file already on the phone. */
     func share(_ url: URL) {
@@ -162,16 +164,24 @@ final class Sharer {
         task?.cancel()
         failed = nil
         fetching = Fetching(name: name, of: size ?? 0)
+        let mine = UUID()
+        latest = mine
         task = Task { [weak self] in
             let url = Fetched.place(name)
             do {
-                _ = try await session.fetch(path, to: url) { got, of in self?.fetching?.got = got; self?.fetching?.of = of }
+                _ = try await session.fetch(path, to: url) { got, of in
+                    guard self?.latest == mine else { return }
+                    self?.fetching?.got = got
+                    self?.fetching?.of = of
+                }
                 Fetched.keep(url, path, size: size, mtime: mtime)
+                guard self?.latest == mine else { return }
                 self?.fetching = nil
                 self?.share(url)
             } catch is CancellationError {
-                self?.fetching = nil
+                if self?.latest == mine { self?.fetching = nil }
             } catch {
+                guard self?.latest == mine else { return }
                 self?.fetching = nil
                 self?.failed = error.localizedDescription
                 haptics.reject()

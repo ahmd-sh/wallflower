@@ -106,7 +106,7 @@ private struct ShortcutsEditor: View {
                         let index = store.bar.profiles.count
                         store.update { b in
                             var b = b
-                            b.profiles.append(KeyProfile(name: program, programs: [program], keys: profile.keys, stop: profile.stop))
+                            b.profiles.append(b.madeFor(command: program, program: programId))
                             return b
                         }
                         onOpen(.at(index))
