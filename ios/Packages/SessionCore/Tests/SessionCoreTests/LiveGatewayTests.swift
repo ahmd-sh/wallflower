@@ -61,6 +61,7 @@ final class LiveGatewayTests: XCTestCase {
             XCTAssertEqual(error.localizedDescription, "no such file or directory")
         }
 
+        // More than the 256 KiB the gateway sends unheard: it all comes only as the phone says what's arrived.
         let to = dir.appendingPathComponent("fetched")
         var heard: (Int64, Int64) = (0, 0)
         let r = try await s.fetch(dir.appendingPathComponent("blob ✓.bin").path, to: to) { heard = ($0, $1) }

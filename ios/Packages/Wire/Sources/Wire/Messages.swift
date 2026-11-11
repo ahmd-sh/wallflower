@@ -58,6 +58,9 @@ public enum ClientMessage: Sendable, Equatable {
     /// Asks for a file's bytes: a `FileReply` with the same `id` says how many, then they follow in file frames; with `limit`, no more than that many from the start.
     case fetch(id: String, path: String, limit: Int64? = nil)
 
+    /// How many of a fetch's bytes have arrived, said as they do: the gateway sends only so far ahead of it.
+    case got(id: String, size: Int64)
+
     /// Stops a fetch partway; frames already on their way still come.
     case cancel(id: String)
 
@@ -175,6 +178,11 @@ extension ClientMessage {
             o.field("id", id)
             o.field("path", path)
             if let limit, limit > 0 { o.field("limit", limit) }
+            return o.end()
+        case let .got(id, size):
+            var o = JSONObject("got")
+            o.field("id", id)
+            o.field("size", size)
             return o.end()
         case let .cancel(id):
             var o = JSONObject("cancel")

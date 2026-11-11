@@ -121,10 +121,13 @@ final class Fetches: @unchecked Sendable {
         main { f.progress(0, r.size) }
     }
 
-    /** The next of a fetch's bytes. */
-    func bytes(_ id: String, _ data: Data) {
+    /** The next of a fetch's bytes, written; how many of it have arrived now, or nil if it's no longer wanted. */
+    func bytes(_ id: String, _ data: Data) -> Int64? {
         lock.lock()
-        guard var f = open[id], let r = f.reply else { return lock.unlock() }
+        guard var f = open[id], let r = f.reply else {
+            lock.unlock()
+            return nil
+        }
         do {
             try f.handle.write(contentsOf: data)
         } catch {
@@ -132,7 +135,7 @@ final class Fetches: @unchecked Sendable {
             lock.unlock()
             try? f.handle.close()
             main { f.done(.failure(TransferError("there's no room for it on the phone"))) }
-            return
+            return nil
         }
         f.got += Int64(data.count)
         let got = f.got
@@ -140,7 +143,7 @@ final class Fetches: @unchecked Sendable {
             open[id] = f
             lock.unlock()
             main { f.progress(got, r.size) }
-            return
+            return got
         }
         open[id] = nil
         lock.unlock()
@@ -149,6 +152,7 @@ final class Fetches: @unchecked Sendable {
             f.progress(got, r.size)
             f.done(.success(r))
         }
+        return got
     }
 
     private func main(_ work: @escaping @MainActor () -> Void) {

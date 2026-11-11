@@ -30,7 +30,8 @@ protocol FastPath: AnyObject, Sendable {
     func reset(_ m: Reset)
     func picture(_ id: String, _ bytes: Data)
     func file(_ m: FileReply)
-    func file(_ id: String, _ bytes: Data)
+    /** A fetch's next bytes; how many of it have arrived now, to say so, if it's still wanted. */
+    func file(_ id: String, _ bytes: Data) -> Int64?
 }
 
 /**
@@ -412,7 +413,8 @@ final class Sink: ConnectionSink, @unchecked Sendable {
                 case .picture(let id, let b):
                     fast.picture(id, b)
                 case .file(let id, let b):
-                    fast.file(id, b)
+                    // Said at once, on this connection: the gateway sends only so far ahead of what it's heard.
+                    if let got = fast.file(id, b) { conn?.write(FrameEncoder.message(.got(id: id, size: got))) }
                 case .message(let m):
                     if case .reset(let r) = m { fast.reset(r) }
                     if case .file(let r) = m { fast.file(r) }

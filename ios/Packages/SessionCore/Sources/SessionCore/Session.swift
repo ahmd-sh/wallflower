@@ -620,7 +620,7 @@ private final class Fast: FastPath, @unchecked Sendable {
     func reset(_ m: Reset) { panes?.reset(m) }
     func picture(_ id: String, _ bytes: Data) { transfer?.picture(id, bytes) }
     func file(_ m: FileReply) { fetches?.reply(m) }
-    func file(_ id: String, _ bytes: Data) { fetches?.bytes(id, bytes) }
+    func file(_ id: String, _ bytes: Data) -> Int64? { fetches?.bytes(id, bytes) }
 }
 
 private extension ProgramData {

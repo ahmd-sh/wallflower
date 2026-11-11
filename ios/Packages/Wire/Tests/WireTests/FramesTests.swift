@@ -50,6 +50,7 @@ final class FramesTests: XCTestCase {
             .list(id: "l2", path: ""),
             .fetch(id: "f1", path: "/Users/me/shot.png"),
             .fetch(id: "f2", path: "~/log.txt", limit: 65536),
+            .got(id: "f1", size: 65536),
             .cancel(id: "f1"),
         ]
         for m in messages { out.append(FrameEncoder.message(m)) }
