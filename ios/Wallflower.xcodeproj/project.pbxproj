@@ -433,7 +433,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/Wallflower-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = wallflower;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send to your Mac.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Your SSH key lives in this phone's Secure Enclave; Face ID unlocks it.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "wallflower connects to your Mac's gateway.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -466,7 +465,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Config/Wallflower-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = wallflower;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send to your Mac.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Your SSH key lives in this phone's Secure Enclave; Face ID unlocks it.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "wallflower connects to your Mac's gateway.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

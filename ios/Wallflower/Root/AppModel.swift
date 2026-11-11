@@ -44,6 +44,10 @@ final class AppModel {
     var showing: Showing?
     /** The user isn't looking at the app. */
     private(set) var away = true
+    /** The computer being paired with, while it is: what to call it. */
+    private(set) var pairing: String?
+    /** Why pairing didn't work, until it's tried again or a computer's set up. */
+    var pairError: String?
     @ObservationIgnored private var latest: [String: ProgramNotification] = [:]
     @ObservationIgnored private var watching: Task<Void, Never>?
 
@@ -84,7 +88,37 @@ final class AppModel {
     func configure(_ h: Host) {
         h.save()
         host = h
+        pairError = nil
         connect(h)
+    }
+
+    /**
+     * Pairs with the computer [p] came from: hands it this phone's key, made
+     * first if there's none, then trusts the host key the code named and
+     * connects as setup does. [done] once it's the computer set up.
+     */
+    func pair(_ p: Pairing, done: @escaping () -> Void) {
+        guard pairing == nil else { return }
+        if let problem = createKey() {
+            pairError = problem
+            return
+        }
+        pairError = nil
+        pairing = p.called
+        let line = key.authorizedKey(comment: keyComment)
+        Task {
+            do {
+                try await p.claim(sending: line)
+                hostKeys.trust(host: p.address, key: p.hostKey)
+                pairing = nil
+                configure(p.host)
+                done()
+            } catch {
+                pairing = nil
+                pairError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                haptics.reject()
+            }
+        }
     }
 
     /** Connects to the configured computer, unless already connected. */
@@ -195,6 +229,7 @@ final class AppModel {
         watching?.cancel()
         session?.stop()
         session = nil
+        pairError = nil
         latest = [:]
         notices.clear()
         activities.end()
@@ -239,8 +274,13 @@ final class AppModel {
 
     /** The command that authorizes this phone's key on the computer. */
     func authorizeCommand() -> String {
+        "wallflower authorize '\(key.authorizedKey(comment: keyComment))'"
+    }
+
+    /** What the computer calls this phone's key: wallflower@ and the phone's name. */
+    private var keyComment: String {
         let name = UIDevice.current.name.replacingOccurrences(of: " ", with: "-").filter { $0.isLetter || $0.isNumber || $0 == "-" }
-        return "~/go/bin/wallflower authorize '\(key.authorizedKey(comment: "wallflower@" + (name.isEmpty ? "iPhone" : name)))'"
+        return "wallflower@" + (name.isEmpty ? "iPhone" : name)
     }
 
     /** Face ID or the passcode, then the connection goes again. */

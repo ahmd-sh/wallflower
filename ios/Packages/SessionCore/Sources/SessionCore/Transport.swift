@@ -130,60 +130,70 @@ public struct SSHTransport: Transport {
         guard let privateKey = key.unlockedKey() else { throw Blocked.keyLocked }
         let check = HostCheck(host: host.address, hostKeys: hostKeys)
         let auth = KeyAuth(user: host.user, key: privateKey)
-        let tcp = NWProtocolTCP.Options()
-        tcp.noDelay = true
-        let parent: Channel
+        let command = host.command
+        let parent = try await sshConnect(to: host.address, port: host.port, auth: auth, check: check)
         do {
-            parent = try await NIOTSConnectionBootstrap(group: NIOTSEventLoopGroup.singleton)
-                .connectTimeout(.seconds(10))
-                .tcpOptions(tcp)
-                .channelInitializer { channel in
-                    channel.eventLoop.makeCompletedFuture {
-                        let ssh = NIOSSHHandler(
-                            role: .client(.init(userAuthDelegate: auth, serverAuthDelegate: check)),
-                            allocator: channel.allocator,
-                            inboundChildChannelInitializer: nil
-                        )
-                        try channel.pipeline.syncOperations.addHandlers([ssh, CloseOnError()])
-                    }
-                }
-                .connect(host: host.address, port: host.port)
-                .get()
+            let child = try await sshSession(on: parent) { ExecHandler(command: command, sink: sink) }
+            let conn = Connection(channel: child) { NIOAny(SSHChannelData(type: .channel, data: .byteBuffer($0))) }
+            conn.sshParent = parent
+            return conn
         } catch {
+            if let b = check.blocked { throw b }
+            if auth.rejected { throw Blocked.notAuthorized }
             throw error
         }
-        // The handshake (keys, auth, the channel) gets as long as the connect did; a network that goes away meanwhile doesn't leave it waiting.
-        let timeout = parent.eventLoop.scheduleTask(in: .seconds(10)) { parent.close(promise: nil) }
-        defer { timeout.cancel() }
-        do {
-            let child: Channel = try await withTaskCancellationHandler {
-                try await parent.eventLoop.flatSubmit {
+    }
+}
+
+/** A TCP connection to an ssh server, its handshake under way: [check] says whether it's the server meant, and [auth] signs in. */
+func sshConnect(to address: String, port: Int, auth: NIOSSHClientUserAuthenticationDelegate & Sendable, check: NIOSSHClientServerAuthenticationDelegate & Sendable) async throws -> Channel {
+    let tcp = NWProtocolTCP.Options()
+    tcp.noDelay = true
+    return try await NIOTSConnectionBootstrap(group: NIOTSEventLoopGroup.singleton)
+        .connectTimeout(.seconds(10))
+        .tcpOptions(tcp)
+        .channelInitializer { channel in
+            channel.eventLoop.makeCompletedFuture {
+                let ssh = NIOSSHHandler(
+                    role: .client(.init(userAuthDelegate: auth, serverAuthDelegate: check)),
+                    allocator: channel.allocator,
+                    inboundChildChannelInitializer: nil
+                )
+                try channel.pipeline.syncOperations.addHandlers([ssh, CloseOnError()])
+            }
+        }
+        .connect(host: address, port: port)
+        .get()
+}
+
+/** A session channel on [parent], [handler] on it, once the handshake's through; if it doesn't get through, [parent] is closed. */
+func sshSession(on parent: Channel, handler: @escaping @Sendable () -> ChannelHandler) async throws -> Channel {
+    // The handshake (keys, auth, the channel) gets as long as the connect did; a network that goes away meanwhile doesn't leave it waiting.
+    let timeout = parent.eventLoop.scheduleTask(in: .seconds(10)) { parent.close(promise: nil) }
+    defer { timeout.cancel() }
+    do {
+        return try await withTaskCancellationHandler {
+            try await parent.eventLoop.flatSubmit {
                 let promise = parent.eventLoop.makePromise(of: Channel.self)
                 do {
                     let ssh = try parent.pipeline.syncOperations.handler(type: NIOSSHHandler.self)
                     ssh.createChannel(promise) { child, type in
                         guard type == .session else { return child.eventLoop.makeFailedFuture(SSHFailure.wrongChannel) }
                         return child.eventLoop.makeCompletedFuture {
-                            try child.pipeline.syncOperations.addHandler(ExecHandler(command: host.command, sink: sink))
+                            try child.pipeline.syncOperations.addHandler(handler())
                         }
                     }
                 } catch {
                     promise.fail(error)
                 }
                 return promise.futureResult
-                }.get()
-            } onCancel: {
-                parent.close(promise: nil) // stopped while connecting
-            }
-            let conn = Connection(channel: child) { NIOAny(SSHChannelData(type: .channel, data: .byteBuffer($0))) }
-            conn.sshParent = parent
-            return conn
-        } catch {
-            parent.close(promise: nil)
-            if let b = check.blocked { throw b }
-            if auth.rejected { throw Blocked.notAuthorized }
-            throw error
+            }.get()
+        } onCancel: {
+            parent.close(promise: nil) // stopped while connecting
         }
+    } catch {
+        parent.close(promise: nil)
+        throw error
     }
 }
 
@@ -233,8 +243,8 @@ private final class HostCheck: NIOSSHClientServerAuthenticationDelegate, @unchec
     }
 }
 
-/** Offers the phone's key, once. */
-private final class KeyAuth: NIOSSHClientUserAuthenticationDelegate, @unchecked Sendable {
+/** Offers a key, once: the phone's, or a pairing code's. */
+final class KeyAuth: NIOSSHClientUserAuthenticationDelegate, @unchecked Sendable {
     let user: String
     let key: NIOSSHPrivateKey
     var offered = false

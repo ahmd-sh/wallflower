@@ -21,7 +21,12 @@ let package = Package(
             .product(name: "NIOCore", package: "swift-nio"),
             .product(name: "NIOTransportServices", package: "swift-nio-transport-services"),
         ]),
-        .testTarget(name: "SessionCoreTests", dependencies: ["SessionCore"]),
+        .testTarget(name: "SessionCoreTests", dependencies: [
+            "SessionCore",
+            .product(name: "NIOSSH", package: "swift-nio-ssh"),
+            .product(name: "NIOCore", package: "swift-nio"),
+            .product(name: "NIOTransportServices", package: "swift-nio-transport-services"),
+        ]),
     ],
     swiftLanguageModes: [.v5]
 )

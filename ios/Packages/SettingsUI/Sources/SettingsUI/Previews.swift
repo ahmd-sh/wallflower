@@ -5,7 +5,7 @@ import Wire
 
 private let defaults = UserDefaults(suiteName: "wallflower.preview")!
 private let computer = Host(address: "100.101.102.103", user: "me", machine: "studio")
-private let command = "~/go/bin/wallflower authorize 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBA== wallflower@iPhone'"
+private let command = "wallflower authorize 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBA== wallflower@iPhone'"
 
 #Preview("settings") {
     let _ = Fonts.register()
@@ -39,12 +39,17 @@ private let command = "~/go/bin/wallflower authorize 'ecdsa-sha2-nistp256 AAAAE2
 
 #Preview("welcome") {
     let _ = Fonts.register()
-    SetupScreen(host: nil, hasKey: false, fingerprint: nil, authorizeCommand: { command }, createKey: { nil }, unlockSeconds: nil, newKey: { _ in nil }, onBack: nil, onConnect: { _ in })
+    SetupScreen(host: nil, hasKey: false, fingerprint: nil, authorizeCommand: { command }, createKey: { nil }, unlockSeconds: nil, newKey: { _ in nil }, pairing: nil, pairError: nil, onPair: { _ in }, onBack: nil, onConnect: { _ in })
+}
+
+#Preview("pairing") {
+    let _ = Fonts.register()
+    SetupScreen(host: nil, hasKey: true, fingerprint: nil, authorizeCommand: { command }, createKey: { nil }, unlockSeconds: nil, newKey: { _ in nil }, pairing: "studio", pairError: nil, onPair: { _ in }, onBack: nil, onConnect: { _ in })
 }
 
 #Preview("computer") {
     let _ = Fonts.register()
-    SetupScreen(host: computer, hasKey: true, fingerprint: "SHA256:q3MrS9fZ0v4nWbGQ1yQ7c2eHk8p0tLxR5uJm6aDdV1E", authorizeCommand: { command }, createKey: { nil }, unlockSeconds: 300, newKey: { _ in nil }, onBack: {}, onConnect: { _ in })
+    SetupScreen(host: computer, hasKey: true, fingerprint: "SHA256:q3MrS9fZ0v4nWbGQ1yQ7c2eHk8p0tLxR5uJm6aDdV1E", authorizeCommand: { command }, createKey: { nil }, unlockSeconds: 300, newKey: { _ in nil }, pairing: nil, pairError: "The code has run out or been used: run wallflower pair on the computer for a new one.", onPair: { _ in }, onBack: {}, onConnect: { _ in })
 }
 
 #Preview("blocked") {

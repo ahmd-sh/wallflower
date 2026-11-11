@@ -40,6 +40,8 @@ struct RootView: View {
     @State private var program: String?
     @State private var programId: String?
     @State private var dragged: CGFloat = 0
+    /** A pairing code from a link (the Camera app read it), waiting for the user to say yes. */
+    @State private var link: Pairing?
 
     var body: some View {
         let colors = model.settings.scheme.colors(dark: scheme == .dark)
@@ -51,6 +53,41 @@ struct RootView: View {
             .preferredColorScheme(colors.light ? .light : .dark)
             .onChange(of: model.settings.haptics, initial: true) { _, on in model.haptics.on = on }
             .onChange(of: model.rehearsal.count) { _, _ in rehearse() }
+            .onOpenURL(perform: open)
+            .alert(link.map { "pair with \($0.called)?" } ?? "", isPresented: Binding(get: { link != nil }, set: { if !$0 { link = nil } }), presenting: link) { p in
+                Button("pair") {
+                    link = nil
+                    pair(p)
+                }
+                Button("cancel", role: .cancel) { link = nil }
+            } message: { p in
+                Text(linkMessage(p))
+            }
+    }
+
+    /** A wallflower://pair link: asked about first, as anything could have opened it. */
+    private func open(_ url: URL) {
+        guard url.scheme?.lowercased() == "wallflower", url.host?.lowercased() == "pair" else { return }
+        model.files = nil // a cover over the session would hide the question
+        model.showing = nil
+        if let p = Pairing(url: url) {
+            link = p
+        } else {
+            model.pairError = "That link isn't a whole pairing code. Scan the code your computer shows."
+            if model.session != nil { go(.setup) }
+        }
+    }
+
+    private func linkMessage(_ p: Pairing) -> String {
+        let at = p.machine == nil ? "wallflower connects to it over Tailscale." : "wallflower connects to it at \(p.address)."
+        guard let host = model.host, host.address != p.address else { return at }
+        return at + " It takes the place of " + (host.machine ?? "the computer at \(host.address)") + "."
+    }
+
+    /** Pairs with [p], what it says showing where pairing's done: setup, or the computer page over a session. */
+    private func pair(_ p: Pairing) {
+        if model.session != nil { go(.setup) }
+        model.pair(p) { go(nil) }
     }
 
     @ViewBuilder
@@ -100,7 +137,7 @@ struct RootView: View {
                     .tint(palette.orange)
             }
         } else if let host = model.host {
-            Disconnected(machine: host.called) { model.ensure() }
+            Disconnected(machine: host.called, pairing: model.pairing, pairError: model.pairError) { model.ensure() }
         } else {
             setup(onBack: nil)
         }
@@ -174,6 +211,7 @@ struct RootView: View {
         SetupScreen(
             host: model.host, hasKey: model.hasKey, fingerprint: model.hasKey ? model.key.fingerprint : nil,
             authorizeCommand: model.authorizeCommand, createKey: model.createKey, unlockSeconds: model.unlockSeconds, newKey: model.newKey,
+            pairing: model.pairing, pairError: model.pairError, onPair: { model.pair($0) { go(nil) } },
             onBack: onBack
         ) { h in
             model.configure(h)
@@ -212,18 +250,25 @@ struct RootView: View {
     }
 }
 
-/** Left: the app's done with the computer until it connects again. */
+/** Left: the app's done with the computer until it connects again, or pairs with one from a link. */
 private struct Disconnected: View {
     @Environment(\.palette) private var palette
     @Environment(\.look) private var look
     let machine: String
+    let pairing: String?
+    let pairError: String?
     let onConnect: () -> Void
 
     var body: some View {
         VStack(spacing: 14) {
-            Flower(sway: false).frame(width: 96, height: 96)
+            Flower(sway: pairing != nil).frame(width: 96, height: 96)
             Text("disconnected from \(machine)").font(look.font(.title, weight: .semibold)).foregroundColor(palette.fg)
             WordButton("connect", primary: true, action: onConnect)
+            if let pairing {
+                Text("pairing with \(pairing)…").words(.label).foregroundColor(palette.fg)
+            } else if let pairError {
+                Text(pairError).words(.label).foregroundColor(palette.red).multilineTextAlignment(.center).padding(.horizontal, 24)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.bg0.ignoresSafeArea())
