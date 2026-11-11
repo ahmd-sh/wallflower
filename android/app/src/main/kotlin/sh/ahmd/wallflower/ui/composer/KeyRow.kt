@@ -22,7 +22,6 @@ import sh.ahmd.wallflower.ui.choice
 import sh.ahmd.wallflower.ui.opens
 import sh.ahmd.wallflower.ui.rememberOpener
 import sh.ahmd.wallflower.ui.glyphs
-import sh.ahmd.wallflower.ui.slides
 import sh.ahmd.wallflower.ui.Type
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -70,8 +69,8 @@ import sh.ahmd.wallflower.ui.onLetGo
 
 /**
  * The key bar: its keys, scrolling sideways, then a pencil to edit them.
- * Held, each says what it is, but ctrl offers the pane's [shortcuts], as
- * the shortcuts key does pressed; one picked goes to [onShortcut].
+ * Held, each says what it is; the shortcuts key, pressed, offers the
+ * pane's [shortcuts], and one picked goes to [onShortcut].
  */
 @Composable
 internal fun KeyRow(
@@ -110,7 +109,6 @@ internal fun KeyRow(
             when {
                 it.cluster -> ClusterChip(it, onKey)
                 it.shortcuts -> ShortcutsChip(it, shortcuts, onShortcut, onEditShortcuts)
-                it.sticky && it.keys == CTRL -> KeyChip(it, armed == it, onKey, shortcuts, onShortcut, onEditShortcuts)
                 else -> KeyChip(it, armed == it, onKey)
             }
         }
@@ -121,25 +119,14 @@ internal fun KeyRow(
 /**
  * Sends on tap; keys like the arrows repeat while held. A sticky key
  * toggles, and feels like it. Held, a key says what it sends, and one that
- * doesn't repeat doesn't send; one with [shortcuts] (ctrl) offers them
- * instead, to slide onto.
+ * doesn't repeat doesn't send.
  */
 @Composable
-private fun KeyChip(
-    key: BarKey,
-    armed: Boolean,
-    onKey: (BarKey) -> Unit,
-    shortcuts: List<BarKey> = emptyList(),
-    onShortcut: (BarKey) -> Unit = {},
-    onEditShortcuts: () -> Unit = {},
-) {
+private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
     val haptics = haptics()
     val scope = rememberCoroutineScope()
     var pressed by remember { mutableStateOf(false) }
     var held by remember { mutableStateOf(false) }
-    val offers = shortcuts.isNotEmpty()
-    val menu = rememberOpener()
-    var chip by remember { mutableStateOf(Rect.Zero) }
     val repeats = key.keys.size == 1 && key.keys[0] in KeyBar.repeating
     val isArmed by rememberUpdatedState(armed)
     val fire = { again: Boolean ->
@@ -154,23 +141,17 @@ private fun KeyChip(
         Pill(
             faceOf(key),
             on = armed,
-            pressed = pressed || menu.open,
-            modifier = Modifier.height(36.dp).onGloballyPositioned { chip = it.boundsInWindow() },
-            input = (if (offers) Modifier.slides(menu) else Modifier).pointerInput(key, offers) {
+            pressed = pressed,
+            modifier = Modifier.height(36.dp),
+            input = Modifier.pointerInput(key) {
                 val longPress = viewConfiguration.longPressTimeoutMillis
                 detectTapGestures(onPress = {
-                    if (offers && menu.shutting()) { // a tap to put the shortcuts away
-                        menu.open = false
-                        tryAwaitRelease()
-                        return@detectTapGestures
-                    }
                     pressed = true
                     val hold = scope.launch {
                         delay(if (repeats) REPEAT_AFTER_MS else longPress)
                         held = true
                         if (!repeats) {
                             haptics.hold()
-                            if (offers) menu.open = true
                             return@launch
                         }
                         fire(false)
@@ -187,8 +168,7 @@ private fun KeyChip(
                 })
             },
         )
-        if (held && !offers) HeldName(KeyBar.nameOf(key))
-        if (offers) ShortcutsUp(menu, chip, shortcuts, onShortcut, onEditShortcuts)
+        if (held) HeldName(KeyBar.nameOf(key))
     }
 }
 
@@ -282,7 +262,6 @@ private fun ShortcutPlace(lit: Boolean, modifier: Modifier, onTap: () -> Unit, c
     ) { content() }
 }
 
-private val CTRL = listOf("C-")
 private val SHORTCUT = 40.dp
 
 /**

@@ -31,9 +31,9 @@ func shortcutsSummary(_ profile: KeyProfile, shipped: [BarKey]) -> String {
 }
 
 /**
- * A profile's shortcuts, which held ctrl, or the shortcuts key, offers on
- * the bar: the user's own, to add, change, move and remove, then those the
- * program ships, each to hide or show again.
+ * A profile's shortcuts, which the shortcuts key offers on the bar: the
+ * user's own, to add, change, move and remove, then those the program
+ * ships, each to hide or show again.
  */
 public struct ShortcutsScreen: View {
     @Environment(\.palette) private var palette
@@ -98,7 +98,7 @@ private struct ShortcutsEditor: View {
         let changing = editing.flatMap { profile.shortcuts.indices.contains($0) ? $0 : nil }
         let keys = KeyBar.keys(of: sends)
         Page(ref == .default ? "default shortcuts" : "\(profile.name) shortcuts", onBack: onBack) {
-            Paragraph("Hold ctrl on the bar, or press the shortcuts key, then slide onto one and let go to send it; let go first, and they stay up to tap one.")
+            Paragraph("Press the shortcuts key on the bar, then slide onto one and let go to send it; let go first, and they stay up to tap one.")
             if ref == .default {
                 Paragraph("For programs without a profile of their own.")
                 if let program = program.nonEmpty, store.bar.refFor(command: program, program: programId) == .default {

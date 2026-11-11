@@ -54,9 +54,9 @@ internal fun shortcutsSummary(profile: KeyProfile, shipped: List<BarKey>): Strin
 }
 
 /**
- * A profile's shortcuts, which held ctrl, or the shortcuts key, offers on
- * the bar: the user's own, to add, change, move and remove, then those the
- * program ships, each to hide or show again.
+ * A profile's shortcuts, which the shortcuts key offers on the bar: the
+ * user's own, to add, change, move and remove, then those the program
+ * ships, each to hide or show again.
  */
 @Composable
 fun ShortcutsScreen(store: KeyBarStore, ref: ProfileRef, program: String?, programId: String?, mux: Mux?, onBack: () -> Unit, onOpen: (ProfileRef) -> Unit) {
@@ -91,7 +91,7 @@ fun ShortcutsScreen(store: KeyBarStore, ref: ProfileRef, program: String?, progr
     }
 
     Page(if (ref == ProfileRef.Default) "default shortcuts" else "${profile.name} shortcuts", onBack) {
-        Body("Hold ctrl on the bar, or press the shortcuts key, then slide onto one and let go to send it; let go first, and they stay up to tap one.")
+        Body("Press the shortcuts key on the bar, then slide onto one and let go to send it; let go first, and they stay up to tap one.")
         if (ref == ProfileRef.Default) {
             Body("For programs without a profile of their own.")
             if (!program.isNullOrEmpty() && bar.refFor(program, programId) == ProfileRef.Default) {

@@ -67,6 +67,7 @@ public final class KeyBarStore {
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         bar = defaults.data(forKey: Self.key).flatMap { try? JSONDecoder().decode(KeyBar.self, from: $0) } ?? KeyBar.defaults
+        if bar.version < KeyBar.version { update { $0.upgraded() } }
     }
 
     public func update(_ change: (KeyBar) -> KeyBar) {

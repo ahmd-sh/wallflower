@@ -23,7 +23,7 @@ final class KeyBarTests: XCTestCase {
         let codex = saved.profile(for: "codex", program: "codex")
         XCTAssertEqual("codex", codex.name)
         XCTAssertEqual(["Escape"], codex.stop) // ^C would quit it
-        XCTAssertEqual(["esc", "ctrl", "⇧←", "⇧tab", "arrows", "tab", "1", "2", "3"], codex.keys.map(\.label))
+        XCTAssertEqual(["shortcuts", "esc", "⇧←", "⇧tab", "arrows", "tab", "1", "2", "3"], codex.keys.map(\.label))
         // Made a profile of its own, it's that bar, not the default's with ^C.
         let made = saved.madeFor(command: "codex", program: "codex")
         XCTAssertEqual(["Escape"], made.stop)
@@ -34,8 +34,8 @@ final class KeyBarTests: XCTestCase {
 
     func testTheProgramsShippedBringTheirBars() {
         let claude = bar.profile(for: "claude", program: "claude")
-        XCTAssertEqual(["esc", "ctrl", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"], claude.keys.map(\.label))
-        XCTAssertTrue(claude.keys[1].sticky) // ctrl by name is the sticky one, which held offers the shortcuts
+        XCTAssertEqual(["shortcuts", "esc", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"], claude.keys.map(\.label))
+        XCTAssertTrue(claude.keys[0].shortcuts) // by name, the key that offers them
         XCTAssertEqual(["claude"], claude.programs)
         XCTAssertEqual(["zsh", "shell"], bar.profile(for: "zsh").programs)
         // A profile saved by command still matches the pane by its command.
@@ -46,9 +46,9 @@ final class KeyBarTests: XCTestCase {
 
     func testTheArrowsGoInOneKey() throws {
         let shell = bar.profile(for: "zsh").keys
-        XCTAssertEqual(["ctrl", "tab", "arrows", "^r", "^c", "^d", "esc"], shell.map(\.label))
-        XCTAssertTrue(shell[2].cluster)
-        XCTAssertEqual(["Up", "Left", "Enter", "Right", "Down", "BSpace"], shell[2].keys)
+        XCTAssertEqual(["shortcuts", "ctrl", "tab", "arrows", "^r", "^c", "^d", "esc"], shell.map(\.label))
+        XCTAssertTrue(shell[3].cluster)
+        XCTAssertEqual(["Up", "Left", "Enter", "Right", "Down", "BSpace"], shell[3].keys)
         XCTAssertEqual("arrows", bar.default.keys.last?.label)
         // A bar saved before there were clusters loads as it was.
         let saved = try decode(BarKey.self, #"{"label":"↑","keys":["Up"]}"#)
@@ -74,7 +74,7 @@ final class KeyBarTests: XCTestCase {
         Programs.supply(["aider": Supplied(keyBar: KeyDefaults(name: "aider", keys: ["Escape", "C-c"], stop: ["C-d"]), commands: [], newlineKeys: nil, clearKeys: [])])
         defer { Programs.supply([:]) }
         let p = bar.profile(for: "python3", program: "aider")
-        XCTAssertEqual(["esc", "^c"], p.keys.map(\.label))
+        XCTAssertEqual(["shortcuts", "esc", "^c"], p.keys.map(\.label)) // the key put first, as it left it out
         XCTAssertEqual(["C-d"], p.stop)
         XCTAssertEqual(bar.default, bar.profile(for: "python3", program: "other"))
     }
@@ -127,5 +127,20 @@ final class KeyBarTests: XCTestCase {
         // Settings saved before keys could be sticky, or with the old zoomed-out profile, still load.
         let old = #"{"profiles":[],"default":{"name":"d","keys":[{"label":"pfx","keys":["C-f"]}]},"zoomedOut":null}"#
         XCTAssertEqual(BarKey(label: "pfx", keys: ["C-f"]), try decode(KeyBar.self, old).default.keys[0])
+    }
+
+    func testABarSavedWhenCtrlOfferedTheShortcutsGetsTheShortcutsKeyOnce() throws {
+        let old = try decode(KeyBar.self, #"{"profiles":[{"name":"c","programs":["claude"],"keys":[{"label":"esc","keys":["Escape"]},{"label":"ctrl","keys":["C-"],"sticky":true}]},"# +
+            #"{"name":"s","programs":["zsh"],"keys":[{"label":"tab","keys":["Tab"]},{"label":"shortcuts","keys":[],"shortcuts":true}]}],"default":{"name":"d","keys":[]}}"#)
+        XCTAssertEqual(0, old.version)
+        let now = old.upgraded()
+        XCTAssertEqual(["shortcuts", "esc", "ctrl"], now.profiles[0].keys.map(\.label))
+        XCTAssertEqual(["tab", "shortcuts"], now.profiles[1].keys.map(\.label)) // where the user put it
+        XCTAssertEqual(["shortcuts"], now.default.keys.map(\.label))
+        // Taken off again, it stays off.
+        var off = now
+        off.default.keys = []
+        XCTAssertEqual(off, try decode(KeyBar.self, String(decoding: JSONEncoder().encode(off), as: UTF8.self)).upgraded())
+        XCTAssertEqual(KeyBar.defaults, KeyBar.defaults.upgraded())
     }
 }

@@ -27,7 +27,7 @@ class KeyBarTest {
         val codex = saved.profileFor("codex", "codex")
         assertEquals("codex", codex.name)
         assertEquals(listOf("Escape"), codex.stop) // ^C would quit it
-        assertEquals(listOf("esc", "ctrl", "⇧←", "⇧tab", "arrows", "tab", "1", "2", "3"), codex.keys.map { it.label })
+        assertEquals(listOf("shortcuts", "esc", "⇧←", "⇧tab", "arrows", "tab", "1", "2", "3"), codex.keys.map { it.label })
         // Made a profile of its own, it's that bar, not the default's with ^C.
         val made = saved.madeFor("codex", "codex")
         assertEquals(listOf("Escape"), made.stop)
@@ -39,8 +39,8 @@ class KeyBarTest {
     @Test
     fun theProgramsShippedBringTheirBars() {
         val claude = bar.profileFor("claude", "claude")
-        assertEquals(listOf("esc", "ctrl", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"), claude.keys.map { it.label })
-        assertTrue(claude.keys[1].sticky) // ctrl by name is the sticky one, which held offers the shortcuts
+        assertEquals(listOf("shortcuts", "esc", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"), claude.keys.map { it.label })
+        assertTrue(claude.keys[0].shortcuts) // by name, the key that offers them
         assertEquals(listOf("claude"), claude.programs)
         assertEquals(listOf("zsh", "shell"), bar.profileFor("zsh").programs)
         // A profile saved by command still matches the pane by its command.
@@ -51,9 +51,9 @@ class KeyBarTest {
     @Test
     fun theArrowsGoInOneKey() {
         val shell = bar.profileFor("zsh").keys
-        assertEquals(listOf("ctrl", "tab", "arrows", "^r", "^c", "^d", "esc"), shell.map { it.label })
-        assertTrue(shell[2].cluster)
-        assertEquals(listOf("Up", "Left", "Enter", "Right", "Down", "BSpace"), shell[2].keys)
+        assertEquals(listOf("shortcuts", "ctrl", "tab", "arrows", "^r", "^c", "^d", "esc"), shell.map { it.label })
+        assertTrue(shell[3].cluster)
+        assertEquals(listOf("Up", "Left", "Enter", "Right", "Down", "BSpace"), shell[3].keys)
         assertEquals("arrows", bar.default.keys.last().label)
         // A bar saved before there were clusters loads as it was.
         val saved = Json.decodeFromString<BarKey>("""{"label":"↑","keys":["Up"]}""")
@@ -81,7 +81,7 @@ class KeyBarTest {
         Programs.supply(mapOf("aider" to Supplied(KeyDefaults("aider", listOf("Escape", "C-c"), listOf("C-d")), emptyList(), null, emptyList())))
         try {
             val p = bar.profileFor("python3", "aider")
-            assertEquals(listOf("esc", "^c"), p.keys.map { it.label })
+            assertEquals(listOf("shortcuts", "esc", "^c"), p.keys.map { it.label }) // the key put first, as it left it out
             assertEquals(listOf("C-d"), p.stop)
             assertEquals(bar.default, bar.profileFor("python3", "other"))
         } finally {
@@ -142,5 +142,22 @@ class KeyBarTest {
         // Settings saved before keys could be sticky, or with the old zoomed-out profile, still load.
         val old = """{"profiles":[],"default":{"name":"d","keys":[{"label":"pfx","keys":["C-f"]}]},"zoomedOut":null}"""
         assertEquals(BarKey("pfx", listOf("C-f")), Json { ignoreUnknownKeys = true }.decodeFromString<KeyBar>(old).default.keys[0])
+    }
+
+    @Test
+    fun aBarSavedWhenCtrlOfferedTheShortcutsGetsTheShortcutsKeyOnce() {
+        val old = Json.decodeFromString<KeyBar>(
+            """{"profiles":[{"name":"c","programs":["claude"],"keys":[{"label":"esc","keys":["Escape"]},{"label":"ctrl","keys":["C-"],"sticky":true}]},""" +
+                """{"name":"s","programs":["zsh"],"keys":[{"label":"tab","keys":["Tab"]},{"label":"shortcuts","keys":[],"shortcuts":true}]}],"default":{"name":"d","keys":[]}}""",
+        )
+        assertEquals(0, old.version)
+        val now = old.upgraded()
+        assertEquals(listOf("shortcuts", "esc", "ctrl"), now.profiles[0].keys.map { it.label })
+        assertEquals(listOf("tab", "shortcuts"), now.profiles[1].keys.map { it.label }) // where the user put it
+        assertEquals(listOf("shortcuts"), now.default.keys.map { it.label })
+        // Taken off again, it stays off.
+        val off = now.copy(default = now.default.copy(keys = emptyList()))
+        assertEquals(off, Json.decodeFromString<KeyBar>(Json.encodeToString(off)).upgraded())
+        assertEquals(KeyBar.defaults, KeyBar.defaults.upgraded())
     }
 }

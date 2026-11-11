@@ -111,7 +111,7 @@ public struct KeyProfile: Codable, Hashable, Sendable {
     /// A new line, in a program that takes several (Program.newlineKeys); else Enter.
     public func returnKeys(_ program: any Program) -> [String] { returnKey ?? program.newlineKeys ?? enter }
 
-    /// What held ctrl, or the shortcuts key, offers in a pane running `program`: its shortcuts the user didn't hide, then theirs.
+    /// What the shortcuts key offers in a pane running `program`: its shortcuts the user didn't hide, then theirs.
     public func shortcuts(for program: any Program) -> [BarKey] {
         program.shortcuts.map(KeyBar.shortcut).filter { !hidden.contains($0.label) } + shortcuts
     }
@@ -133,10 +133,36 @@ private func equalsIgnoringCase(_ a: String, _ b: String?) -> Bool { b.map { a.l
 public struct KeyBar: Codable, Hashable, Sendable {
     public var profiles: [KeyProfile]
     public var `default`: KeyProfile
+    /// Which of `upgraded()`'s changes a saved bar has had.
+    public var version: Int
 
-    public init(profiles: [KeyProfile], default: KeyProfile) {
+    public init(profiles: [KeyProfile], default: KeyProfile, version: Int = 0) {
         self.profiles = profiles
         self.default = `default`
+        self.version = version
+    }
+
+    private enum CodingKeys: String, CodingKey { case profiles, `default`, version }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        profiles = try c.decode([KeyProfile].self, forKey: .profiles)
+        self.default = try c.decode(KeyProfile.self, forKey: .default)
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 0
+    }
+
+    public static let version = 1
+
+    /// A bar saved before the shortcuts key was ctrl's no more: each profile gets it, first, if it hasn't one.
+    public func upgraded() -> KeyBar {
+        if version >= KeyBar.version { return self }
+        func withShortcuts(_ p: KeyProfile) -> KeyProfile {
+            if p.keys.contains(where: \.shortcuts) { return p }
+            var p = p
+            p.keys = [KeyBar.shortcutsKey] + p.keys
+            return p
+        }
+        return KeyBar(profiles: profiles.map(withShortcuts), default: withShortcuts(self.default), version: KeyBar.version)
     }
 
     /// The profile for a pane's program: one of these, or the bar its plugin ships (a bar saved before it shipped has none for it), or the default.
@@ -145,7 +171,7 @@ public struct KeyBar: Codable, Hashable, Sendable {
             ?? (Programs.supplied(program) ?? program.flatMap { Programs.builtin(id: $0) })?.keyBar.map { d in
                 // Its shortcuts are the default's, which its settings are until the user makes it a profile.
                 KeyProfile(
-                    name: d.name, programs: program.map { [$0] } ?? [], keys: d.keys.map(KeyBar.key), stop: d.stop,
+                    name: d.name, programs: program.map { [$0] } ?? [], keys: KeyBar.keys(of: d), stop: d.stop,
                     shortcuts: self.default.shortcuts, hidden: self.default.hidden
                 )
             }
@@ -157,7 +183,7 @@ public struct KeyBar: Codable, Hashable, Sendable {
     /// or the default's keys for one that ships none.
     public func madeFor(command: String, program: String?) -> KeyProfile {
         if let d = (Programs.supplied(program) ?? program.flatMap { Programs.builtin(id: $0) })?.keyBar {
-            return KeyProfile(name: d.name, programs: program.map { [$0] } ?? [command], keys: d.keys.map(KeyBar.key), stop: d.stop)
+            return KeyProfile(name: d.name, programs: program.map { [$0] } ?? [command], keys: KeyBar.keys(of: d), stop: d.stop)
         }
         return KeyProfile(name: command, programs: [command], keys: self.default.keys, stop: self.default.stop)
     }
@@ -165,7 +191,7 @@ public struct KeyBar: Codable, Hashable, Sendable {
     /// The arrows, with enter above left and backspace above right, in one key; `arrows` by name (the order is saved with a bar).
     public static let arrows = BarKey(label: "arrows", keys: ["Up", "Left", "Enter", "Right", "Down", "BSpace"], cluster: true)
 
-    /// The pane's shortcuts, for a bar without ctrl to hold; `shortcuts` by name.
+    /// The pane's shortcuts, in one key; `shortcuts` by name.
     public static let shortcutsKey = BarKey(label: "shortcuts", keys: [], shortcuts: true)
 
     /// Keys offered when editing a bar.
@@ -300,6 +326,12 @@ public struct KeyBar: Codable, Hashable, Sendable {
             ?? common.first { !$0.sticky && !$0.cluster && $0.keys == [name] } ?? BarKey(label: label(of: [name]), keys: [name])
     }
 
+    /// A program's bar, with the shortcuts key first if it doesn't place it.
+    private static func keys(of d: KeyDefaults) -> [BarKey] {
+        let keys = d.keys.map(KeyBar.key)
+        return keys.contains(where: \.shortcuts) ? keys : [shortcutsKey] + keys
+    }
+
     public static let defaults: KeyBar = {
         var groups: [(defaults: KeyDefaults, ids: [String])] = []
         for (id, program) in Programs.builtin {
@@ -307,8 +339,9 @@ public struct KeyBar: Codable, Hashable, Sendable {
             if let i = groups.firstIndex(where: { $0.defaults == d }) { groups[i].ids.append(id) } else { groups.append((d, [id])) }
         }
         return KeyBar(
-            profiles: groups.map { d, ids in KeyProfile(name: d.name, programs: ids, keys: d.keys.map(KeyBar.key), stop: d.stop) },
-            default: KeyProfile(name: "default", keys: KeyBar.keys("esc", "tab", "⇧tab", "^c", "arrows"))
+            profiles: groups.map { d, ids in KeyProfile(name: d.name, programs: ids, keys: KeyBar.keys(of: d), stop: d.stop) },
+            default: KeyProfile(name: "default", keys: KeyBar.keys("shortcuts", "esc", "tab", "⇧tab", "^c", "arrows")),
+            version: KeyBar.version
         )
     }()
 }

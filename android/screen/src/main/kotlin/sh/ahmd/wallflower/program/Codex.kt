@@ -29,7 +29,7 @@ object Codex : Program {
 
     override val keyBar = KeyDefaults(
         "codex",
-        listOf("Escape", "ctrl", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3"),
+        listOf("shortcuts", "Escape", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3"),
         stop = listOf("Escape"),
     )
 

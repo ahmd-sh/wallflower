@@ -30,7 +30,7 @@ object Claude : Program {
 
     override val keyBar = KeyDefaults(
         "claude code",
-        listOf("Escape", "ctrl", "BTab", "Up", "Down", "Enter", "1", "2", "3", "C-o", "C-c"),
+        listOf("shortcuts", "Escape", "BTab", "Up", "Down", "Enter", "1", "2", "3", "C-o", "C-c"),
         stop = listOf("C-c"), // vim mode's INSERT takes Esc to leave it, not to stop Claude
     )
 

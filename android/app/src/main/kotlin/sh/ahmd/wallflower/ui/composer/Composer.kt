@@ -84,9 +84,9 @@ import sh.ahmd.wallflower.ui.haptics
  * + also offers the program's [commands], which start the draft; one it
  * starts with is marked.
  *
- * Held ctrl, or the shortcuts key, offers the pane's [shortcuts]: one picked
- * goes to [onShortcut], but text alone, with no Enter to send it, starts the
- * draft as a command does (or goes in at the cursor, if it isn't one).
+ * The shortcuts key offers the pane's [shortcuts]: one picked goes to
+ * [onShortcut], but text alone, with no Enter to send it, starts the draft
+ * as a command does (or goes in at the cursor, if it isn't one).
  *
  * With [typing], the keyboard types straight into the pane instead, as a
  * terminal's does ([onType], other keys to [onKey] by name, its return key

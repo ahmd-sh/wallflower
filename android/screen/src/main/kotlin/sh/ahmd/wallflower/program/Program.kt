@@ -99,7 +99,7 @@ interface Program {
     /** The key bar its panes get until the user sets them one; programs with the same one share it. */
     val keyBar: KeyDefaults? get() = null
 
-    /** Shortcuts its panes offer, held ctrl or the shortcuts key on the bar, besides the user's own. */
+    /** Shortcuts its panes offer, on the bar's shortcuts key, besides the user's own. */
     val shortcuts: List<Shortcut> get() = emptyList()
 
     /**
@@ -121,8 +121,8 @@ interface Program {
 
 /**
  * A key bar a program ships: its [name], its [keys] by wallflower's names
- * (`arrows`: the arrows around enter, in one key; `ctrl`, `alt`: sticky,
- * held ctrl offering the shortcuts; `shortcuts`: the shortcuts, tapped), and
+ * (`arrows`: the arrows around enter, in one key; `ctrl`, `alt`: sticky;
+ * `shortcuts`: the shortcuts, first if it's left out), and
  * what the send button presses when there's nothing to send ([stop]).
  */
 data class KeyDefaults(val name: String, val keys: List<String>, val stop: List<String> = listOf("C-c"))
@@ -295,7 +295,7 @@ class Supplied(
 
 /** The programs wallflower ships, and those the gateway's plugins describe, by the id the gateway names a pane's program by. */
 object Programs {
-    private val shells = KeyDefaults("shell", listOf("ctrl", "Tab", "arrows", "C-r", "C-c", "C-d", "Escape"))
+    private val shells = KeyDefaults("shell", listOf("shortcuts", "ctrl", "Tab", "arrows", "C-r", "C-c", "C-d", "Escape"))
 
     /**
      * Commands more than keys: a shell's keys are its own (zsh's vi mode

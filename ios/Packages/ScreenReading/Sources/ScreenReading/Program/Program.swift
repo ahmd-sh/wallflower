@@ -78,7 +78,7 @@ public protocol Program: AnyObject, Sendable {
     /// The key bar its panes get until the user sets them one; programs with the same one share it.
     var keyBar: KeyDefaults? { get }
 
-    /// Shortcuts its panes offer, held ctrl or the shortcuts key on the bar, besides the user's own.
+    /// Shortcuts its panes offer, on the bar's shortcuts key, besides the user's own.
     var shortcuts: [Shortcut] { get }
 
     /// What the program shows in its input line's place that it isn't asking,
@@ -154,8 +154,8 @@ extension Program {
 }
 
 /// A key bar a program ships: its `name`, its `keys` by wallflower's names
-/// (`arrows`: the arrows around enter, in one key; `ctrl`, `alt`: sticky,
-/// held ctrl offering the shortcuts; `shortcuts`: the shortcuts, tapped), and
+/// (`arrows`: the arrows around enter, in one key; `ctrl`, `alt`: sticky;
+/// `shortcuts`: the shortcuts, first if it's left out), and
 /// what the send button presses when there's nothing to send (`stop`).
 public struct KeyDefaults: Hashable, Sendable {
     public var name: String
@@ -454,7 +454,7 @@ public final class Supplied: Program {
 
 /// The programs wallflower ships, and those the gateway's plugins describe, by the id the gateway names a pane's program by.
 public enum Programs {
-    private static let shells = KeyDefaults(name: "shell", keys: ["ctrl", "Tab", "arrows", "C-r", "C-c", "C-d", "Escape"])
+    private static let shells = KeyDefaults(name: "shell", keys: ["shortcuts", "ctrl", "Tab", "arrows", "C-r", "C-c", "C-d", "Escape"])
 
     /// Commands more than keys: a shell's keys are its own (zsh's vi mode
     /// takes an alt key's Esc to leave insert; the dotfiles' zshrc has ^W run

@@ -25,7 +25,7 @@ public final class Codex: Program {
 
     public let keyBar: KeyDefaults? = KeyDefaults(
         name: "codex",
-        keys: ["Escape", "ctrl", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3"],
+        keys: ["shortcuts", "Escape", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3"],
         stop: ["Escape"]
     )
 

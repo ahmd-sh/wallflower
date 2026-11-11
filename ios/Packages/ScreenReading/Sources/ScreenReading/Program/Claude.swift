@@ -26,7 +26,7 @@ public final class Claude: Program {
 
     public let keyBar: KeyDefaults? = KeyDefaults(
         name: "claude code",
-        keys: ["Escape", "ctrl", "BTab", "Up", "Down", "Enter", "1", "2", "3", "C-o", "C-c"],
+        keys: ["shortcuts", "Escape", "BTab", "Up", "Down", "Enter", "1", "2", "3", "C-o", "C-c"],
         stop: ["C-c"] // vim mode's INSERT takes Esc to leave it, not to stop Claude
     )
 

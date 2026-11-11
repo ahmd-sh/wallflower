@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import sh.ahmd.wallflower.program.KeyDefaults
 import sh.ahmd.wallflower.program.Program
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.program.Shortcut
@@ -78,7 +79,7 @@ data class KeyProfile(
     /** A new line, in a program that takes several (Program.newlineKeys); else Enter. */
     fun returnKeys(program: Program): List<String> = returnKey ?: program.newlineKeys ?: ENTER
 
-    /** What held ctrl, or the shortcuts key, offers in a pane running [program]: its shortcuts the user didn't hide, then theirs. */
+    /** What the shortcuts key offers in a pane running [program]: its shortcuts the user didn't hide, then theirs. */
     fun shortcutsFor(program: Program): List<BarKey> = program.shortcuts.map(KeyBar::shortcut).filter { it.label !in hidden } + shortcuts
 }
 
@@ -100,13 +101,15 @@ private val ENTER = listOf("Enter")
 data class KeyBar(
     val profiles: List<KeyProfile>,
     val default: KeyProfile,
+    /** Which of [upgraded]'s changes a saved bar has had. */
+    val version: Int = 0,
 ) {
     /** The profile for a pane's program: one of these, or the bar its plugin ships (a bar saved before it shipped has none for it), or the default. */
     fun profileFor(command: String, program: String? = null): KeyProfile =
         profiles.firstOrNull { it.matches(command, program) }
             ?: (Programs.supplied(program) ?: program?.lowercase()?.let { Programs.builtin[it] })?.keyBar?.let { d ->
                 // Its shortcuts are the default's, which its settings are until the user makes it a profile.
-                KeyProfile(d.name, listOfNotNull(program), d.keys.map(::key), stop = d.stop, shortcuts = default.shortcuts, hidden = default.hidden)
+                KeyProfile(d.name, listOfNotNull(program), keysOf(d), stop = d.stop, shortcuts = default.shortcuts, hidden = default.hidden)
             }
             ?: default
 
@@ -117,14 +120,23 @@ data class KeyBar(
      */
     fun madeFor(command: String, program: String?): KeyProfile =
         (Programs.supplied(program) ?: program?.lowercase()?.let { Programs.builtin[it] })?.keyBar
-            ?.let { d -> KeyProfile(d.name, listOfNotNull(program), d.keys.map(::key), stop = d.stop) }
+            ?.let { d -> KeyProfile(d.name, listOfNotNull(program), keysOf(d), stop = d.stop) }
             ?: KeyProfile(command, listOf(command), default.keys, default.stop)
 
+    /** A bar saved before the shortcuts key was ctrl's no more: each profile gets it, first, if it hasn't one. */
+    fun upgraded(): KeyBar {
+        if (version >= VERSION) return this
+        fun withShortcuts(p: KeyProfile) = if (p.keys.any { it.shortcuts }) p else p.copy(keys = listOf(SHORTCUTS) + p.keys)
+        return KeyBar(profiles.map(::withShortcuts), withShortcuts(default), VERSION)
+    }
+
     companion object {
+        const val VERSION = 1
+
         /** The arrows, with enter above left and backspace above right, in one key; `arrows` by name (the order is saved with a bar). */
         val ARROWS = BarKey("arrows", listOf("Up", "Left", "Enter", "Right", "Down", "BSpace"), cluster = true)
 
-        /** The pane's shortcuts, for a bar without ctrl to hold; `shortcuts` by name. */
+        /** The pane's shortcuts, in one key; `shortcuts` by name. */
         val SHORTCUTS = BarKey("shortcuts", emptyList(), shortcuts = true)
 
         /** Keys offered when editing a bar. */
@@ -257,11 +269,15 @@ data class KeyBar(
         private fun key(name: String) = common.firstOrNull { (it.sticky || it.cluster || it.shortcuts) && it.label == name }
             ?: common.firstOrNull { !it.sticky && !it.cluster && it.keys == listOf(name) } ?: BarKey(labelOf(listOf(name)), listOf(name))
 
+        /** A program's bar, with the shortcuts key first if it doesn't place it. */
+        private fun keysOf(d: KeyDefaults): List<BarKey> = d.keys.map(::key).let { if (it.any(BarKey::shortcuts)) it else listOf(SHORTCUTS) + it }
+
         val defaults = KeyBar(
             profiles = Programs.builtin.entries.filter { it.value.keyBar != null }
                 .groupBy({ it.value.keyBar!! }, { it.key })
-                .map { (d, ids) -> KeyProfile(d.name, ids, d.keys.map(::key), stop = d.stop) },
-            default = KeyProfile("default", keys = keys("esc", "tab", "⇧tab", "^c", "arrows")),
+                .map { (d, ids) -> KeyProfile(d.name, ids, keysOf(d), stop = d.stop) },
+            default = KeyProfile("default", keys = keys("shortcuts", "esc", "tab", "⇧tab", "^c", "arrows")),
+            version = VERSION,
         )
     }
 }
@@ -272,6 +288,10 @@ class KeyBarStore(private val prefs: SharedPreferences) {
         prefs.getString(KEY, null)?.let { runCatching { json.decodeFromString<KeyBar>(it) }.getOrNull() } ?: KeyBar.defaults,
     )
     val bar: StateFlow<KeyBar> = _bar.asStateFlow()
+
+    init {
+        if (_bar.value.version < KeyBar.VERSION) update { it.upgraded() }
+    }
 
     fun update(change: (KeyBar) -> KeyBar) {
         val bar = change(_bar.value)

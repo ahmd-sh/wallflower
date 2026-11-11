@@ -27,9 +27,9 @@ import WallflowerDesign
  * then its path goes in, shown as its name. + also offers the program's
  * [commands], which start the draft.
  *
- * Held ctrl, or the shortcuts key, offers the pane's [shortcuts]: one picked
- * goes to [onShortcut], but text alone, with no Enter to send it, starts the
- * draft as a command does (or goes at its end, if it isn't one).
+ * The shortcuts key offers the pane's [shortcuts]: one picked goes to
+ * [onShortcut], but text alone, with no Enter to send it, starts the draft
+ * as a command does (or goes at its end, if it isn't one).
  *
  * With [typing], the keyboard types straight into the pane instead, as a
  * terminal's does: no box, no +, just the key bar and the button ([onEnter],
