@@ -126,5 +126,5 @@ private const val ASIDE_HOLD_MS = 400L
 internal object Cycles {
     private val all = HashMap<Program, Cycle>()
 
-    fun of(program: Program): Cycle = all.getOrPut(program) { Cycle(program.modes) }
+    fun of(program: Program): Cycle = all.getOrPut(program) { Cycle(program.modes, program::hue) }
 }

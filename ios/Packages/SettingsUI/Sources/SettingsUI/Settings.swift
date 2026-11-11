@@ -69,7 +69,7 @@ public struct SettingsScreen: View {
             Toggle("haptics for swipes, switches and sends", on: settings.haptics) { settings.haptics = $0 }
             Toggle("ask before closing a pane", on: settings.askClosingPane) { settings.askClosingPane = $0 }
             Toggle("ask before closing a tab (or its last pane)", on: settings.askClosingWindow) { settings.askClosingWindow = $0 }
-            Toggle("in the Dynamic Island and on the Lock Screen while Claude works or needs you (a Live Activity)", on: settings.liveActivity) { settings.liveActivity = $0 }
+            Toggle("in the Dynamic Island and on the Lock Screen while a program works or needs you (a Live Activity)", on: settings.liveActivity) { settings.liveActivity = $0 }
             Toggle("stay connected while wallflower's in the background", on: settings.keepConnected) { settings.keepConnected = $0 }
             Paragraph("So the Live Activity and notifications keep up; it uses a silent audio session and some battery.")
 

@@ -102,12 +102,15 @@ object Codex : Program {
     /** In plan mode, Codex says so at its footer's end ("Plan mode"); in its default mode, nothing does. Shift+tab goes between them. */
     override fun mode(screen: Screen): Mode? {
         val (_, footer) = foot(screen) ?: return null
-        return Mode(if (planning.containsMatchIn(text(screen, footer, 2))) "plan" else "default", "")
+        val name = if (planning.containsMatchIn(text(screen, footer, 2))) "plan" else "default"
+        return Mode(name, "", hue(name))
     }
 
     override val nextMode = listOf("BTab")
 
     override val modes = listOf("default", "plan")
+
+    override fun hue(mode: String) = if (mode == "plan") Hue.Aqua else Hue.Grey
 
     private val planning = Regex("""\sPlan mode$""")
 

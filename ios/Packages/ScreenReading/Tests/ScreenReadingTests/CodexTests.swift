@@ -83,7 +83,7 @@ final class CodexTests: XCTestCase {
     }
 
     func testItsModeIsPlanWhenItsFooterSaysSo() {
-        XCTAssertEqual(Mode(name: "plan", mark: ""), codex.mode(captured("codex-plan.ansi", 80)))
+        XCTAssertEqual(Mode(name: "plan", mark: "", hue: .aqua), codex.mode(captured("codex-plan.ansi", 80)))
         XCTAssertEqual(Mode(name: "default", mark: ""), codex.mode(screen("idle")))
         XCTAssertNil(codex.mode(screen("question")))
     }

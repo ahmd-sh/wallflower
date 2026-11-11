@@ -93,12 +93,15 @@ public final class Codex: Program {
     /// In plan mode, Codex says so at its footer's end ("Plan mode"); in its default mode, nothing does. Shift+tab goes between them.
     public func mode(_ screen: Screen) -> Mode? {
         guard let (_, footer) = foot(screen) else { return nil }
-        return Mode(name: Codex.planning.find(text(screen, footer, 2)) != nil ? "plan" : "default", mark: "")
+        let name = Codex.planning.find(text(screen, footer, 2)) != nil ? "plan" : "default"
+        return Mode(name: name, mark: "", hue: hue(name))
     }
 
     public let nextMode: [String]? = ["BTab"]
 
     public let modes = ["default", "plan"]
+
+    public func hue(_ mode: String) -> Hue { mode == "plan" ? .aqua : .grey }
 
     private static let planning = Pattern("\\sPlan mode$")
 

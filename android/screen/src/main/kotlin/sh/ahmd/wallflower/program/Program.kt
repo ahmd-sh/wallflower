@@ -117,7 +117,13 @@ interface Program {
 
     /** Modes the program may have, by the names [mode] reads, in no order that means anything: which it has depends on how it's set up. */
     val modes: List<String> get() = emptyList()
+
+    /** The color the program shows [mode] in. */
+    fun hue(mode: String): Hue = Hue.Grey
 }
+
+/** A color by the theme's name for it, so a program can say what it shows in color and the theme says how that looks. */
+enum class Hue { Grey, Red, Orange, Yellow, Green, Aqua, Blue, Purple }
 
 /**
  * A key bar a program ships: its [name], its [keys] by wallflower's names
@@ -222,8 +228,8 @@ sealed interface Aside {
     }
 }
 
-/** A mode a program says it's in: its [name], and the [mark] it shows with it (empty if it's not been seen). */
-data class Mode(val name: String, val mark: String)
+/** A mode a program says it's in: its [name], the [mark] it shows with it (empty if it's not been seen), and the [hue] it's shown in. */
+data class Mode(val name: String, val mark: String, val hue: Hue = Hue.Grey)
 
 /**
  * The modes a program goes round, a [Program.nextMode] at a time, as far as
@@ -231,7 +237,7 @@ data class Mode(val name: String, val mark: String)
  * the program may have ([Program.modes]) stand in for those not seen yet, in
  * no order; one a whole round didn't come to goes, till it's seen.
  */
-class Cycle(private val known: List<String>) {
+class Cycle(private val known: List<String>, private val hue: (String) -> Hue = { Hue.Grey }) {
     private val after = HashMap<String, String>()
     private val marks = LinkedHashMap<String, String>()
     private val missed = HashSet<String>()
@@ -262,10 +268,10 @@ class Cycle(private val known: List<String>) {
         var name = at.name
         while (true) {
             val next = after[name]?.takeIf { n -> out.none { it.name == n } } ?: break
-            out += Mode(next, marks[next].orEmpty())
+            out += Mode(next, marks[next].orEmpty(), hue(next))
             name = next
         }
-        for (n in marks.keys + known) if (n !in missed && out.none { it.name == n }) out += Mode(n, marks[n].orEmpty())
+        for (n in marks.keys + known) if (n !in missed && out.none { it.name == n }) out += Mode(n, marks[n].orEmpty(), hue(n))
         return out
     }
 }

@@ -141,7 +141,8 @@ object Claude : Program {
         val end = (box + 1 until s.rows).firstOrNull { rule(s, it) } ?: return null
         for (y in end + 1 until s.rows) {
             val m = moded.find(row(s, y, 0)) ?: continue
-            return Mode(m.groupValues[2].removeSuffix(" mode"), m.groupValues[1])
+            val name = m.groupValues[2].removeSuffix(" mode")
+            return Mode(name, m.groupValues[1], hue(name))
         }
         return null
     }
@@ -149,6 +150,14 @@ object Claude : Program {
     override val nextMode = listOf("BTab")
 
     override val modes = listOf("manual", "accept edits", "plan", "auto")
+
+    override fun hue(mode: String) = when (mode) {
+        "auto" -> Hue.Yellow
+        "accept edits" -> Hue.Purple
+        "plan" -> Hue.Aqua
+        "bypass permissions" -> Hue.Red
+        else -> Hue.Grey
+    }
 
     private val moded = Regex("^\\s*(?:-- [A-Z]+ --\\s+)?([\u2300-\u23ff]+)\\s+(\\p{L}[\\p{L} ]*?) on\\b")
 

@@ -105,7 +105,7 @@ fun SettingsScreen(
         Toggle("ask before closing a tab (or its last pane)", askWindows) { settings.askClosingWindow.set(it) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
             val pill by settings.statusBar.flow.collectAsStateWithLifecycle()
-            Toggle("in the status bar while Claude works or needs you (a Live Update)", pill) { settings.statusBar.set(it) }
+            Toggle("in the status bar while a program works or needs you (a Live Update)", pill) { settings.statusBar.set(it) }
         }
 
         Section("plugins")

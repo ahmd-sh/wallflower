@@ -94,7 +94,7 @@ class CodexTest {
 
     @Test
     fun itsModeIsPlanWhenItsFooterSaysSo() {
-        assertEquals(Mode("plan", ""), Codex.mode(captured("codex-plan.ansi", 80)))
+        assertEquals(Mode("plan", "", Hue.Aqua), Codex.mode(captured("codex-plan.ansi", 80)))
         assertEquals(Mode("default", ""), Codex.mode(screen("idle")))
         assertNull(Codex.mode(screen("question")))
     }

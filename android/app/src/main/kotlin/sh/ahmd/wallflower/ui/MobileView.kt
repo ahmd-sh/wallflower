@@ -103,6 +103,7 @@ import sh.ahmd.wallflower.read.items
 import sh.ahmd.wallflower.read.trace
 import sh.ahmd.wallflower.program.Asked
 import sh.ahmd.wallflower.program.Aside
+import sh.ahmd.wallflower.program.Hue
 import sh.ahmd.wallflower.program.Mode
 import sh.ahmd.wallflower.screen.Prompt
 
@@ -549,7 +550,7 @@ private fun ModeButton(mode: Mode, modes: List<Mode>, onMode: (String) -> Unit) 
     Box {
         Text(
             said(mode),
-            color = modeColor(mode.name),
+            color = colorOf(mode.hue),
             style = Type.caption,
             maxLines = 1,
             modifier = Modifier
@@ -565,7 +566,7 @@ private fun ModeButton(mode: Mode, modes: List<Mode>, onMode: (String) -> Unit) 
         PopupMenu(
             menu,
             actions = modes.map { m ->
-                MenuAction(said(m), modeColor(m.name), current = m.name == mode.name) {
+                MenuAction(said(m), colorOf(m.hue), current = m.name == mode.name) {
                     menu.open = false
                     if (m.name != mode.name) onMode(m.name)
                 }
@@ -577,14 +578,17 @@ private fun ModeButton(mode: Mode, modes: List<Mode>, onMode: (String) -> Unit) 
 /** A mode by its name, in its color: its mark (⏵⏵, ⏸) is an emoji in some fonts and missing in others. */
 private fun said(mode: Mode) = mode.name
 
-/** A mode's color, as Claude colors its own (unknown ones grey). */
+/** A hue a program shows something in, in the theme's colors. */
 @Composable
-private fun modeColor(name: String) = when (name) {
-    "auto" -> Palette.yellow
-    "accept edits" -> Palette.purple
-    "plan" -> Palette.aqua
-    "bypass permissions" -> Palette.red
-    else -> Palette.grey
+private fun colorOf(hue: Hue) = when (hue) {
+    Hue.Grey -> Palette.grey
+    Hue.Red -> Palette.red
+    Hue.Orange -> Palette.orange
+    Hue.Yellow -> Palette.yellow
+    Hue.Green -> Palette.green
+    Hue.Aqua -> Palette.aqua
+    Hue.Blue -> Palette.blue
+    Hue.Purple -> Palette.purple
 }
 
 private fun count(n: Int) = when {

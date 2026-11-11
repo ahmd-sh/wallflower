@@ -10,15 +10,15 @@ class ModeTest {
     @Test
     fun itsFooterSaysWhichModeItsIn() {
         assertEquals(Mode("manual", "⏸"), Claude.mode(captured("claude-mode-manual.ansi", 54)))
-        assertEquals(Mode("accept edits", "⏵⏵"), Claude.mode(captured("claude-mode-accept-edits.ansi", 54)))
-        assertEquals(Mode("plan", "⏸"), Claude.mode(captured("claude-mode-plan.ansi", 54)))
-        assertEquals(Mode("auto", "⏵⏵"), Claude.mode(captured("claude-mode-auto.ansi", 54)))
-        assertEquals(Mode("auto", "⏵⏵"), Claude.mode(captured("claude-working.ansi", 90)))
+        assertEquals(Mode("accept edits", "⏵⏵", Hue.Purple), Claude.mode(captured("claude-mode-accept-edits.ansi", 54)))
+        assertEquals(Mode("plan", "⏸", Hue.Aqua), Claude.mode(captured("claude-mode-plan.ansi", 54)))
+        assertEquals(Mode("auto", "⏵⏵", Hue.Yellow), Claude.mode(captured("claude-mode-auto.ansi", 54)))
+        assertEquals(Mode("auto", "⏵⏵", Hue.Yellow), Claude.mode(captured("claude-working.ansi", 90)))
     }
 
     @Test
     fun outOfVimsInsertItsStillThere() {
-        assertEquals(Mode("accept edits", "⏵⏵"), Claude.mode(captured("claude-mode-normal.ansi", 54)))
+        assertEquals(Mode("accept edits", "⏵⏵", Hue.Purple), Claude.mode(captured("claude-mode-normal.ansi", 54)))
     }
 
     @Test

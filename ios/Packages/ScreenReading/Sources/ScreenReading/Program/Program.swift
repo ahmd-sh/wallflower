@@ -94,7 +94,13 @@ public protocol Program: AnyObject, Sendable {
 
     /// Modes the program may have, by the names `mode` reads, in no order that means anything: which it has depends on how it's set up.
     var modes: [String] { get }
+
+    /// The color the program shows `mode` in.
+    func hue(_ mode: String) -> Hue
 }
+
+/// A color by the theme's name for it, so a program can say what it shows in color and the theme says how that looks.
+public enum Hue: Hashable, Sendable { case grey, red, orange, yellow, green, aqua, blue, purple }
 
 extension Program {
     public func prompt(_ screen: Screen) -> Prompt? { nil }
@@ -151,6 +157,8 @@ extension Program {
     public var nextMode: [String]? { nil }
 
     public var modes: [String] { [] }
+
+    public func hue(_ mode: String) -> Hue { .grey }
 }
 
 /// A key bar a program ships: its `name`, its `keys` by wallflower's names
@@ -349,10 +357,12 @@ public enum Aside: Hashable, Sendable {
 public struct Mode: Hashable, Sendable {
     public var name: String
     public var mark: String
+    public var hue: Hue
 
-    public init(name: String, mark: String) {
+    public init(name: String, mark: String, hue: Hue = .grey) {
         self.name = name
         self.mark = mark
+        self.hue = hue
     }
 }
 
@@ -362,12 +372,14 @@ public struct Mode: Hashable, Sendable {
 /// no order; one a whole round didn't come to goes, till it's seen.
 public final class Cycle {
     private let known: [String]
+    private let hue: (String) -> Hue
     private var after: [String: String] = [:]
     private var marks: [(name: String, mark: String)] = []
     private var missed: Set<String> = []
 
-    public init(known: [String]) {
+    public init(known: [String], hue: @escaping (String) -> Hue = { _ in .grey }) {
         self.known = known
+        self.hue = hue
     }
 
     /// `mode` is on screen.
@@ -399,11 +411,11 @@ public final class Cycle {
         var out = [at]
         var name = at.name
         while let next = after[name], !out.contains(where: { $0.name == next }) {
-            out.append(Mode(name: next, mark: mark(next)))
+            out.append(Mode(name: next, mark: mark(next), hue: hue(next)))
             name = next
         }
         for n in marks.map(\.name) + known where !missed.contains(n) && !out.contains(where: { $0.name == n }) {
-            out.append(Mode(name: n, mark: mark(n)))
+            out.append(Mode(name: n, mark: mark(n), hue: hue(n)))
         }
         return out
     }

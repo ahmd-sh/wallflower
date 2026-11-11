@@ -627,7 +627,7 @@ private struct ModeButton: View {
         } label: {
             Text(said(mode))
                 .words(.caption)
-                .foregroundColor(modeColor(mode.name, palette))
+                .foregroundColor(color(mode.hue, palette))
                 .lineLimit(1)
                 .padding(.vertical, 4)
                 .padding(.horizontal, 2)
@@ -643,14 +643,17 @@ private func said(_ mode: Mode) -> String {
     mode.name
 }
 
-/** A mode's color, as Claude colors its own (unknown ones grey). */
-private func modeColor(_ name: String, _ palette: Colors) -> Color {
-    switch name {
-    case "auto": palette.yellow
-    case "accept edits": palette.purple
-    case "plan": palette.aqua
-    case "bypass permissions": palette.red
-    default: palette.grey
+/** A hue a program shows something in, in the theme's colors. */
+private func color(_ hue: Hue, _ palette: Colors) -> Color {
+    switch hue {
+    case .grey: palette.grey
+    case .red: palette.red
+    case .orange: palette.orange
+    case .yellow: palette.yellow
+    case .green: palette.green
+    case .aqua: palette.aqua
+    case .blue: palette.blue
+    case .purple: palette.purple
     }
 }
 

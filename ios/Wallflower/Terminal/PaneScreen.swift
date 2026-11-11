@@ -124,7 +124,7 @@ enum Cycles {
     static func of(_ program: any Program) -> Cycle {
         let id = ObjectIdentifier(program)
         if let c = all[id] { return c }
-        let c = Cycle(known: program.modes)
+        let c = Cycle(known: program.modes, hue: program.hue)
         all[id] = c
         return c
     }

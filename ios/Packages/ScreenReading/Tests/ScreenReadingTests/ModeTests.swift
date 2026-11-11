@@ -7,14 +7,14 @@ final class ModeTests: XCTestCase {
 
     func testItsFooterSaysWhichModeItsIn() {
         XCTAssertEqual(Mode(name: "manual", mark: "⏸"), claude.mode(captured("claude-mode-manual.ansi", 54)))
-        XCTAssertEqual(Mode(name: "accept edits", mark: "⏵⏵"), claude.mode(captured("claude-mode-accept-edits.ansi", 54)))
-        XCTAssertEqual(Mode(name: "plan", mark: "⏸"), claude.mode(captured("claude-mode-plan.ansi", 54)))
-        XCTAssertEqual(Mode(name: "auto", mark: "⏵⏵"), claude.mode(captured("claude-mode-auto.ansi", 54)))
-        XCTAssertEqual(Mode(name: "auto", mark: "⏵⏵"), claude.mode(captured("claude-working.ansi", 90)))
+        XCTAssertEqual(Mode(name: "accept edits", mark: "⏵⏵", hue: .purple), claude.mode(captured("claude-mode-accept-edits.ansi", 54)))
+        XCTAssertEqual(Mode(name: "plan", mark: "⏸", hue: .aqua), claude.mode(captured("claude-mode-plan.ansi", 54)))
+        XCTAssertEqual(Mode(name: "auto", mark: "⏵⏵", hue: .yellow), claude.mode(captured("claude-mode-auto.ansi", 54)))
+        XCTAssertEqual(Mode(name: "auto", mark: "⏵⏵", hue: .yellow), claude.mode(captured("claude-working.ansi", 90)))
     }
 
     func testOutOfVimsInsertItsStillThere() {
-        XCTAssertEqual(Mode(name: "accept edits", mark: "⏵⏵"), claude.mode(captured("claude-mode-normal.ansi", 54)))
+        XCTAssertEqual(Mode(name: "accept edits", mark: "⏵⏵", hue: .purple), claude.mode(captured("claude-mode-normal.ansi", 54)))
     }
 
     func testWithoutItsBoxItCantBeSeen() {

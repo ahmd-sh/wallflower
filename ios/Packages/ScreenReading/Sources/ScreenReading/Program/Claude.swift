@@ -127,7 +127,8 @@ public final class Claude: Program {
         guard let box = box(s), let end = until(box + 1, s.rows).first(where: { rule(s, $0) }) else { return nil }
         for y in until(end + 1, s.rows) {
             guard let m = Claude.moded.find(row(s, y, from: 0)) else { continue }
-            return Mode(name: m.groupValue(2).removingSuffix(" mode"), mark: m.groupValue(1))
+            let name = m.groupValue(2).removingSuffix(" mode")
+            return Mode(name: name, mark: m.groupValue(1), hue: hue(name))
         }
         return nil
     }
@@ -135,6 +136,16 @@ public final class Claude: Program {
     public let nextMode: [String]? = ["BTab"]
 
     public let modes = ["manual", "accept edits", "plan", "auto"]
+
+    public func hue(_ mode: String) -> Hue {
+        switch mode {
+        case "auto": .yellow
+        case "accept edits": .purple
+        case "plan": .aqua
+        case "bypass permissions": .red
+        default: .grey
+        }
+    }
 
     private static let moded = Pattern("^\\s*(?:-- [A-Z]+ --\\s+)?([\u{2300}-\u{23ff}]+)\\s+(\\p{L}[\\p{L} ]*?) on\\b")
 
