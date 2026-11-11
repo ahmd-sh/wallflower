@@ -963,11 +963,17 @@ func TestAwayLeavesSizing(t *testing.T) {
 func TestPluginsPhoneHalf(t *testing.T) {
 	mine := program.Program{
 		ID: "mine", Commands: []string{"sh", "bash"},
-		Client: &program.Client{Keys: &program.Keys{Name: "mine", Keys: []string{"Escape"}}, Commands: []program.Command{{Text: "/go", About: "go"}}, Newline: []string{"C-j"}},
+		Client: &program.Client{
+			Keys: &program.Keys{Name: "mine", Keys: []string{"Escape"}}, Commands: []program.Command{{Text: "/go", About: "go"}},
+			Shortcuts: []program.Shortcut{{Keys: []string{"/go", "Enter"}}, {Keys: []string{"C-x", "C-s"}, Label: "save"}}, Newline: []string{"C-j"},
+		},
 	}
 	c := tmuxBackend.connectOpts(t, context.Background(), 56, 20, Options{Programs: []program.Program{mine}})
 	_, m := c.expect("hello", func(_ protocol.Frame, m protocol.Message) bool { _, ok := m.(*protocol.ServerHello); return ok })
-	want := []protocol.Program{{ID: "mine", Keys: &protocol.KeyBar{Name: "mine", Keys: []string{"Escape"}}, Commands: []protocol.Command{{Text: "/go", About: "go"}}, Newline: []string{"C-j"}}}
+	want := []protocol.Program{{
+		ID: "mine", Keys: &protocol.KeyBar{Name: "mine", Keys: []string{"Escape"}}, Commands: []protocol.Command{{Text: "/go", About: "go"}},
+		Shortcuts: []protocol.Shortcut{{Keys: []string{"/go", "Enter"}}, {Keys: []string{"C-x", "C-s"}, Label: "save"}}, Newline: []string{"C-j"},
+	}}
 	if h := m.(*protocol.ServerHello); !reflect.DeepEqual(h.Programs, want) {
 		t.Errorf("hello's programs = %+v", h.Programs)
 	}

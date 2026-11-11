@@ -605,7 +605,8 @@ private extension ProgramData {
             keyBar: keys.map { KeyDefaults(name: $0.name, keys: $0.keys, stop: $0.stop ?? ["C-c"]) },
             commands: commands.map { Command(text: $0.text, about: $0.about) },
             newlineKeys: newline,
-            clearKeys: clear ?? []
+            clearKeys: clear ?? [],
+            shortcuts: shortcuts.map { Shortcut($0.keys, label: $0.label) }
         )
     }
 }

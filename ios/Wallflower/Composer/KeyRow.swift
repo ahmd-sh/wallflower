@@ -2,12 +2,19 @@ import ScreenReading
 import SwiftUI
 import WallflowerDesign
 
-/** The key bar: its keys, scrolling sideways, then a pencil to edit them. Held, each says what it is. */
+/**
+ * The key bar: its keys, scrolling sideways, then a pencil to edit them.
+ * Held, each says what it is, but ctrl offers the pane's [shortcuts], as
+ * the shortcuts key does pressed; one picked goes to [onShortcut].
+ */
 struct KeyRow: View {
     let keys: [BarKey]
     let armed: BarKey?
+    var shortcuts: [BarKey] = []
     let onKey: (BarKey) -> Void
+    var onShortcut: (BarKey) -> Void = { _ in }
     let onEdit: () -> Void
+    var onEditShortcuts: () -> Void = {}
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -15,6 +22,10 @@ struct KeyRow: View {
                 ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
                     if key.cluster {
                         ClusterChip(key: key, onKey: onKey)
+                    } else if key.shortcuts {
+                        ShortcutsChip(key: key, shortcuts: shortcuts, onShortcut: onShortcut, onEdit: onEditShortcuts)
+                    } else if key.sticky && key.keys == ["C-"] && !shortcuts.isEmpty {
+                        CtrlChip(key: key, armed: armed == key, onKey: onKey, shortcuts: shortcuts, onShortcut: onShortcut, onEdit: onEditShortcuts)
                     } else {
                         KeyChip(key: key, armed: armed == key, onKey: onKey)
                     }
@@ -108,6 +119,77 @@ private struct KeyChip: View {
             haptics.key()
         }
         onKey(key)
+    }
+}
+
+/** Ctrl, with shortcuts: a tap arms it as any sticky key; held, the pane's shortcuts open as a menu, to slide onto. */
+private struct CtrlChip: View {
+    @Environment(\.haptics) private var haptics
+    let key: BarKey
+    let armed: Bool
+    let onKey: (BarKey) -> Void
+    let shortcuts: [BarKey]
+    let onShortcut: (BarKey) -> Void
+    let onEdit: () -> Void
+    @State private var pressed = false
+
+    var body: some View {
+        Menu {
+            ShortcutItems(shortcuts: shortcuts, onShortcut: onShortcut, onEdit: onEdit)
+        } label: {
+            Pill(on: armed, pressed: pressed) { ink in KeyFace(key: key, color: ink) }
+                .frame(height: 36)
+        } primaryAction: {
+            haptics.toggle(!armed)
+            onKey(key)
+        }
+        .menuStyle(.button)
+        .buttonStyle(PressReporting { pressed = $0 })
+    }
+}
+
+/** Pressed, the pane's shortcuts open as a menu, to slide onto or tap. */
+private struct ShortcutsChip: View {
+    let key: BarKey
+    let shortcuts: [BarKey]
+    let onShortcut: (BarKey) -> Void
+    let onEdit: () -> Void
+    @State private var pressed = false
+
+    var body: some View {
+        Menu {
+            ShortcutItems(shortcuts: shortcuts, onShortcut: onShortcut, onEdit: onEdit)
+        } label: {
+            Pill(on: false, pressed: pressed) { ink in KeyFace(key: key, color: ink) }
+                .frame(height: 36)
+        }
+        .menuStyle(.button)
+        .buttonStyle(PressReporting { pressed = $0 })
+    }
+}
+
+/** The pane's shortcuts as a menu's choices, each with what it sends beneath, then one to change them. */
+private struct ShortcutItems: View {
+    @Environment(\.haptics) private var haptics
+    let shortcuts: [BarKey]
+    let onShortcut: (BarKey) -> Void
+    let onEdit: () -> Void
+
+    var body: some View {
+        Section {
+            ForEach(Array(shortcuts.enumerated()), id: \.offset) { _, s in
+                Button {
+                    haptics.key()
+                    onShortcut(s)
+                } label: {
+                    Text(s.label)
+                    Text(KeyBar.name(of: s))
+                }
+            }
+        }
+        Section {
+            Button(action: onEdit) { Label("change shortcuts", systemImage: "pencil") }
+        }
     }
 }
 

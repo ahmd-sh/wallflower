@@ -81,6 +81,7 @@ private sealed interface Screen {
     data object Look : Screen
     data object KeyBars : Screen
     data class Profile(val ref: ProfileRef, val back: Screen) : Screen
+    data class Shortcuts(val ref: ProfileRef, val back: Screen) : Screen
 }
 
 /** How many pages in: a page further in slides in over the one before. */
@@ -90,12 +91,14 @@ private val Screen.depth: Int
         Screen.Settings -> 1
         Screen.Setup, Screen.Look, Screen.KeyBars -> 2
         is Screen.Profile -> back.depth + 1
+        is Screen.Shortcuts -> back.depth + 1
     }
 
 private fun Screen.previous(): Screen = when (this) {
     Screen.Terminal, Screen.Settings -> Screen.Terminal
     Screen.Setup, Screen.Look, Screen.KeyBars -> Screen.Settings
     is Screen.Profile -> back
+    is Screen.Shortcuts -> back
 }
 
 @Composable
@@ -150,6 +153,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                             onSessions = current::detach,
                             onSettings = { screen = Screen.Settings },
                             onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
+                            onEditShortcuts = { screen = Screen.Shortcuts(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
                             onExit = onExit,
                         )
                     }
@@ -200,6 +204,16 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     mux = mux,
                     onBack = { screen = s.back },
                     onOpen = { screen = s.copy(ref = it) },
+                    onShortcuts = { screen = Screen.Shortcuts(s.ref, s) },
+                )
+                is Screen.Shortcuts -> ShortcutsScreen(
+                    store = model.keyBar,
+                    ref = s.ref,
+                    program = program,
+                    programId = programId,
+                    mux = mux,
+                    onBack = { screen = s.back },
+                    onOpen = { screen = s.copy(ref = it) },
                 )
             }
         }
@@ -225,6 +239,7 @@ private fun TerminalScreen(
     onSessions: () -> Unit,
     onSettings: () -> Unit,
     onEditKeys: () -> Unit,
+    onEditShortcuts: () -> Unit,
     onExit: () -> Unit,
 ) {
     val status by session.status.collectAsStateWithLifecycle()
@@ -548,10 +563,11 @@ private fun TerminalScreen(
                         val holding = screen.prompt?.takeIf { mobileView && activity == Activity.Waiting }?.options?.none { it.current && it.muted && it.scroll == 0 } == true
                         val uploads by model.uploads.items.collectAsStateWithLifecycle()
                         val uploadDir by model.uploads.dir.collectAsStateWithLifecycle()
+                        val profile = bar.profileFor(pane.command, pane.program)
                         Composer(
                             state = model.drafts.of(pane.id),
                             program = pane.command,
-                            keys = bar.profileFor(pane.command, pane.program).keys,
+                            keys = profile.keys,
                             connected = status is Status.Connected,
                             line = screen.line.takeIf { seeking == null }, // what's typed to ask a message back isn't the user's
                             attachments = Attachments(
@@ -608,6 +624,12 @@ private fun TerminalScreen(
                             },
                             onStop = actions::stop,
                             onEditKeys = onEditKeys,
+                            shortcuts = profile.shortcutsFor(actions.program),
+                            onShortcut = {
+                                if (!mobileView) view?.scrollToBottom()
+                                actions.shortcut(it, screen.line)
+                            },
+                            onEditShortcuts = onEditShortcuts,
                         )
                     }
                 },

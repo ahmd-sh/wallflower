@@ -160,6 +160,15 @@ final class FramesTests: XCTestCase {
         guard case .unknown = try d.next() else { return XCTFail("not unknown") }
     }
 
+    func testAPluginsPhoneHalfComesWithHello() throws {
+        var d = FrameDecoder()
+        let hello = #"{"t":"hello","v":6,"programs":[{"id":"aider","keys":{"name":"aider","keys":["Escape","ctrl"]},"shortcuts":[{"keys":["/undo","Enter"]},{"keys":["C-c","C-c"],"label":"quit"}]},{"id":"bare"}]}"#
+        d.append(Data(frame(FRAME_JSON, Array(hello.utf8))))
+        guard case let .message(.hello(h)) = try d.next() else { return XCTFail("not hello") }
+        XCTAssertEqual([ShortcutData(keys: ["/undo", "Enter"]), ShortcutData(keys: ["C-c", "C-c"], label: "quit")], h.programs[0].shortcuts)
+        XCTAssertEqual([], h.programs[1].shortcuts)
+    }
+
     func testFramesOfANewerTypeArePassedOver() throws {
         var d = FrameDecoder()
         d.append(Data(frame(9, [0]) + frame(FRAME_DATA, [2, UInt8(ascii: "%"), UInt8(ascii: "1"), UInt8(ascii: "x")])))

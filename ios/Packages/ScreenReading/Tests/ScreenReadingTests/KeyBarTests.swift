@@ -23,12 +23,13 @@ final class KeyBarTests: XCTestCase {
         let codex = saved.profile(for: "codex", program: "codex")
         XCTAssertEqual("codex", codex.name)
         XCTAssertEqual(["Escape"], codex.stop) // ^C would quit it
-        XCTAssertEqual(["esc", "⇧←", "⇧tab", "arrows", "tab", "1", "2", "3", "^t"], codex.keys.map(\.label))
+        XCTAssertEqual(["esc", "ctrl", "⇧←", "⇧tab", "arrows", "tab", "1", "2", "3", "^t"], codex.keys.map(\.label))
     }
 
     func testTheProgramsShippedBringTheirBars() {
         let claude = bar.profile(for: "claude", program: "claude")
-        XCTAssertEqual(["esc", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"], claude.keys.map(\.label))
+        XCTAssertEqual(["esc", "ctrl", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"], claude.keys.map(\.label))
+        XCTAssertTrue(claude.keys[1].sticky) // ctrl by name is the sticky one, which held offers the shortcuts
         XCTAssertEqual(["claude"], claude.programs)
         XCTAssertEqual(["zsh", "shell"], bar.profile(for: "zsh").programs)
         // A profile saved by command still matches the pane by its command.
@@ -39,9 +40,9 @@ final class KeyBarTests: XCTestCase {
 
     func testTheArrowsGoInOneKey() throws {
         let shell = bar.profile(for: "zsh").keys
-        XCTAssertEqual(["tab", "arrows", "^r", "^c", "^d", "esc"], shell.map(\.label))
-        XCTAssertTrue(shell[1].cluster)
-        XCTAssertEqual(["Up", "Left", "Enter", "Right", "Down", "BSpace"], shell[1].keys)
+        XCTAssertEqual(["ctrl", "tab", "arrows", "^r", "^c", "^d", "esc"], shell.map(\.label))
+        XCTAssertTrue(shell[2].cluster)
+        XCTAssertEqual(["Up", "Left", "Enter", "Right", "Down", "BSpace"], shell[2].keys)
         XCTAssertEqual("arrows", bar.default.keys.last?.label)
         // A bar saved before there were clusters loads as it was.
         let saved = try decode(BarKey.self, #"{"label":"↑","keys":["Up"]}"#)

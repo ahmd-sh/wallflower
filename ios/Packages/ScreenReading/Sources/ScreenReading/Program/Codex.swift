@@ -25,9 +25,23 @@ public final class Codex: Program {
 
     public let keyBar: KeyDefaults? = KeyDefaults(
         name: "codex",
-        keys: ["Escape", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3", "C-t"],
+        keys: ["Escape", "ctrl", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3", "C-t"],
         stop: ["Escape"]
     )
+
+    /// Its keys (← and its agents, and Esc Esc and its rewind, from an empty
+    /// composer), then its commands, run as sent; /side starts what's sent,
+    /// the question to ask aside.
+    public let shortcuts: [Shortcut] = [
+        Shortcut(["C-t"], label: "transcript"),
+        Shortcut(["BTab"], label: "mode"),
+        Shortcut(["S-Left"], label: "answer questions"),
+        Shortcut(["Left"], label: "agents"),
+        Shortcut(["Escape", "Escape"], label: "rewind"),
+        Shortcut(["M-,"], label: "less reasoning"),
+        Shortcut(["M-."], label: "more reasoning"),
+    ] + ["/model", "/new", "/resume", "/compact", "/diff", "/review", "/status", "/plan", "/recap", "/agents"]
+        .map { Shortcut([$0, "Enter"]) } + [Shortcut(["/side"])]
 
     /// The composer: a first row starting `› `, rows under it indented two,
     /// then a blank row and the footer, `  <model> <mode> · <directory>…`,

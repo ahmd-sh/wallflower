@@ -25,12 +25,17 @@ private let command = "~/go/bin/wallflower authorize 'ecdsa-sha2-nistp256 AAAAE2
 
 #Preview("profile") {
     let _ = Fonts.register()
-    ProfileScreen(store: KeyBarStore(defaults: defaults), ref: .at(0), program: "claude", programId: "claude", mux: tmux, onBack: {}, onOpen: { _ in })
+    ProfileScreen(store: KeyBarStore(defaults: defaults), ref: .at(0), program: "claude", programId: "claude", mux: tmux, onBack: {}, onShortcuts: {}, onOpen: { _ in })
+}
+
+#Preview("shortcuts") {
+    let _ = Fonts.register()
+    ShortcutsScreen(store: KeyBarStore(defaults: defaults), ref: .at(0), program: "claude", programId: "claude", mux: tmux, onBack: {}, onOpen: { _ in })
 }
 
 #Preview("default keys") {
     let _ = Fonts.register()
-    ProfileScreen(store: KeyBarStore(defaults: defaults), ref: .default, program: "hntui", programId: nil, mux: nil, onBack: {}, onOpen: { _ in })
+    ProfileScreen(store: KeyBarStore(defaults: defaults), ref: .default, program: "hntui", programId: nil, mux: nil, onBack: {}, onShortcuts: {}, onOpen: { _ in })
 }
 
 #Preview("welcome") {

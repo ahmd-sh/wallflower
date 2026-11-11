@@ -29,9 +29,25 @@ object Codex : Program {
 
     override val keyBar = KeyDefaults(
         "codex",
-        listOf("Escape", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3", "C-t"),
+        listOf("Escape", "ctrl", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3", "C-t"),
         stop = listOf("Escape"),
     )
+
+    /**
+     * Its keys (← and its agents, and Esc Esc and its rewind, from an empty
+     * composer), then its commands, run as sent; /side starts what's sent,
+     * the question to ask aside.
+     */
+    override val shortcuts = listOf(
+        Shortcut(listOf("C-t"), "transcript"),
+        Shortcut(listOf("BTab"), "mode"),
+        Shortcut(listOf("S-Left"), "answer questions"),
+        Shortcut(listOf("Left"), "agents"),
+        Shortcut(listOf("Escape", "Escape"), "rewind"),
+        Shortcut(listOf("M-,"), "less reasoning"),
+        Shortcut(listOf("M-."), "more reasoning"),
+    ) + listOf("/model", "/new", "/resume", "/compact", "/diff", "/review", "/status", "/plan", "/recap", "/agents")
+        .map { Shortcut(listOf(it, "Enter")) } + Shortcut(listOf("/side"))
 
     /**
      * The composer: a first row starting `› `, rows under it indented two,

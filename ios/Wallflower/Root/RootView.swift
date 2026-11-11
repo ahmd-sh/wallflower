@@ -8,13 +8,14 @@ import WallflowerDesign
 enum Page: Equatable {
     case settings, setup, look, keyBars
     indirect case profile(ProfileRef, back: Page?)
+    indirect case shortcuts(ProfileRef, back: Page?)
 
     /** How many pages in: a page further in slides in over the one before. */
     var depth: Int {
         switch self {
         case .settings: return 1
         case .setup, .look, .keyBars: return 2
-        case .profile(_, let back): return (back?.depth ?? 0) + 1
+        case .profile(_, let back), .shortcuts(_, let back): return (back?.depth ?? 0) + 1
         }
     }
 
@@ -22,7 +23,7 @@ enum Page: Equatable {
         switch self {
         case .settings: return nil
         case .setup, .look, .keyBars: return .settings
-        case .profile(_, let back): return back
+        case .profile(_, let back), .shortcuts(_, let back): return back
         }
     }
 }
@@ -67,6 +68,7 @@ struct RootView: View {
                             onProgram: { c, id in program = c; programId = id },
                             onSettings: { go(.settings) },
                             onEditKeys: { go(.profile(model.keyBar.bar.refFor(command: program, program: programId), back: nil)) },
+                            onEditShortcuts: { go(.shortcuts(model.keyBar.bar.refFor(command: program, program: programId), back: nil)) },
                             onExit: exit
                         )
                         .transition(.opacity)
@@ -121,6 +123,7 @@ struct RootView: View {
         case .look: return "look"
         case .keyBars: return "keyBars"
         case .profile(let r, _): return "profile \(r)"
+        case .shortcuts(let r, _): return "shortcuts \(r)"
         }
     }
 
@@ -145,7 +148,12 @@ struct RootView: View {
         case .keyBars:
             KeyBarsScreen(store: model.keyBar, program: program, programId: programId, onBack: { go(.settings) }) { go(.profile($0, back: .keyBars)) }
         case .profile(let ref, let back):
-            ProfileScreen(store: model.keyBar, ref: ref, program: program, programId: programId, mux: session.mux, onBack: { go(back) }) { go(.profile($0, back: back)) }
+            ProfileScreen(
+                store: model.keyBar, ref: ref, program: program, programId: programId, mux: session.mux,
+                onBack: { go(back) }, onShortcuts: { go(.shortcuts(ref, back: p)) }
+            ) { go(.profile($0, back: back)) }
+        case .shortcuts(let ref, let back):
+            ShortcutsScreen(store: model.keyBar, ref: ref, program: program, programId: programId, mux: session.mux, onBack: { go(back) }) { go(.shortcuts($0, back: back)) }
         }
     }
 
@@ -167,6 +175,7 @@ struct RootView: View {
         if r.arg("keybars") != nil { go(.keyBars) }
         if r.arg("setup") != nil { go(.setup) }
         if r.arg("profile") != nil { go(.profile(model.keyBar.bar.refFor(command: program, program: programId), back: nil)) }
+        if r.arg("shortcuts") != nil { go(.shortcuts(model.keyBar.bar.refFor(command: program, program: programId), back: nil)) }
         if r.arg("back") != nil { go(page?.previous) }
         if let s = r.arg("scheme"), let scheme = Scheme(rawValue: s) { model.settings.scheme = scheme }
         if let l = r.arg("lookas"), let look = Look(rawValue: l) { model.settings.look = look }

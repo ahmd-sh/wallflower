@@ -4,10 +4,12 @@
 public final class Shell: Program {
     public let clearKeys: [String]
     public let keyBar: KeyDefaults?
+    public let shortcuts: [Shortcut]
 
-    public init(clearKeys: [String] = [], keyBar: KeyDefaults? = nil) {
+    public init(clearKeys: [String] = [], keyBar: KeyDefaults? = nil, shortcuts: [Shortcut] = []) {
         self.clearKeys = clearKeys
         self.keyBar = keyBar
+        self.shortcuts = shortcuts
     }
 
     /// The input cells after the last prompt, without autosuggestion ghost

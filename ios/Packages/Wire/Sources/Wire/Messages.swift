@@ -277,27 +277,29 @@ public struct ServerHello: Sendable, Equatable, Decodable {
     }
 }
 
-/// A plugin's phone half as data: its key bar, the commands the composer offers, what starts a new line and empties one.
+/// A plugin's phone half as data: its key bar, the commands the composer offers, its shortcuts, what starts a new line and empties one.
 public struct ProgramData: Sendable, Equatable, Decodable {
     public var id: String
     public var keys: KeyBarData?
     public var commands: [CommandData]
     public var newline: [String]?
     public var clear: [String]?
+    public var shortcuts: [ShortcutData]
 
-    public init(id: String, keys: KeyBarData? = nil, commands: [CommandData] = [], newline: [String]? = nil, clear: [String]? = nil) {
+    public init(id: String, keys: KeyBarData? = nil, commands: [CommandData] = [], newline: [String]? = nil, clear: [String]? = nil, shortcuts: [ShortcutData] = []) {
         self.id = id
         self.keys = keys
         self.commands = commands
         self.newline = newline
         self.clear = clear
+        self.shortcuts = shortcuts
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: JSONKey.self)
         self.init(
             id: try c.required("id"), keys: try c.optional("keys"), commands: try c.value("commands", or: []),
-            newline: try c.optional("newline"), clear: try c.optional("clear")
+            newline: try c.optional("newline"), clear: try c.optional("clear"), shortcuts: try c.value("shortcuts", or: [])
         )
     }
 }
@@ -333,6 +335,22 @@ public struct CommandData: Sendable, Equatable, Decodable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: JSONKey.self)
         self.init(text: try c.required("text"), about: try c.value("about", or: ""))
+    }
+}
+
+/// A shortcut the key bar offers: the `keys` it sends by key name, text typed as it is, and its `label`, if not the keys.
+public struct ShortcutData: Sendable, Equatable, Decodable {
+    public var keys: [String]
+    public var label: String?
+
+    public init(keys: [String], label: String? = nil) {
+        self.keys = keys
+        self.label = label
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: JSONKey.self)
+        self.init(keys: try c.required("keys"), label: try c.optional("label"))
     }
 }
 

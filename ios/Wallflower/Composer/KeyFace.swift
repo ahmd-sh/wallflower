@@ -11,6 +11,8 @@ struct KeyFace: View {
     var body: some View {
         if key.cluster {
             GlyphIcon(.arrows, color, size: size * 1.15)
+        } else if key.shortcuts {
+            GlyphIcon(.bolt, color, size: size * 1.15)
         } else if key.hasOwnLabel {
             KeysFace(keys: key.keys, color: color, size: size)
         } else {

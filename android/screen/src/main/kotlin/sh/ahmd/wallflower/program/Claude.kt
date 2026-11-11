@@ -28,9 +28,25 @@ object Claude : Program {
 
     override val keyBar = KeyDefaults(
         "claude code",
-        listOf("Escape", "BTab", "Up", "Down", "Enter", "1", "2", "3", "C-o", "C-c"),
+        listOf("Escape", "ctrl", "BTab", "Up", "Down", "Enter", "1", "2", "3", "C-o", "C-c"),
         stop = listOf("C-c"), // vim mode's INSERT takes Esc to leave it, not to stop Claude
     )
+
+    /**
+     * Its keys (ctrl ones: vim mode takes an alt key's Esc apart, so the
+     * model and fast mode go by command), then its commands, run as sent;
+     * /btw starts what's sent, the question to ask.
+     */
+    override val shortcuts = listOf(
+        Shortcut(listOf("C-o"), "transcript"),
+        Shortcut(listOf("BTab"), "mode"),
+        Shortcut(listOf("C-t"), "todos"),
+        Shortcut(listOf("C-b"), "background"),
+        Shortcut(listOf("C-s"), "stash"),
+        Shortcut(listOf("C-x", "C-s"), "send now"), // what's queued, without waiting for the turn
+        Shortcut(listOf("C-l"), "redraw"),
+    ) + listOf("/compact", "/clear", "/context", "/model", "/rewind", "/usage", "/diff", "/resume", "/tasks", "/recap", "/plan")
+        .map { Shortcut(listOf(it, "Enter")) } + Shortcut(listOf("/btw"))
 
     /**
      * The prompt box: between two rules, a first row starting `❯ ` (or `! `

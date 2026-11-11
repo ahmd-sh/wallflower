@@ -25,6 +25,7 @@ struct TerminalScreen: View {
     let onProgram: (String?, String?) -> Void
     let onSettings: () -> Void
     let onEditKeys: () -> Void
+    var onEditShortcuts: () -> Void = {}
     let onExit: () -> Void
 
     @State private var screen = PaneScreen()
@@ -283,10 +284,11 @@ struct TerminalScreen: View {
     private func composer(pane: Pane, actions: PaneActions, mobile: Bool, activity: Activity?, bar: KeyBar, connected: Bool) -> some View {
         // A menu the program's waiting on would take what's typed as picks, and Enter as its choice: what's sent waits, unless it's for writing in.
         let holding = mobile && activity == .waiting && (screen.prompt.map { p in !p.options.contains { $0.current && $0.muted && $0.scroll == 0 } } ?? false)
+        let profile = bar.profile(for: pane.command, program: pane.program)
         return Composer(
             text: Binding(get: { model.drafts.text(pane.id) }, set: { model.drafts.set(pane.id, $0) }),
             program: pane.command,
-            keys: bar.profile(for: pane.command, program: pane.program).keys,
+            keys: profile.keys,
             connected: connected,
             line: seeker.seeking == nil ? screen.line : nil, // what's typed to ask a message back isn't the user's
             recalled: seeker.recalled,
@@ -340,7 +342,14 @@ struct TerminalScreen: View {
                 typed = false
                 actions.stop()
             },
-            onEditKeys: onEditKeys
+            onEditKeys: onEditKeys,
+            shortcuts: profile.shortcuts(for: actions.program),
+            onShortcut: { key in
+                typed = key.keys.last != "Enter"
+                if !mobile { handle.scrollToBottom() }
+                actions.shortcut(key, line: screen.line)
+            },
+            onEditShortcuts: onEditShortcuts
         )
     }
 

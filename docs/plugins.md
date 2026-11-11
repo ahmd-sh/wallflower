@@ -10,8 +10,9 @@ read when a connection starts.
   "id": "aider",
   "commands": ["aider"],
   "client": {
-    "keys": {"name": "aider", "keys": ["Escape", "Tab", "Up", "Down", "C-c"], "stop": ["C-c"]},
+    "keys": {"name": "aider", "keys": ["Escape", "ctrl", "Tab", "Up", "Down", "C-c"], "stop": ["C-c"]},
     "commands": [{"text": "/undo", "about": "undo the last change"}, {"text": "/diff"}],
+    "shortcuts": [{"keys": ["/undo", "Enter"]}, {"keys": ["/ask"]}, {"label": "quit", "keys": ["C-c", "C-c"]}],
     "newline": ["M-Enter"],
     "clear": ["C-u"]
   },
@@ -26,9 +27,16 @@ read when a connection starts.
 - `client`, optional: the phone's half, as data, since the phone loads no
   code. `keys` is the key bar its panes get until you make one in the app
   (key names as tmux has them: `Escape`, `C-c`, `M-Enter`, `BTab`, `F5`…,
-  and `arrows`, the arrows around enter in one key),
+  and `arrows`, the arrows around enter in one key; `ctrl` and `alt`, which
+  wait for the next key, ctrl offering the shortcuts when held; `shortcuts`,
+  which offers them when pressed),
   and what the send button presses to stop it. `commands` are offered by
-  the composer's +, and start what you send. `newline` is what the
+  the composer's +, and start what you send. `shortcuts` are offered on the
+  key bar, and sent at once: `keys` by those names, anything else typed as
+  it is (text with `Enter` after it goes in place of what the program's
+  input line holds, as what you send does; text alone starts what you
+  send), with a `label` if it shouldn't show as its keys; you can hide
+  them, and add your own, in the app. `newline` is what the
   keyboard's return key presses, if the program takes several lines; `clear`
   empties a row of its input.
 - `view`, optional: a program that reads the panes for a mobile view (a

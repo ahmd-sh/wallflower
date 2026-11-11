@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.BarKey
+import sh.ahmd.wallflower.KeyBar
+import sh.ahmd.wallflower.Step
 import sh.ahmd.wallflower.program.Command
 import sh.ahmd.wallflower.screen.InputLine
 import sh.ahmd.wallflower.session.uploadPaths
@@ -82,6 +84,10 @@ import sh.ahmd.wallflower.ui.haptics
  * + also offers the program's [commands], which start the draft; one it
  * starts with is marked.
  *
+ * Held ctrl, or the shortcuts key, offers the pane's [shortcuts]: one picked
+ * goes to [onShortcut], but text alone, with no Enter to send it, starts the
+ * draft as a command does (or goes in at the cursor, if it isn't one).
+ *
  * With [typing], the keyboard types straight into the pane instead, as a
  * terminal's does ([onType], other keys to [onKey] by name, its return key
  * as [returnKeys]): no box, no +, just the key bar and the button
@@ -108,6 +114,9 @@ internal fun Composer(
     onEnter: () -> Unit,
     onStop: () -> Unit,
     onEditKeys: () -> Unit,
+    shortcuts: List<BarKey> = emptyList(),
+    onShortcut: (BarKey) -> Unit = {},
+    onEditShortcuts: () -> Unit = {},
     commands: List<Command> = emptyList(),
     onAcceptSuggestion: (() -> Unit)? = null,
     recalled: Recalled? = null,
@@ -156,6 +165,17 @@ internal fun Composer(
         }
         focus.requestFocus()
         keyboard?.show()
+    }
+    /** A command starts the draft, in place of one it started with; other text goes in at the cursor. */
+    fun start(text: String) {
+        if (!text.startsWith('/')) {
+            state.edit { replace(selection.min, selection.max, text) }
+            focus.requestFocus()
+            keyboard?.show()
+            return
+        }
+        val rest = state.text.toString().replace(leadingCommand, "").trimStart()
+        take(if (rest.isEmpty()) "$text " else "$text $rest")
     }
     LaunchedEffect(accepting, pending) {
         if (accepting != null && pending.isNotEmpty()) {
@@ -284,13 +304,28 @@ internal fun Composer(
                     onAttach = attachments.onAttach,
                     onBack = { refocus = true },
                     commands = commands,
-                    onCommand = { c ->
-                        val rest = state.text.toString().replace(leadingCommand, "").trimStart()
-                        take(if (rest.isEmpty()) c.text + " " else c.text + " " + rest)
-                    },
+                    onCommand = { c -> start(c.text) },
                 )
             }
-            KeyRow(keys, sticky.armed, sticky::press, onEditKeys, Modifier.weight(1f))
+            KeyRow(
+                keys,
+                sticky.armed,
+                shortcuts,
+                onKey = sticky::press,
+                onShortcut = { key ->
+                    sticky.drop()
+                    val text = (KeyBar.steps(key.keys).singleOrNull() as? Step.Text)?.takeIf { !it.enter && !key.bindings && typing == null }
+                    if (text != null) {
+                        start(text.text)
+                    } else {
+                        typed = key.keys.lastOrNull() != "Enter"
+                        onShortcut(key)
+                    }
+                },
+                onEdit = onEditKeys,
+                onEditShortcuts = onEditShortcuts,
+                modifier = Modifier.weight(1f),
+            )
             val action = when {
                 typing != null -> if (working && !typed && pending.isEmpty()) Action.Stop else Action.Run
                 !empty && holds -> Action.Hold
