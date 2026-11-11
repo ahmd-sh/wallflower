@@ -16,6 +16,13 @@ final class LiveActivities {
     private var shown: WallflowerActivity.ContentState?
     private var ending: Task<Void, Never>?
 
+    init() {
+        // One left by an app that was killed says what nobody's keeping up: it goes, and the next starts fresh.
+        for a in Activity<WallflowerActivity>.activities {
+            Task { await a.end(nil, dismissalPolicy: .immediate) }
+        }
+    }
+
     func update(state: SessionState?, connected: Bool, machine: String) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let all = state?.windows.flatMap { w in w.panes.map { (w, $0) } } ?? []

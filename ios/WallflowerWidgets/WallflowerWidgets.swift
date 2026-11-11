@@ -89,14 +89,13 @@ private struct LockScreen: View {
                 Text(state.about).font(.system(.headline, design: .rounded)).foregroundColor(Ink.fg).lineLimit(1)
                 HStack(spacing: 6) {
                     Dot(state: state)
-                    (Text(doing(state)).foregroundColor(color(state)) + Text(" · on \(machine)").foregroundColor(Ink.grey))
-                        .font(.system(.subheadline, design: .monospaced))
-                        .lineLimit(1)
-                        .layoutPriority(1)
+                    Text(doing(state)).foregroundColor(color(state)).lineLimit(1)
                 }
-                if state.others > 0 {
-                    Text("\(state.others) more at work").font(.system(.caption, design: .monospaced)).foregroundColor(Ink.grey)
-                }
+                .font(.system(.subheadline, design: .monospaced))
+                Text("on \(machine)" + (state.others > 0 ? " · \(state.others) more at work" : ""))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(Ink.grey)
+                    .lineLimit(1)
             }
             Spacer(minLength: 0)
             Elapsed(state: state).font(.system(.title3, design: .monospaced).weight(.semibold)).foregroundColor(color(state)).frame(maxWidth: 96, alignment: .trailing)
