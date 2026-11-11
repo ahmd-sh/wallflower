@@ -176,7 +176,7 @@ fun KeyBarsScreen(store: KeyBarStore, program: String?, programId: String?, onBa
 
 /** A row that opens a page: what it's about, what's set there now, and ›. */
 @Composable
-private fun PageRow(title: String, summary: String, onClick: () -> Unit) {
+internal fun PageRow(title: String, summary: String, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Palette.bg1).clickable(onClick = onClick).padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -275,7 +275,16 @@ private fun ProfileRow(profile: KeyProfile, programs: String, focused: Boolean, 
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, programId: String?, mux: Mux?, onBack: () -> Unit, onOpen: (ProfileRef) -> Unit) {
+fun ProfileScreen(
+    store: KeyBarStore,
+    ref: ProfileRef,
+    program: String?,
+    programId: String?,
+    mux: Mux?,
+    onBack: () -> Unit,
+    onOpen: (ProfileRef) -> Unit,
+    onShortcuts: () -> Unit,
+) {
     val bar by store.bar.collectAsStateWithLifecycle()
     val profile = when (ref) {
         ProfileRef.Default -> bar.default
@@ -347,6 +356,9 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, program
             }
         }
 
+        Section("shortcuts")
+        PageRow("shortcuts", shortcutsSummary(profile, shippedFor(bar, ref, profile, program, programId)), onShortcuts)
+
         Section("stop")
         Body("What the send button sends when the mobile view's box is empty.")
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -380,23 +392,13 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, program
         }
 
         Section("custom")
-        Body(
-            "Key names, space-separated; anything else is typed as is (Escape :w Enter). C- is ctrl, M- alt and S- shift, " +
-                "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is shift tab, BSpace backspace, DC delete, IC insert; F1 to F12 work too. Tap one to add it.",
-        )
+        Body(KEY_NAMES + " Tap one to add it.")
         var label by remember(ref) { mutableStateOf("") }
         var sends by remember(ref) { mutableStateOf("") }
         var bound by remember(ref) { mutableStateOf(false) }
-        val keys = sends.split(' ').filter(String::isNotEmpty)
+        val keys = KeyBar.keysOf(sends)
         Field("sends", sends) { sends = it }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (name in names) {
-                Chip(name, false) {
-                    val joins = sends.isEmpty() || sends.endsWith(' ') || sends.substringAfterLast(' ').matches(held)
-                    sends = if (joins) sends + name else "$sends $name"
-                }
-            }
-        }
+        KeyNames(sends) { sends = it }
         Field(if (label.isBlank() && keys.isNotEmpty()) "label (blank: ${KeyBar.labelOf(keys)})" else "label", label) { label = it }
         if (bindings) Toggle("through ${mux?.name ?: "the multiplexer"}'s key bindings (C-j to change pane; prefix is your prefix)", bound) { bound = it }
         Button("add key") {
@@ -420,7 +422,24 @@ fun ProfileScreen(store: KeyBarStore, ref: ProfileRef, program: String?, program
 private val stops = listOf("C-c", "Escape", "C-d", "q").map { listOf(it) }
 private val presses = listOf("Enter", "C-j", "M-Enter").map { listOf(it) }
 
-/** wallflower's names (tmux's) for what a custom key sends, beyond text. */
+/** How a custom key's keys are written. */
+internal const val KEY_NAMES = "Key names, space-separated; the words between them are typed as they are (Escape :w Enter). C- is ctrl, M- alt and S- shift, " +
+    "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is shift tab, BSpace backspace, DC delete, IC insert; F1 to F12 work too."
+
+/** wallflower's names (tmux's) for what a custom key sends, beyond text, to tap onto the end of [sends]: joined to a modifier written last (C-), else a word of its own. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun KeyNames(sends: String, onChange: (String) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (name in names) {
+            Chip(name, false) {
+                val joins = sends.isEmpty() || sends.endsWith(' ') || sends.substringAfterLast(' ').matches(held)
+                onChange(if (joins) sends + name else "$sends $name")
+            }
+        }
+    }
+}
+
 private val names = listOf(
     "C-", "M-", "S-", "Enter", "Escape", "Tab", "BTab", "BSpace", "Space",
     "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "DC", "IC",

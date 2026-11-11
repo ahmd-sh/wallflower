@@ -180,7 +180,7 @@ data class ServerHello(
     val programs: List<ProgramData> = emptyList(),
 ) : ServerMessage
 
-/** A plugin's phone half as data: its key bar, the commands the composer offers, what starts a new line and empties one. */
+/** A plugin's phone half as data: its key bar, the commands the composer offers, its shortcuts, what starts a new line and empties one. */
 @Serializable
 data class ProgramData(
     val id: String,
@@ -188,6 +188,7 @@ data class ProgramData(
     val commands: List<CommandData> = emptyList(),
     val newline: List<String>? = null,
     val clear: List<String>? = null,
+    val shortcuts: List<ShortcutData> = emptyList(),
 )
 
 /** A key bar by key names, and what the send button presses to [stop] the program. */
@@ -197,6 +198,10 @@ data class KeyBarData(val name: String, val keys: List<String>, val stop: List<S
 /** A command a program takes, as the composer offers it. */
 @Serializable
 data class CommandData(val text: String, val about: String = "")
+
+/** A shortcut the key bar offers: the [keys] it sends by key name, text typed as it is, and its [label], if not the keys. */
+@Serializable
+data class ShortcutData(val keys: List<String>, val label: String? = null)
 
 /** The app is attached to a session in [mux]; its state follows. */
 @Serializable

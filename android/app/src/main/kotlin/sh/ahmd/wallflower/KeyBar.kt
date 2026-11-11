@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import sh.ahmd.wallflower.program.Program
 import sh.ahmd.wallflower.program.Programs
+import sh.ahmd.wallflower.program.Shortcut
 
 /**
  * A key on the bar: what it shows, and the keys it sends by wallflower's
@@ -16,7 +17,8 @@ import sh.ahmd.wallflower.program.Programs
  * multiplexer's key bindings apply, as if typed on a keyboard attached to it;
  * `prefix` is its prefix key. A [cluster] gathers keys, each its own, laid
  * out as arrow keys with two more above: [keys] up, left, the one top left,
- * right, down, and the one top right.
+ * right, down, and the one top right. A [shortcuts] key sends none of its
+ * own: it offers the pane's shortcuts ([KeyProfile.shortcutsFor]).
  */
 @Serializable
 data class BarKey(
@@ -25,6 +27,7 @@ data class BarKey(
     val sticky: Boolean = false,
     val bindings: Boolean = false,
     val cluster: Boolean = false,
+    val shortcuts: Boolean = false,
 ) {
     /** This sticky key with the next one: a modifier (`C-`, `M-`) joins it, anything else goes first. */
     fun then(next: BarKey): BarKey {
@@ -61,6 +64,10 @@ data class KeyProfile(
     val send: List<String>? = null,
     /** What the keyboard's return key presses there, as the user set it; null leaves it to the program. */
     val returnKey: List<String>? = null,
+    /** The user's own shortcuts, after the program's. */
+    val shortcuts: List<BarKey> = emptyList(),
+    /** The program's shortcuts the user hid, by label. */
+    val hidden: List<String> = emptyList(),
 ) {
     fun sendKeys(): List<String> = send ?: ENTER
 
@@ -70,6 +77,16 @@ data class KeyProfile(
 
     /** A new line, in a program that takes several (Program.newlineKeys); else Enter. */
     fun returnKeys(program: Program): List<String> = returnKey ?: program.newlineKeys ?: ENTER
+
+    /** What held ctrl, or the shortcuts key, offers in a pane running [program]: its shortcuts the user didn't hide, then theirs. */
+    fun shortcutsFor(program: Program): List<BarKey> = program.shortcuts.map(KeyBar::shortcut).filter { it.label !in hidden } + shortcuts
+}
+
+/** A shortcut's keys as they go: keys pressed, or [Text] typed, with Enter a moment after it if [Text.enter]. */
+sealed interface Step {
+    data class Keys(val keys: List<String>) : Step
+
+    data class Text(val text: String, val enter: Boolean) : Step
 }
 
 private val ENTER = listOf("Enter")
@@ -86,12 +103,18 @@ data class KeyBar(
 ) {
     fun profileFor(command: String, program: String? = null): KeyProfile =
         profiles.firstOrNull { it.matches(command, program) }
-            ?: Programs.supplied(program)?.keyBar?.let { d -> KeyProfile(d.name, listOfNotNull(program), d.keys.map(::key), stop = d.stop) }
+            ?: Programs.supplied(program)?.keyBar?.let { d ->
+                // Its shortcuts are the default's, which its settings are until the user makes it a profile.
+                KeyProfile(d.name, listOfNotNull(program), d.keys.map(::key), stop = d.stop, shortcuts = default.shortcuts, hidden = default.hidden)
+            }
             ?: default
 
     companion object {
         /** The arrows, with enter above left and backspace above right, in one key; `arrows` by name (the order is saved with a bar). */
         val ARROWS = BarKey("arrows", listOf("Up", "Left", "Enter", "Right", "Down", "BSpace"), cluster = true)
+
+        /** The pane's shortcuts, for a bar without ctrl to hold; `shortcuts` by name. */
+        val SHORTCUTS = BarKey("shortcuts", emptyList(), shortcuts = true)
 
         /** Keys offered when editing a bar. */
         val common = listOf(
@@ -106,6 +129,7 @@ data class KeyBar(
             "/" to "/", "|" to "|", "~" to "~", "-" to "-", "`" to "`",
         ).map { (label, key) -> BarKey(label, listOf(key)) } + listOf(
             ARROWS,
+            SHORTCUTS,
             BarKey("pfx", listOf("prefix"), sticky = true, bindings = true),
             BarKey("ctrl", listOf("C-"), sticky = true),
             BarKey("alt", listOf("M-"), sticky = true),
@@ -118,7 +142,11 @@ data class KeyBar(
         }
 
         /** What [key] sends, in words; a sticky one, with a key. */
-        fun nameOf(key: BarKey): String = if (key.cluster) "arrows, enter, backspace" else nameOf(key.keys) + if (key.sticky) " + key" else ""
+        fun nameOf(key: BarKey): String = when {
+            key.cluster -> "arrows, enter, backspace"
+            key.shortcuts -> "shortcuts"
+            else -> nameOf(key.keys) + if (key.sticky) " + key" else ""
+        }
 
         /** [keys] in words: ctrl c, shift tab, escape :w enter. */
         fun nameOf(keys: List<String>): String = keys.joinToString(" ") { key ->
@@ -150,13 +178,73 @@ data class KeyBar(
             "PageUp" to "page up", "PageDown" to "page down", "DC" to "delete", "IC" to "insert", "prefix" to "prefix",
         )
 
+        /** Whether [name] is a key by wallflower's names (Enter, C-c, F5, prefix), rather than text to type. */
+        fun isKey(name: String): Boolean {
+            val (held, rest) = held(name)
+            return rest in KEYS || held.isNotEmpty() && rest.length == 1
+        }
+
+        private val KEYS = NAMED.keys + (1..12).map { "F$it" }
+
+        /**
+         * Keys as the user writes them, space-separated: words that are
+         * keys by name go as they are, and the words between them as one
+         * text: `/model opus Enter` types /model opus, then presses Enter.
+         */
+        fun keysOf(sends: String): List<String> {
+            val out = ArrayList<String>()
+            var text: String? = null
+            for (word in sends.split(' ').filter(String::isNotEmpty)) {
+                if (isKey(word)) {
+                    text?.let(out::add)
+                    text = null
+                    out += word
+                } else {
+                    text = text?.let { "$it $word" } ?: word
+                }
+            }
+            text?.let(out::add)
+            return out
+        }
+
+        /**
+         * How [keys] go: keys pressed together, and text typed, Enter after
+         * it pressed a moment later, as the box's text is sent, so a program
+         * that reads them at once (Claude Code) doesn't take a long line and
+         * its Enter for a paste.
+         */
+        fun steps(keys: List<String>): List<Step> {
+            val out = ArrayList<Step>()
+            val pressed = ArrayList<String>()
+            var i = 0
+            while (i < keys.size) {
+                val key = keys[i]
+                if (isKey(key)) {
+                    pressed += key
+                    i++
+                    continue
+                }
+                if (pressed.isNotEmpty()) out += Step.Keys(pressed.toList())
+                pressed.clear()
+                val enter = keys.getOrNull(i + 1) == "Enter"
+                out += Step.Text(key, enter)
+                i += if (enter) 2 else 1
+            }
+            if (pressed.isNotEmpty()) out += Step.Keys(pressed)
+            return out
+        }
+
+        /** A program's shortcut, as the bar offers it. */
+        fun shortcut(s: Shortcut) = BarKey(s.label ?: labelOf(s.keys), s.keys)
+
         /** Held down, these repeat. */
         val repeating = setOf("Up", "Down", "Left", "Right", "BSpace", "PageUp", "PageDown")
 
         private fun keys(vararg labels: String) = labels.map { l -> common.first { it.label == l } }
 
-        /** A key by name, as the bar shows it. */
-        private fun key(name: String) = if (name == ARROWS.label) ARROWS else common.firstOrNull { !it.sticky && !it.cluster && it.keys == listOf(name) } ?: BarKey(labelOf(listOf(name)), listOf(name))
+        /** A key by name, as the bar shows it: `arrows`, `shortcuts` and the sticky ones (`ctrl`, `alt`, `pfx`) by theirs. */
+        private fun key(name: String) = common.firstOrNull { (it.sticky || it.cluster || it.shortcuts) && it.label == name }
+            ?: common.firstOrNull { !it.sticky && !it.cluster && it.keys == listOf(name) } ?: BarKey(labelOf(listOf(name)), listOf(name))
 
         val defaults = KeyBar(
             profiles = Programs.builtin.entries.filter { it.value.keyBar != null }

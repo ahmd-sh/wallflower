@@ -1,5 +1,8 @@
 package sh.ahmd.wallflower.ui
 
+import sh.ahmd.wallflower.BarKey
+import sh.ahmd.wallflower.KeyBar
+import sh.ahmd.wallflower.Step
 import sh.ahmd.wallflower.program.Effect
 import sh.ahmd.wallflower.program.Program
 import sh.ahmd.wallflower.program.Recall
@@ -88,6 +91,30 @@ internal class PaneActions(
     /** Sends composed text in place of whatever [line] held; false if it couldn't go. */
     fun send(text: String, enter: Boolean, line: InputLine?, unseen: Boolean): Boolean =
         session.submit(pane.id, text, enter, line?.let { program.clear(it, clearKeys, unseen) }.orEmpty())
+
+    /**
+     * A shortcut, picked from the bar: its keys, through the multiplexer's
+     * bindings if it says. Text it starts with that Enter sends goes in
+     * place of what [line] holds, as the box's does, so a command runs as
+     * itself whatever's in the line (and in vim mode's NORMAL, where it
+     * can't be seen); other text is typed where the cursor is.
+     */
+    fun shortcut(key: BarKey, line: InputLine?) {
+        if (key.bindings) {
+            keys(key.keys, bindings = true)
+            return
+        }
+        KeyBar.steps(key.keys).forEachIndexed { i, step ->
+            when (step) {
+                is Step.Keys -> keys(step.keys)
+                is Step.Text -> when {
+                    !step.enter -> type(step.text)
+                    i == 0 -> send(step.text, enter = true, line, unseen = true)
+                    else -> session.submit(pane.id, step.text)
+                }
+            }
+        }
+    }
 
     /** Compacts its conversation, if its program can; it's under the mobile view, so unseen. */
     val compact: ((InputLine?) -> Unit)? = program.compact?.let { command ->

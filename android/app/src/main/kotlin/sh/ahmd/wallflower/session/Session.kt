@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import sh.ahmd.wallflower.program.Command
 import sh.ahmd.wallflower.program.KeyDefaults
 import sh.ahmd.wallflower.program.Programs
+import sh.ahmd.wallflower.program.Shortcut
 import sh.ahmd.wallflower.program.Supplied
 import sh.ahmd.wallflower.protocol.Attached
 import sh.ahmd.wallflower.protocol.Away
@@ -466,4 +467,5 @@ private fun ProgramData.program() = Supplied(
     commands = commands.map { Command(it.text, it.about) },
     newlineKeys = newline,
     clearKeys = clear.orEmpty(),
+    shortcuts = shortcuts.map { Shortcut(it.keys, it.label) },
 )

@@ -24,7 +24,8 @@ class KeyBarTest {
     @Test
     fun theProgramsShippedBringTheirBars() {
         val claude = bar.profileFor("claude", "claude")
-        assertEquals(listOf("esc", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"), claude.keys.map { it.label })
+        assertEquals(listOf("esc", "ctrl", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"), claude.keys.map { it.label })
+        assertTrue(claude.keys[1].sticky) // ctrl by name is the sticky one, which held offers the shortcuts
         assertEquals(listOf("claude"), claude.programs)
         assertEquals(listOf("zsh", "shell"), bar.profileFor("zsh").programs)
         // A profile saved by command still matches the pane by its command.
@@ -35,9 +36,9 @@ class KeyBarTest {
     @Test
     fun theArrowsGoInOneKey() {
         val shell = bar.profileFor("zsh").keys
-        assertEquals(listOf("tab", "arrows", "^r", "^c", "^d", "esc"), shell.map { it.label })
-        assertTrue(shell[1].cluster)
-        assertEquals(listOf("Up", "Left", "Enter", "Right", "Down", "BSpace"), shell[1].keys)
+        assertEquals(listOf("ctrl", "tab", "arrows", "^r", "^c", "^d", "esc"), shell.map { it.label })
+        assertTrue(shell[2].cluster)
+        assertEquals(listOf("Up", "Left", "Enter", "Right", "Down", "BSpace"), shell[2].keys)
         assertEquals("arrows", bar.default.keys.last().label)
         // A bar saved before there were clusters loads as it was.
         val saved = Json.decodeFromString<BarKey>("""{"label":"↑","keys":["Up"]}""")

@@ -95,14 +95,25 @@ interface Program {
 
     /** The key bar its panes get until the user sets them one; programs with the same one share it. */
     val keyBar: KeyDefaults? get() = null
+
+    /** Shortcuts its panes offer, held ctrl or the shortcuts key on the bar, besides the user's own. */
+    val shortcuts: List<Shortcut> get() = emptyList()
 }
 
 /**
  * A key bar a program ships: its [name], its [keys] by wallflower's names
- * (`arrows`: the arrows around enter, in one key), and what the send button
- * presses when there's nothing to send ([stop]).
+ * (`arrows`: the arrows around enter, in one key; `ctrl`, `alt`: sticky,
+ * held ctrl offering the shortcuts; `shortcuts`: the shortcuts, tapped), and
+ * what the send button presses when there's nothing to send ([stop]).
  */
 data class KeyDefaults(val name: String, val keys: List<String>, val stop: List<String> = listOf("C-c"))
+
+/**
+ * A shortcut a program ships: the [keys] it sends by wallflower's names, text
+ * typed as it is (`/compact` then `Enter` runs it, `/btw` alone starts what's
+ * sent), and its [label], if not the keys as the bar shows them.
+ */
+data class Shortcut(val keys: List<String>, val label: String? = null)
 
 /** A command a program takes, as the + offers it: its [text], and what it's [about]. */
 data class Command(val text: String, val about: String)
@@ -140,25 +151,39 @@ sealed interface Effect {
 /**
  * A program the phone has no half of its own for, as a plugin the user gave
  * the gateway describes it, in data, since the phone loads no code: its key
- * bar, commands, and the keys that start a new line and empty one. It reads
- * a line only from prompt marks (OSC 133), if it makes them.
+ * bar, commands, shortcuts, and the keys that start a new line and empty
+ * one. It reads a line only from prompt marks (OSC 133), if it makes them.
  */
 class Supplied(
     override val keyBar: KeyDefaults?,
     override val commands: List<Command>,
     override val newlineKeys: List<String>?,
     override val clearKeys: List<String>,
+    override val shortcuts: List<Shortcut> = emptyList(),
 ) : Program by Shell(clearKeys, keyBar)
 
 /** The programs wallflower ships, and those the gateway's plugins describe, by the id the gateway names a pane's program by. */
 object Programs {
-    private val shells = KeyDefaults("shell", listOf("Tab", "arrows", "C-r", "C-c", "C-d", "Escape"))
+    private val shells = KeyDefaults("shell", listOf("ctrl", "Tab", "arrows", "C-r", "C-c", "C-d", "Escape"))
+
+    /**
+     * Commands more than keys: a shell's keys are its own (zsh's vi mode
+     * takes an alt key's Esc to leave insert; the dotfiles' zshrc has ^W run
+     * the suggestion), but these do the same in any.
+     */
+    private val shellShortcuts = listOf(
+        Shortcut(listOf("clear", "Enter")),
+        Shortcut(listOf("cd -", "Enter")),
+        Shortcut(listOf("!!", "Enter")),
+        Shortcut(listOf("C-z"), "suspend"),
+        Shortcut(listOf("fg", "Enter")),
+    )
     private val other = Shell()
 
     val builtin: Map<String, Program> = linkedMapOf(
         "claude" to Claude,
-        "zsh" to Shell(listOf("C-x", "C-u"), shells), // kill-buffer, as the dotfiles' zshrc binds it
-        "shell" to Shell(keyBar = shells),
+        "zsh" to Shell(listOf("C-x", "C-u"), shells, shellShortcuts), // kill-buffer, as the dotfiles' zshrc binds it
+        "shell" to Shell(keyBar = shells, shortcuts = shellShortcuts),
     )
 
     @Volatile

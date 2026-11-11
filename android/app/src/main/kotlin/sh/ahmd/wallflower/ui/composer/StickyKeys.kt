@@ -34,6 +34,11 @@ internal class StickyKeys(private val onKey: (BarKey) -> Unit) {
         }
     }
 
+    /** What's armed waits no more: something else went instead (a shortcut). */
+    fun drop() {
+        armed = null
+    }
+
     @OptIn(ExperimentalFoundationApi::class) // the edit's changes
     private val interceptor = InputTransformation {
         val typed = buildString {
