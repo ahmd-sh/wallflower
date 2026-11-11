@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         opened(intent)
+        if (savedInstanceState == null) linked(intent)
     }
 
     /** The system bars' icons dark over a [light] theme, light over a dark one. */
@@ -66,11 +67,18 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         opened(intent)
+        linked(intent)
     }
 
     /** From a notification: the pane it's about. */
     private fun opened(intent: Intent) {
         intent.getStringExtra(Notices.EXTRA_PANE)?.let { model.opening.value = it }
+    }
+
+    /** From a pairing code's link, unless it's the app coming back from recents: the code, to ask about. */
+    private fun linked(intent: Intent) {
+        if (intent.action != Intent.ACTION_VIEW || (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
+        intent.dataString?.let { model.pairLink.value = it }
     }
 
     override fun onStart() {

@@ -125,6 +125,10 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     LaunchedEffect(screen) { if (screen != Screen.Terminal) focus.clearFocus() } // the composer's keyboard goes away
     val current = session
     val mux by (current?.mux ?: flowOf(null)).collectAsStateWithLifecycle(null)
+    val connect = { h: Host ->
+        model.configure(h)
+        screen = Screen.Terminal
+    }
     val setup = @Composable { onBack: (() -> Unit)? ->
         SetupScreen(
             host = host,
@@ -134,11 +138,14 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
             createKey = model::createKey,
             unlockSeconds = unlockSeconds,
             newKey = model::newKey,
+            pair = model::pair,
             onBack = onBack,
-        ) {
-            model.configure(it)
-            screen = Screen.Terminal
-        }
+            onConnect = connect,
+        )
+    }
+    val link by model.pairLink.collectAsStateWithLifecycle()
+    link?.let {
+        PairLink(it, host, model::pair, onPaired = { h -> model.pairLink.value = null; connect(h) }, onDismiss = { model.pairLink.value = null })
     }
     val computer = host
     if (computer == null || current == null) {

@@ -1,6 +1,8 @@
 package sh.ahmd.wallflower.ui
 
+import android.content.Context
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,28 +16,42 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.mlkit.common.MlKitException
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import kotlinx.coroutines.launch
 import sh.ahmd.wallflower.BuildConfig
 import sh.ahmd.wallflower.session.Host
+import sh.ahmd.wallflower.session.Pairing
 
 /**
- * Setting wallflower up: what it is, in a line, then the computer to reach and
- * this phone's key to let in there. With a way back ([onBack]) in place of
- * the welcome, it edits the computer from settings.
+ * Setting wallflower up: what it is, in a line, then the code `wallflower
+ * setup` shows on the computer to scan, or by hand, the computer to reach
+ * and this phone's key to let in there. With a way back ([onBack]) in place
+ * of the welcome, it edits the computer from settings, or pairs with one
+ * again.
  */
 @Composable
 fun SetupScreen(
@@ -46,14 +62,21 @@ fun SetupScreen(
     createKey: () -> String?,
     unlockSeconds: Int?,
     newKey: (seconds: Int) -> String?,
+    pair: suspend (Pairing) -> String?,
     onBack: (() -> Unit)?,
     onConnect: (Host) -> Unit,
 ) {
     val form = @Composable { SetupForm(host, hasKey, fingerprint, authorizeCommand, createKey, unlockSeconds, newKey, onConnect) }
     if (onBack != null) {
-        Page("computer", onBack, form)
+        Page("computer", onBack) {
+            Text("Pair with this computer again, or another one: run this there, then scan the code it shows.", color = Palette.fg, style = Type.label)
+            Code("wallflower pair")
+            ScanCode("scan a code", primary = false, createKey, pair, onConnect)
+            form()
+        }
         return
     }
+    var byHand by remember { mutableStateOf(host != null) }
     Column(
         Modifier
             .fillMaxSize()
@@ -69,8 +92,126 @@ fun SetupScreen(
             Text("wallflower", color = Palette.fg, fontFamily = words, fontSize = wordSize(24.sp, 30.sp), fontWeight = FontWeight.Bold)
             Text("Your computer's terminals, made for your phone.", color = Palette.grey, style = Type.body, textAlign = TextAlign.Center)
         }
-        form()
+        Text("On your computer, run this. It gets the computer ready, then shows a code.", color = Palette.fg, style = Type.label)
+        Code("wallflower setup")
+        ScanCode("scan the code", primary = true, createKey, pair, onConnect)
+        if (byHand) {
+            form()
+        } else {
+            Text(
+                "set up by hand",
+                color = Palette.grey,
+                style = Type.label,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { byHand = true }.padding(vertical = 6.dp),
+            )
+        }
     }
+}
+
+/** A button that scans a code and pairs with the computer it's from, then who it's pairing with, or why it couldn't. */
+@Composable
+private fun ScanCode(label: String, primary: Boolean, createKey: () -> String?, pair: suspend (Pairing) -> String?, onPaired: (Host) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pairing by remember { mutableStateOf<Pairing?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    Button(label, primary) {
+        if (pairing != null) return@Button
+        error = createKey()
+        if (error != null) return@Button
+        scan(context, onError = { error = it }) { link ->
+            val p = Pairing.parse(link)
+            if (p == null) {
+                error = "That's not a wallflower code: scan the one wallflower setup or wallflower pair shows."
+                return@scan
+            }
+            error = null
+            pairing = p
+            scope.launch {
+                val why = pair(p)
+                pairing = null
+                if (why == null) onPaired(p.host) else error = why
+            }
+        }
+    }
+    pairing?.let { Text("pairing with ${it.called}…", color = Palette.fg, style = Type.label) }
+    error?.let { Text(it, color = Palette.red, style = Type.label) }
+}
+
+/** Opens Google's code scanner, for QR codes: [onCode] gets what it read, [onError] why it couldn't open. Backing out does nothing. */
+private fun scan(context: Context, onError: (String) -> Unit, onCode: (String) -> Unit) {
+    val options = GmsBarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
+    GmsBarcodeScanning.getClient(context, options).startScan()
+        .addOnSuccessListener { code -> code.rawValue?.let(onCode) }
+        .addOnFailureListener { e ->
+            onError(
+                if ((e as? MlKitException)?.errorCode == MlKitException.UNAVAILABLE) {
+                    "The scanner is still downloading, the first time: try again in a moment."
+                } else {
+                    "The scanner didn't open: it comes with Google Play services. The phone's camera can open the code too."
+                },
+            )
+        }
+}
+
+/**
+ * Asks before pairing with the computer a code's [link] is from (opened from
+ * the camera, say), saying so if it takes the place of [host]; then pairs,
+ * saying how it went.
+ */
+@Composable
+internal fun PairLink(link: String, host: Host?, pair: suspend (Pairing) -> String?, onPaired: (Host) -> Unit, onDismiss: () -> Unit) {
+    val pairing = remember(link) { Pairing.parse(link) }
+    if (pairing == null) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            containerColor = Palette.bg1,
+            title = { DialogTitle("not a whole code") },
+            text = {
+                Text(
+                    "The code didn't come through whole. Scan it again, or run wallflower pair on your computer for a new one.",
+                    color = Palette.grey, style = Type.body, lineHeight = wordSize(TextUnit.Unspecified, 21.sp),
+                )
+            },
+            confirmButton = { TextButton(onClick = onDismiss) { Text("ok", color = Palette.fg, fontFamily = words) } },
+        )
+        return
+    }
+    val scope = rememberCoroutineScope()
+    var busy by remember(link) { mutableStateOf(false) }
+    var error by remember(link) { mutableStateOf<String?>(null) }
+    val replacing = host?.takeIf { it.address != pairing.address }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = Palette.bg1,
+        title = { DialogTitle("pair with ${pairing.called}?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "This phone will connect to it at ${pairing.address}, as ${pairing.user}." +
+                        (replacing?.let { " It takes the place of ${it.machine ?: it.address}, the computer it connects to now." } ?: ""),
+                    color = Palette.grey, style = Type.body, lineHeight = wordSize(TextUnit.Unspecified, 21.sp),
+                )
+                if (busy) Text("pairing with ${pairing.called}…", color = Palette.fg, style = Type.label)
+                error?.let { Text(it, color = Palette.red, style = Type.label) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = {
+                    busy = true
+                    error = null
+                    scope.launch {
+                        val why = pair(pairing)
+                        busy = false
+                        if (why == null) onPaired(pairing.host) else error = why
+                    }
+                },
+            ) { Text(if (error == null) "pair" else "try again", color = if (busy) Palette.dim else Palette.green, fontFamily = words) }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("cancel", color = Palette.fg, fontFamily = words) } },
+    )
 }
 
 /** The computer (where, who, which multiplexer), this phone's key, and connect, saying plainly what's missing. */

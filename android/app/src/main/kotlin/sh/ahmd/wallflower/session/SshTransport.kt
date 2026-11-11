@@ -52,6 +52,8 @@ class SshTransport(
         session.setSocketFactory(NoDelay)
         session.setConfig("PreferredAuthentications", "publickey")
         session.setConfig("StrictHostKeyChecking", "yes")
+        // Asking for the pinned key's type gets the key that's pinned, not another the computer also has.
+        hostKeys.type(HostKeys.name(host.address, host.port))?.let { session.setConfig("server_host_key", HostKeys.algorithms(it)) }
         try {
             session.connect(10_000)
         } catch (e: JSchException) {
@@ -85,13 +87,19 @@ class SshTransport(
     }
 }
 
-/** Trusted host keys, one per host, pinned on first use after the user confirms. */
+/** Trusted host keys, one per host, pinned on first use after the user confirms, or from a pairing code. */
 class HostKeys(private val prefs: SharedPreferences) {
-    fun trust(blocked: Blocked.UnknownHost) {
-        prefs.edit().putString(KEY_PREFIX + blocked.host, blocked.type + " " + Base64.getEncoder().encodeToString(blocked.key)).apply()
+    fun trust(blocked: Blocked.UnknownHost) = trust(blocked.host, blocked.key)
+
+    /** Pins [key], in SSH's wire format, for [host] (as [name] says it). */
+    fun trust(host: String, key: ByteArray) {
+        prefs.edit().putString(KEY_PREFIX + host, typeOf(key) + " " + Base64.getEncoder().encodeToString(key)).apply()
     }
 
     fun forget(host: String) = prefs.edit().remove(KEY_PREFIX + host).apply()
+
+    /** The type of the key pinned for [host]; null if there's none. */
+    fun type(host: String): String? = prefs.getString(KEY_PREFIX + host, null)?.substringBefore(' ')
 
     internal fun repository() = Repository()
 
@@ -101,8 +109,7 @@ class HostKeys(private val prefs: SharedPreferences) {
 
         override fun check(host: String, key: ByteArray): Int {
             val pinned = prefs.getString(KEY_PREFIX + host, null)
-            val type = String(key, 4, ((key[0].toInt() and 0xff) shl 24) or ((key[1].toInt() and 0xff) shl 16) or
-                ((key[2].toInt() and 0xff) shl 8) or (key[3].toInt() and 0xff))
+            val type = typeOf(key).orEmpty()
             return when {
                 pinned == null -> {
                     unknown = Blocked.UnknownHost(host, type, key)
@@ -124,7 +131,22 @@ class HostKeys(private val prefs: SharedPreferences) {
         override fun getHostKey(host: String?, type: String?): Array<HostKey> = emptyArray()
     }
 
-    private companion object {
-        const val KEY_PREFIX = "hostkey:"
+    companion object {
+        private const val KEY_PREFIX = "hostkey:"
+
+        /** What JSch calls the computer at [address] and [port], so what its key is pinned under: with the port unless it's 22. */
+        fun name(address: String, port: Int) = if (port == 22) address else "[$address]:$port"
+
+        /** The type a key in SSH's wire format starts with; null if it doesn't start with one. */
+        internal fun typeOf(key: ByteArray): String? {
+            if (key.size < 4) return null
+            val n = ((key[0].toInt() and 0xff) shl 24) or ((key[1].toInt() and 0xff) shl 16) or
+                ((key[2].toInt() and 0xff) shl 8) or (key[3].toInt() and 0xff)
+            if (n <= 0 || n > key.size - 4) return null
+            return String(key, 4, n, Charsets.US_ASCII).takeIf { type -> type.all { it in '!'..'~' } }
+        }
+
+        /** The host key algorithms that get a key of [type]: an RSA key's sign with SHA-2. */
+        internal fun algorithms(type: String) = if (type == "ssh-rsa") "rsa-sha2-512,rsa-sha2-256" else type
     }
 }
