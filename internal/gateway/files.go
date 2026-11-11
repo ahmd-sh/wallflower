@@ -122,6 +122,10 @@ func listDir(dir string) (entries []protocol.FileEntry, more bool, err error) {
 
 // fetch has a file sent, after those asked for before it have started.
 func (f *files) fetch(m *protocol.Fetch) {
+	if len(m.ID) > 255 { // a file frame carries its fetch's id in a byte's length
+		f.send(protocol.File{ID: m.ID, Path: m.Path, Error: "the fetch's id is too long"})
+		return
+	}
 	select {
 	case f.asks <- m:
 	default:
