@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.mlkit.common.MlKitException
@@ -149,6 +152,66 @@ private fun scan(context: Context, onError: (String) -> Unit, onCode: (String) -
                 },
             )
         }
+}
+
+/**
+ * Asks before pairing with the computer a code's [link] is from (opened from
+ * the camera, say), saying so if it takes the place of [host]; then pairs,
+ * saying how it went.
+ */
+@Composable
+internal fun PairLink(link: String, host: Host?, pair: suspend (Pairing) -> String?, onPaired: (Host) -> Unit, onDismiss: () -> Unit) {
+    val pairing = remember(link) { Pairing.parse(link) }
+    if (pairing == null) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            containerColor = Palette.bg1,
+            title = { DialogTitle("not a whole code") },
+            text = {
+                Text(
+                    "The code didn't come through whole. Scan it again, or run wallflower pair on your computer for a new one.",
+                    color = Palette.grey, style = Type.body, lineHeight = wordSize(TextUnit.Unspecified, 21.sp),
+                )
+            },
+            confirmButton = { TextButton(onClick = onDismiss) { Text("ok", color = Palette.fg, fontFamily = words) } },
+        )
+        return
+    }
+    val scope = rememberCoroutineScope()
+    var busy by remember(link) { mutableStateOf(false) }
+    var error by remember(link) { mutableStateOf<String?>(null) }
+    val replacing = host?.takeIf { it.address != pairing.address }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = Palette.bg1,
+        title = { DialogTitle("pair with ${pairing.called}?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "This phone will connect to it at ${pairing.address}, as ${pairing.user}." +
+                        (replacing?.let { " It takes the place of ${it.machine ?: it.address}, the computer it connects to now." } ?: ""),
+                    color = Palette.grey, style = Type.body, lineHeight = wordSize(TextUnit.Unspecified, 21.sp),
+                )
+                if (busy) Text("pairing with ${pairing.called}…", color = Palette.fg, style = Type.label)
+                error?.let { Text(it, color = Palette.red, style = Type.label) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy,
+                onClick = {
+                    busy = true
+                    error = null
+                    scope.launch {
+                        val why = pair(pairing)
+                        busy = false
+                        if (why == null) onPaired(pairing.host) else error = why
+                    }
+                },
+            ) { Text(if (error == null) "pair" else "try again", color = if (busy) Palette.dim else Palette.green, fontFamily = words) }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("cancel", color = Palette.fg, fontFamily = words) } },
+    )
 }
 
 /** The computer (where, who, which multiplexer), this phone's key, and connect, saying plainly what's missing. */

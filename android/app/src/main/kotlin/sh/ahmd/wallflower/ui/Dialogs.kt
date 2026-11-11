@@ -309,5 +309,5 @@ fun Confirm(title: String, body: String, action: String, onConfirm: () -> Unit, 
 }
 
 @Composable
-private fun DialogTitle(text: String) =
+internal fun DialogTitle(text: String) =
     Text(text, color = Palette.fg, style = Type.title, fontWeight = if (grotesque) FontWeight.SemiBold else FontWeight.Bold)

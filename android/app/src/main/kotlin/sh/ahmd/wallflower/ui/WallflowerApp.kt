@@ -143,6 +143,10 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
             onConnect = connect,
         )
     }
+    val link by model.pairLink.collectAsStateWithLifecycle()
+    link?.let {
+        PairLink(it, host, model::pair, onPaired = { h -> model.pairLink.value = null; connect(h) }, onDismiss = { model.pairLink.value = null })
+    }
     val computer = host
     if (computer == null || current == null) {
         setup(null)

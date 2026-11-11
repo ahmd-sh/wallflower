@@ -60,6 +60,9 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     /** A pane to show, from a notification tapped. */
     val opening = MutableStateFlow<String?>(null)
 
+    /** A pairing code's link the app was opened on, to ask about. */
+    val pairLink = MutableStateFlow<String?>(null)
+
     fun configure(host: Host) = connection.configure(host)
 
     /** The app shows [pane]: what its program notified has been seen. */
