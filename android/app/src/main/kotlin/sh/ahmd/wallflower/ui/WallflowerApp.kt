@@ -148,7 +148,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     val place by current.place.collectAsStateWithLifecycle()
     val canFiles by current.canFiles.collectAsStateWithLifecycle()
     val viewer = model.viewer
-    SideEffect { viewer.canFetch = canFiles }
+    LaunchedEffect(canFiles) { viewer.canFetch = canFiles } // a key, so the gateway saying so later is heard
     // A file's path, put in a pane's message from the files or the viewer: back to the pane, to go on writing.
     val add = { pane: String, path: String ->
         model.drafts.insert(pane, forMessage(path))
