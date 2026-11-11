@@ -10,7 +10,7 @@ read when a connection starts.
   "id": "aider",
   "commands": ["aider"],
   "client": {
-    "keys": {"name": "aider", "keys": ["Escape", "ctrl", "Tab", "Up", "Down", "C-c"], "stop": ["C-c"]},
+    "keys": {"name": "aider", "keys": ["shortcuts", "Escape", "ctrl", "Tab", "Up", "Down", "C-c"], "stop": ["C-c"]},
     "commands": [{"text": "/undo", "about": "undo the last change"}, {"text": "/diff"}],
     "shortcuts": [{"keys": ["/undo", "Enter"]}, {"keys": ["/ask"]}, {"label": "quit", "keys": ["C-c", "C-c"]}],
     "newline": ["M-Enter"],
@@ -28,8 +28,8 @@ read when a connection starts.
   code. `keys` is the key bar its panes get until you make one in the app
   (key names as tmux has them: `Escape`, `C-c`, `M-Enter`, `BTab`, `F5`…,
   and `arrows`, the arrows around enter in one key; `ctrl` and `alt`, which
-  wait for the next key, ctrl offering the shortcuts when held; `shortcuts`,
-  which offers them when pressed),
+  wait for the next key; `shortcuts`, which offers them when pressed, put
+  first if `keys` leaves it out),
   and what the send button presses to stop it. `commands` are offered by
   the composer's +, and start what you send. `shortcuts` are offered on the
   key bar, and sent at once: `keys` by those names, anything else typed as

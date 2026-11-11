@@ -111,7 +111,7 @@ two halves, each optional:
   says what its notifications mean, how to clear a line, start a new one
   and compact, and which key bar its panes get until the user sets one. It
   names the commands the composer's + offers (Claude Code's `/compact`,
-  `/rewind`…), the shortcuts the key bar offers on held ctrl (Claude
+  `/rewind`…), the shortcuts the key bar's shortcuts key offers (Claude
   Code's transcript, mode, its commands sent at once…; the user hides those
   they don't want and adds their own), and the key that takes the
   program's suggestion into its line whole (Claude Code's Tab), since one
