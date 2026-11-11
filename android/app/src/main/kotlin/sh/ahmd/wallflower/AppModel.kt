@@ -80,6 +80,8 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** The command that authorizes this phone's key on the computer. */
-    fun authorizeCommand(): String =
-        "~/go/bin/wallflower authorize '${key.authorizedKey("wallflower@" + Build.MODEL.replace(' ', '-'))}'"
+    fun authorizeCommand(): String = "wallflower authorize '${key.authorizedKey(comment)}'"
+
+    /** What this phone's key is called on the computer. */
+    private val comment get() = "wallflower@" + Build.MODEL.replace(' ', '-')
 }
