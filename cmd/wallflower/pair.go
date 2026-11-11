@@ -183,7 +183,7 @@ func showCode(o *pairOptions) error {
 		}
 		name, err := os.ReadFile(ticket + ".paired")
 		if err == nil {
-			fmt.Printf("\nPaired with %s: it can connect now.\n", orElse(strings.TrimSpace(string(name)), "your phone"))
+			fmt.Printf("\nPaired with %s: it can connect now.\n", phoneName(string(name)))
 			return nil
 		}
 		if _, err := os.Stat(ticket); errors.Is(err, os.ErrNotExist) {
@@ -194,6 +194,13 @@ func showCode(o *pairOptions) error {
 			}
 		}
 	}
+}
+
+// phoneName is what a phone's key calls it, as the apps name their keys
+// (wallflower@Pixel-10-Pro), said plainly.
+func phoneName(comment string) string {
+	name := strings.ReplaceAll(strings.TrimPrefix(strings.TrimSpace(comment), "wallflower@"), "-", " ")
+	return orElse(name, "your phone")
 }
 
 func minutes(d time.Duration) string {

@@ -159,8 +159,18 @@ it reaches one only through its seam.
 ## Security
 
 The phone reaches the computer over ssh, its key restricted to running
-`wallflower serve` (`wallflower authorize`), usually over Tailscale. The
-boundary is the forced command. A multiplexer adapter or plugin sits
+`wallflower serve`, from the tailnet. The boundary is the forced command.
+
+Pairing keeps to it. `wallflower pair` (the end of `wallflower setup`)
+shows a QR code of the computer's address, its host key, and a one-time
+key it has just made. That key goes in authorized_keys for ten minutes
+(`expiry-time`, so sshd itself ends it), from the tailnet, forced to run
+`wallflower claim`: claim reads the phone's own public key from stdin,
+authorizes it as `wallflower authorize` would, and takes the one-time key
+out, so the code lets one phone in. The phone pins the host key from the
+code rather than asking whether to trust it. Nothing listens: the phone
+comes in over ssh like every time after, and the one-time private key is
+never written down on the computer. A multiplexer adapter or plugin sits
 behind it and doesn't change it. `wallflower devices` lists the phones
 whose keys can connect, and `wallflower revoke` takes one out; neither
 touches the file's other keys.

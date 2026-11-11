@@ -367,11 +367,12 @@ func (t tailscale) address() string {
 
 func tailscaleStatus() (tailscale, error) {
 	cli, err := exec.LookPath("tailscale")
+	if err != nil && runtime.GOOS == "darwin" {
+		cli = "/Applications/Tailscale.app/Contents/MacOS/Tailscale" // the app's, which puts no CLI on the PATH
+		_, err = os.Stat(cli)
+	}
 	if err != nil {
-		cli = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
-		if _, err := os.Stat(cli); err != nil {
-			return tailscale{}, errNoTailscale
-		}
+		return tailscale{}, errNoTailscale
 	}
 	out, err := exec.Command(cli, "status", "--json").Output()
 	var t tailscale

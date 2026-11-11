@@ -12,6 +12,24 @@ ones (Claude Code, shells) can have plugins of your own:
 phone app ──ssh stdio──▶ wallflower serve (one per connection) ──tmux -C──▶ tmux server
 ```
 
+## Set up
+
+On the computer (macOS or Linux):
+
+```sh
+curl -fsSL https://github.com/ahmd-sh/wallflower/releases/latest/download/install.sh | sh
+```
+
+or, with the binary in hand, `./wallflower-linux-amd64 setup`. Setup puts
+wallflower in `~/.local/bin`, checks for tmux, an ssh server and Tailscale,
+offers to install or start what's missing, and shows a QR code. Scan it in
+the app (Tailscale on the phone too, same account) and it connects. To pair
+another phone later: `wallflower pair`. `wallflower devices` lists the
+phones that can connect, and `wallflower revoke` takes one out.
+
+`scripts/release.sh vX.Y.Z` builds the binaries, checksums and installer
+into `dist/release` (`-publish` makes the GitHub release).
+
 ## Status
 
 The gateway works end to end. The Android app (`android/`) renders live panes
@@ -26,7 +44,7 @@ that both the Go and Kotlin tests check.
 ```sh
 go build -o bin/wallflower ./cmd/wallflower
 bin/wallflower debug -cols 56 -rows 20                        # local gateway as JSON lines
-bin/wallflower debug -- ssh mac "~/go/bin/wallflower serve"   # through ssh
+bin/wallflower debug -- ssh mac "wallflower serve"            # through ssh
 bin/wallflower watch -output=false                            # raw control-mode events
 ```
 
