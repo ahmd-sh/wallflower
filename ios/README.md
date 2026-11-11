@@ -45,6 +45,18 @@ bin/wallflower listen -L demo -rex /tmp/wfrex-none/server.sock -addr 127.0.0.1:4
 xcrun simctl launch <device> sh.ahmd.wallflower -wfDev 41778
 ```
 
+Debug builds also take `-wfSession <id>` (go straight into a session),
+`-wfSSH <port> -wfUser <name>` (ssh to a server of your own, leaving the
+phone's public key in the app's Documents/authorized_key), and `-wfScript
+"tab:1;type:ls\r;settings;back"` (steps played a second and a half apart;
+see `Rehearsal.swift`). `WallflowerUITests` walks the app by touch against
+the same gateway, saving each screen where `TEST_RUNNER_WF_SHOTS` says:
+
+```sh
+TEST_RUNNER_WF_SHOTS=/tmp/shots xcodebuild test -project ios/Wallflower.xcodeproj \
+  -scheme WallflowerUITests -destination 'platform=iOS Simulator,name=<device>'
+```
+
 ## Installing the IPA
 
 It's unsigned: AltStore, SideStore or Sideloadly sign it with the installer's

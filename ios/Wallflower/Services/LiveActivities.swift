@@ -42,12 +42,17 @@ final class LiveActivities {
 
     private func show(_ s: WallflowerActivity.ContentState, machine: String) {
         guard s != shown else { return }
-        shown = s
+        let was = shown
         let content = ActivityContent(state: s, staleDate: nil, relevanceScore: s.waiting ? 100 : 50)
         if let a = current, a.activityState == .active {
-            Task { await a.update(content, alertConfiguration: s.waiting ? AlertConfiguration(title: "\(s.about)", body: "needs your input", sound: .default) : nil) }
+            shown = s
+            // Felt and heard once, as it comes to need the user.
+            let alert = s.waiting && was?.waiting != true ? AlertConfiguration(title: "\(s.about)", body: "needs your input", sound: .default) : nil
+            Task { await a.update(content, alertConfiguration: alert) }
         } else {
+            // Only the app on screen can start one: away, it's tried again when the user's back.
             current = try? Activity.request(attributes: WallflowerActivity(machine: machine), content: content, pushType: nil)
+            shown = current == nil ? nil : s
         }
     }
 

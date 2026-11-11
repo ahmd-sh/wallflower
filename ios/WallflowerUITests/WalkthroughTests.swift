@@ -159,3 +159,16 @@ extension WalkthroughTests {
         sleep(2)
     }
 }
+
+extension WalkthroughTests {
+    /** The composer's +: photos, files and the program's commands, its cross turned. */
+    func testPlusMenu() {
+        app.launchArguments = ["-wfDev", ProcessInfo.processInfo.environment["WF_LISTEN"] ?? "41778", "-wfSession", "$0", "-wfScript", "tab:2;mobile:on;draft:a draft for claude", "-wfStill", "YES"]
+        app.launch()
+        sleep(9)
+        shot("draft")
+        at(0.085, 0.92).tap()
+        sleep(2)
+        shot("plus-menu")
+    }
+}

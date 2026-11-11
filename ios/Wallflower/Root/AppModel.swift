@@ -69,7 +69,7 @@ final class AppModel {
                 do { try key.generate() } catch { problem = "\(error)" }
             }
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            try? (key.authorizedKey(comment: "wallflower@simulator") + (problem.isEmpty ? "" : "\n# " + problem) + "\n# enclave \(key.hardware) exists \(key.exists)").write(to: docs.appendingPathComponent("authorized_key"), atomically: true, encoding: .utf8)
+            try? (problem.isEmpty ? key.authorizedKey(comment: "wallflower@simulator") : "# " + problem).write(to: docs.appendingPathComponent("authorized_key"), atomically: true, encoding: .utf8)
             return Host(address: "127.0.0.1", port: port, user: user, mux: "tmux", dev: false)
         }
         #endif
