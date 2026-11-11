@@ -116,7 +116,7 @@ internal fun Composer(
     onEditKeys: () -> Unit,
     shortcuts: List<BarKey> = emptyList(),
     onShortcut: (BarKey) -> Unit = {},
-    onEditShortcuts: () -> Unit = {},
+    onAddShortcut: () -> Unit = {},
     commands: List<Command> = emptyList(),
     onAcceptSuggestion: (() -> Unit)? = null,
     recalled: Recalled? = null,
@@ -314,7 +314,7 @@ internal fun Composer(
                 onKey = sticky::press,
                 onShortcut = { key ->
                     sticky.drop()
-                    val text = (KeyBar.steps(key.keys).singleOrNull() as? Step.Text)?.takeIf { !it.enter && !key.bindings && typing == null }
+                    val text = (KeyBar.steps(key.keys).singleOrNull() as? Step.Text)?.takeIf { !it.enter && typing == null }
                     if (text != null) {
                         start(text.text)
                     } else {
@@ -323,7 +323,7 @@ internal fun Composer(
                     }
                 },
                 onEdit = onEditKeys,
-                onEditShortcuts = onEditShortcuts,
+                onAddShortcut = onAddShortcut,
                 modifier = Modifier.weight(1f),
             )
             val action = when {

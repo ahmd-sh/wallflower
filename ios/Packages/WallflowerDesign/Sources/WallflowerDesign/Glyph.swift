@@ -3,7 +3,7 @@ import SwiftUI
 /** wallflower's icons; from [escape] on, keys'; from [hexagon] on, programs' (with [terminal], [spark] and [edit]: see glyphOf). */
 public enum Glyph: String, CaseIterable {
     case plus, close, chat, terminal, spark, copy, check, edit
-    case escape, tab, backTab, enter, up, down, left, right, backspace, space, ctrl, alt, shift, arrows, bolt
+    case escape, tab, backTab, enter, up, down, left, right, backspace, space, ctrl, shift, arrows, bolt
     case hexagon, snake, branch, pulse, globe, boxes, folder, database, book, hammer
 }
 
@@ -153,9 +153,6 @@ public struct GlyphIcon: View {
             stroke(ctx, [(-1, -0.15), (-1, 0.5), (1, 0.5), (1, -0.15)])
         case .ctrl:
             stroke(ctx, [(-0.7, 0.35), (0, -0.4), (0.7, 0.35)])
-        case .alt:
-            stroke(ctx, [(-1, -0.6), (-0.35, -0.6), (0.35, 0.6), (1, 0.6)])
-            stroke(ctx, [(0.15, -0.6), (1, -0.6)])
         case .bolt:
             stroke(ctx, [(0.3, -1), (-0.6, 0.15), (0.05, 0.15), (-0.3, 1), (0.6, -0.15), (-0.05, -0.15)], closed: true)
         case .shift:

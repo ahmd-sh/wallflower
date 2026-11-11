@@ -5,7 +5,6 @@ import Wire
 
 private let defaults = UserDefaults(suiteName: "wallflower.preview")!
 private let mac = Host(address: "100.101.102.103", user: "me", machine: "studio")
-private let tmux = Mux(name: "tmux", version: "3.5a", can: [Mux.BINDINGS])
 private let command = "~/go/bin/wallflower authorize 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBA== wallflower@iPhone'"
 
 #Preview("settings") {
@@ -25,17 +24,17 @@ private let command = "~/go/bin/wallflower authorize 'ecdsa-sha2-nistp256 AAAAE2
 
 #Preview("profile") {
     let _ = Fonts.register()
-    ProfileScreen(store: KeyBarStore(defaults: defaults), ref: .at(0), program: "claude", programId: "claude", mux: tmux, onBack: {}, onShortcuts: {}, onOpen: { _ in })
+    ProfileScreen(store: KeyBarStore(defaults: defaults), ref: .at(0), program: "claude", programId: "claude", onBack: {}, onShortcuts: {}, onOpen: { _ in })
 }
 
 #Preview("shortcuts") {
     let _ = Fonts.register()
-    ShortcutsScreen(store: KeyBarStore(defaults: defaults), ref: .at(0), program: "claude", programId: "claude", mux: tmux, onBack: {}, onOpen: { _ in })
+    ShortcutsScreen(store: KeyBarStore(defaults: defaults), ref: .at(0), program: "claude", programId: "claude", onBack: {}, onOpen: { _ in })
 }
 
 #Preview("default keys") {
     let _ = Fonts.register()
-    ProfileScreen(store: KeyBarStore(defaults: defaults), ref: .default, program: "hntui", programId: nil, mux: nil, onBack: {}, onShortcuts: {}, onOpen: { _ in })
+    ProfileScreen(store: KeyBarStore(defaults: defaults), ref: .default, program: "hntui", programId: nil, onBack: {}, onShortcuts: {}, onOpen: { _ in })
 }
 
 #Preview("welcome") {

@@ -5,17 +5,10 @@ import ScreenReading
 final class ShortcutsTests: XCTestCase {
     private let bar = KeyBar.defaults
 
-    func testClaudeShipsItsKeysThenItsCommands() {
+    func testClaudeShipsAFewToShowWhatTheyCanBe() {
         let claude = bar.profile(for: "claude", program: "claude").shortcuts(for: Programs.of("claude"))
-        XCTAssertEqual(
-            [
-                "transcript", "mode", "todos", "background", "stash", "send now", "redraw",
-                "/compact ⏎", "/clear ⏎", "/context ⏎", "/model ⏎", "/rewind ⏎", "/usage ⏎", "/diff ⏎", "/resume ⏎", "/tasks ⏎", "/recap ⏎", "/plan ⏎", "/btw",
-            ],
-            claude.map(\.label)
-        )
+        XCTAssertEqual(["transcript", "todos", "/compact ⏎", "/btw"], claude.map(\.label))
         XCTAssertEqual(["C-o"], claude.first?.keys)
-        XCTAssertEqual(["C-x", "C-s"], claude.first { $0.label == "send now" }?.keys)
         XCTAssertEqual(["/compact", "Enter"], claude.first { $0.label == "/compact ⏎" }?.keys)
         // A command's label is its keys', so it shows as them.
         XCTAssertEqual(true, claude.first { $0.label == "/compact ⏎" }?.hasOwnLabel)
@@ -24,7 +17,7 @@ final class ShortcutsTests: XCTestCase {
 
     func testShellsShipCommandsThatWorkInAny() {
         let zsh = bar.profile(for: "zsh", program: "zsh").shortcuts(for: Programs.of("zsh"))
-        XCTAssertEqual(["clear ⏎", "cd - ⏎", "!! ⏎", "suspend", "fg ⏎"], zsh.map(\.label))
+        XCTAssertEqual(["clear ⏎", "cd - ⏎", "!! ⏎", "suspend"], zsh.map(\.label))
         XCTAssertEqual(zsh, bar.profile(for: "bash", program: "shell").shortcuts(for: Programs.of("shell")))
         XCTAssertEqual([], bar.default.shortcuts(for: Programs.of("hntui")))
     }
@@ -33,11 +26,11 @@ final class ShortcutsTests: XCTestCase {
         let mine = BarKey(label: "review", keys: ["/review", "Enter"])
         var claude = bar.profile(for: "claude", program: "claude")
         claude.shortcuts = [mine]
-        claude.hidden = ["redraw", "/plan ⏎"]
+        claude.hidden = ["todos", "/btw"]
         let offered = claude.shortcuts(for: Programs.of("claude"))
         XCTAssertEqual(mine, offered.last)
-        XCTAssertFalse(offered.contains { $0.label == "redraw" || $0.label == "/plan ⏎" })
-        XCTAssertEqual(19 - 2 + 1, offered.count)
+        XCTAssertFalse(offered.contains { $0.label == "todos" || $0.label == "/btw" })
+        XCTAssertEqual(4 - 2 + 1, offered.count)
     }
 
     func testAPluginsShortcutsComeWithIt() {
@@ -93,15 +86,15 @@ final class ShortcutsTests: XCTestCase {
 
     func testSurvivesStorage() throws {
         var mine = bar
-        mine.default.shortcuts = [BarKey(label: "new window", keys: ["prefix", "c"], bindings: true)]
-        mine.default.hidden = ["redraw"]
+        mine.default.shortcuts = [BarKey(label: "new window", keys: ["C-b", "c"], bindings: true)]
+        mine.default.hidden = ["todos"]
         XCTAssertEqual(mine, try JSONDecoder().decode(KeyBar.self, from: JSONEncoder().encode(mine)))
         // A bar saved before there were shortcuts loads with none of the user's, and none hidden.
         let old = try JSONDecoder().decode(KeyBar.self, from: Data(#"{"profiles":[{"name":"c","programs":["claude"],"keys":[{"label":"^o","keys":["C-o"]}]}],"default":{"name":"d","keys":[]}}"#.utf8))
         XCTAssertEqual([], old.profiles[0].shortcuts)
         XCTAssertEqual([], old.profiles[0].hidden)
         XCTAssertFalse(old.profiles[0].keys[0].shortcuts)
-        XCTAssertEqual(19, old.profile(for: "claude", program: "claude").shortcuts(for: Programs.of("claude")).count)
+        XCTAssertEqual(4, old.profile(for: "claude", program: "claude").shortcuts(for: Programs.of("claude")).count)
         // And one Android saved reads the same: its fields are named alike.
         let android = try JSONDecoder().decode(KeyProfile.self, from: Data(#"{"name":"c","keys":[{"label":"shortcuts","keys":[],"shortcuts":true}],"shortcuts":[{"label":"hi","keys":["hi","Enter"]}],"hidden":["mode"]}"#.utf8))
         XCTAssertEqual(KeyBar.shortcutsKey, android.keys[0])

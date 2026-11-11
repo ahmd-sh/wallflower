@@ -45,6 +45,37 @@ final class WalkthroughTests: XCTestCase {
         if allow.waitForExistence(timeout: 2) { allow.tap() }
     }
 
+    /**
+     * The shortcuts key: pressed, its shortcuts come up on a panel of their
+     * own, three rows at most, the rest a swipe away; "add shortcut" opens
+     * their page. (On a shell pane, tab 0; past three rows if the bar has
+     * enough of the user's own.)
+     */
+    func testShortcuts() {
+        app.launchArguments = app.launchArguments.map { $0 == "tab:1" ? "tab:0" : $0 }
+        app.launch()
+        allowNotifications()
+        sleep(6)
+        shot("bar")
+        at(0.085, 0.92).tap()
+        sleep(1)
+        shot("shortcuts")
+        at(0.85, 0.80).press(forDuration: 0.05, thenDragTo: at(0.15, 0.80), withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(1)
+        shot("shortcuts-swiped")
+        let add = app.buttons.matching(NSPredicate(format: "label CONTAINS 'add shortcut'")).firstMatch
+        if add.waitForExistence(timeout: 2) { add.tap() }
+        sleep(2)
+        shot("shortcuts-page")
+
+        // Back, then pressed and slid onto the first (a shell's clear), it goes and they shut.
+        at(0.065, 0.098).tap()
+        sleep(2)
+        at(0.085, 0.92).press(forDuration: 0.3, thenDragTo: at(0.156, 0.727))
+        sleep(2)
+        shot("shortcut-slid")
+    }
+
     func testWalkthrough() {
         app.launch()
         allowNotifications()

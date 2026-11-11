@@ -38,12 +38,12 @@ internal fun faceOf(key: BarKey): AnnotatedString = when {
     else -> AnnotatedString(key.label)
 }
 
-/** [keys] with icons for those that have one (esc, tab, ⏎, the arrows, ctrl…) and the rest as the bar names them. Shown with [glyphs]. */
+/** [keys] with icons for those that have one (esc, tab, ⏎, the arrows, ctrl, shift…) and the rest as the bar names them (alt, which keyboards mark differently). Shown with [glyphs]. */
 internal fun faceOf(keys: List<String>): AnnotatedString = buildAnnotatedString {
     keys.forEachIndexed { i, key ->
         if (i > 0) append(' ')
         val (held, rest) = KeyBar.held(key)
-        for (m in held) appendInlineContent(KEYS.getValue("$m-").name, KeyBar.nameOf(listOf("$m-")) + " ")
+        for (m in held) KEYS["$m-"]?.let { appendInlineContent(it.name, KeyBar.nameOf(listOf("$m-")) + " ") } ?: append(KeyBar.modifierLabel(m))
         val glyph = KEYS[rest]
         if (glyph != null) appendInlineContent(glyph.name, KeyBar.nameOf(listOf(rest))) else append(KeyBar.labelOf(listOf(rest)))
     }
@@ -53,6 +53,13 @@ internal fun faceOf(keys: List<String>): AnnotatedString = buildAnnotatedString 
 internal fun glyphs(color: Color): Map<String, InlineTextContent> = (KEYS.values + Glyph.Arrows + Glyph.Bolt).associate { g ->
     g.name to InlineTextContent(Placeholder(1.15.em, 1.15.em, PlaceholderVerticalAlign.Center)) { GlyphIcon(g, color, Modifier.fillMaxSize()) }
 }
+
+/** Where [face]'s icons go, as [glyphs] draws them, for measuring it without drawing it. */
+internal fun glyphPlaceholders(face: AnnotatedString): List<AnnotatedString.Range<Placeholder>> =
+    face.getStringAnnotations(INLINE_CONTENT, 0, face.length).map { AnnotatedString.Range(Placeholder(1.15.em, 1.15.em, PlaceholderVerticalAlign.Center), it.start, it.end) }
+
+/** The tag appendInlineContent marks its places with. */
+private const val INLINE_CONTENT = "androidx.compose.foundation.text.inlineContent"
 
 /** Calls [onUp] when a press here lets go, however it ended. */
 internal fun Modifier.onLetGo(onUp: () -> Unit) = pointerInput(Unit) {
@@ -90,7 +97,7 @@ internal class Above(private val gap: Int) : PopupPositionProvider {
 }
 
 private val KEYS = mapOf(
-    "C-" to Glyph.Ctrl, "M-" to Glyph.Alt, "S-" to Glyph.Shift,
+    "C-" to Glyph.Ctrl, "S-" to Glyph.Shift,
     "Escape" to Glyph.Escape, "Tab" to Glyph.Tab, "BTab" to Glyph.BackTab, "Enter" to Glyph.Enter, "BSpace" to Glyph.Backspace, "Space" to Glyph.Space,
     "Up" to Glyph.Up, "Down" to Glyph.Down, "Left" to Glyph.Left, "Right" to Glyph.Right,
 )

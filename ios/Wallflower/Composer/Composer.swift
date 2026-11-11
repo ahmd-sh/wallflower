@@ -74,9 +74,11 @@ struct Composer: View {
     let onEditKeys: () -> Void
     var shortcuts: [BarKey] = []
     var onShortcut: (BarKey) -> Void = { _ in }
-    var onEditShortcuts: () -> Void = {}
+    var onAddShortcut: () -> Void = {}
 
     @FocusState private var focused: Bool
+    @State private var shortcutsMenu = ShortcutsMenu()
+    @State private var barHeight: CGFloat = 0
     @State private var sent = false
     @State private var accepting: String?
     @State private var recalling: String?
@@ -103,14 +105,7 @@ struct Composer: View {
                     .buttonStyle(Pressable())
                     .padding(.trailing, 6)
                 }
-                KeyRow(keys: keys, armed: sticky.armed, shortcuts: shortcuts, onKey: onKey, onShortcut: { key in
-                    sticky.drop()
-                    if !typing, !key.bindings, case .text(let s, enter: false) = KeyBar.steps(key.keys).first, key.keys.count == 1 {
-                        start(s)
-                    } else {
-                        onShortcut(key)
-                    }
-                }, onEdit: onEditKeys, onEditShortcuts: onEditShortcuts)
+                KeyRow(keys: keys, armed: sticky.armed, menu: shortcutsMenu, onKey: onKey, onEdit: onEditKeys)
                 SendButton(action: action, connected: connected, label: action == .run && sendKeys != ["Enter"] ? sendKeys : nil, onSend: { enter in
                     if onSend(text, enter) {
                         text = ""
@@ -118,8 +113,17 @@ struct Composer: View {
                     }
                 }, onEnter: onEnter, onStop: onStop)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
+            .overlay(alignment: .bottom) {
+                if shortcutsMenu.open {
+                    ShortcutsUp(menu: shortcutsMenu, shortcuts: shortcuts, onShortcut: shortcut, onAdd: onAddShortcut)
+                        .padding(.bottom, barHeight + 16) // above the bar, clear of the composer's edge
+                        .transition(.scale(scale: 0.96, anchor: .bottom).combined(with: .opacity))
+                }
+            }
             .padding(.top, typing ? 0 : 10)
             .padding(.horizontal, 8)
+            .zIndex(1)
         }
         .padding(.top, typing ? 8 : 14)
         .padding(.bottom, 8)
@@ -212,6 +216,16 @@ struct Composer: View {
     private func take(_ s: String) {
         text = s
         focused = true
+    }
+
+    /** A shortcut picked: text alone, with no Enter to send it, starts the draft as a command does; anything else goes. */
+    private func shortcut(_ key: BarKey) {
+        sticky.drop()
+        if !typing, case .text(let s, enter: false) = KeyBar.steps(key.keys).first, key.keys.count == 1 {
+            start(s)
+        } else {
+            onShortcut(key)
+        }
     }
 
     /** A command starts the draft, in place of one it started with; other text goes at its end. */

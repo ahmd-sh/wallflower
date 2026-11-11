@@ -6,6 +6,7 @@ import sh.ahmd.wallflower.Step
 import sh.ahmd.wallflower.program.Effect
 import sh.ahmd.wallflower.program.Program
 import sh.ahmd.wallflower.program.Recall
+import sh.ahmd.wallflower.protocol.Mux
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.read.Activity
 import sh.ahmd.wallflower.read.Entry
@@ -93,22 +94,20 @@ internal class PaneActions(
         session.submit(pane.id, text, enter, line?.let { program.clear(it, clearKeys, unseen) }.orEmpty())
 
     /**
-     * A shortcut, picked from the bar: its keys, through the multiplexer's
-     * bindings if it says. Text it starts with that Enter sends goes in
-     * place of what [line] holds, as the box's does, so a command runs as
-     * itself whatever's in the line (and in vim mode's NORMAL, where it
-     * can't be seen); other text is typed where the cursor is.
+     * A shortcut, picked from the bar. Text it starts with that Enter sends
+     * goes in place of what [line] holds, as the box's does, so a command
+     * runs as itself whatever's in the line (and in vim mode's NORMAL, where
+     * it can't be seen). Its other keys and text go where the cursor is: as
+     * if typed on a keyboard attached to the multiplexer if it says, so its
+     * key bindings apply (the user's prefix, then a key), where it can.
      */
     fun shortcut(key: BarKey, line: InputLine?) {
-        if (key.bindings) {
-            keys(key.keys, bindings = true)
-            return
-        }
+        val bound = key.bindings && session.mux.value?.let { Mux.BINDINGS in it.can } == true
         KeyBar.steps(key.keys).forEachIndexed { i, step ->
             when (step) {
-                is Step.Keys -> keys(step.keys)
+                is Step.Keys -> keys(step.keys, bound)
                 is Step.Text -> when {
-                    !step.enter -> type(step.text)
+                    !step.enter -> if (bound) keys(listOf(step.text), bindings = true) else type(step.text)
                     i == 0 -> send(step.text, enter = true, line, unseen = true)
                     else -> session.submit(pane.id, step.text)
                 }

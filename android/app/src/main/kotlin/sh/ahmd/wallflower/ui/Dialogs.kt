@@ -50,7 +50,7 @@ import androidx.compose.ui.unit.sp
 /** wallflower's icons; from [Escape] on, keys'; from [Hexagon] on, programs' (with [Terminal], [Spark] and [Edit]: see [glyphOf]). */
 enum class Glyph {
     Plus, Close, Chat, Terminal, Spark, Copy, Check, Edit,
-    Escape, Tab, BackTab, Enter, Up, Down, Left, Right, Backspace, Space, Ctrl, Alt, Shift, Arrows, Bolt,
+    Escape, Tab, BackTab, Enter, Up, Down, Left, Right, Backspace, Space, Ctrl, Shift, Arrows, Bolt,
     Hexagon, Snake, Branch, Pulse, Globe, Boxes, Folder, Database, Book, Hammer,
 }
 
@@ -172,10 +172,6 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
             }
             Glyph.Space -> stroke(-1f to -0.15f, -1f to 0.5f, 1f to 0.5f, 1f to -0.15f)
             Glyph.Ctrl -> stroke(-0.7f to 0.35f, 0f to -0.4f, 0.7f to 0.35f)
-            Glyph.Alt -> {
-                stroke(-1f to -0.6f, -0.35f to -0.6f, 0.35f to 0.6f, 1f to 0.6f)
-                stroke(0.15f to -0.6f, 1f to -0.6f)
-            }
             Glyph.Bolt -> stroke(0.3f to -1f, -0.6f to 0.15f, 0.05f to 0.15f, -0.3f to 1f, 0.6f to -0.15f, -0.05f to -0.15f, closed = true)
             Glyph.Shift -> stroke(0f to -1f, 0.9f to -0.05f, 0.42f to -0.05f, 0.42f to 0.85f, -0.42f to 0.85f, -0.42f to -0.05f, -0.9f to -0.05f, closed = true)
             Glyph.Spark -> drawPath(

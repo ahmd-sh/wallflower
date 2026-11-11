@@ -27,16 +27,19 @@ read when a connection starts.
 - `client`, optional: the phone's half, as data, since the phone loads no
   code. `keys` is the key bar its panes get until you make one in the app
   (key names as tmux has them: `Escape`, `C-c`, `M-Enter`, `BTab`, `F5`…,
-  and `arrows`, the arrows around enter in one key; `ctrl` and `alt`, which
-  wait for the next key; `shortcuts`, which offers them when pressed, put
+  and `arrows`, the arrows around enter in one key; `ctrl`, `alt` and
+  `shift`, which wait for the next key; `shortcuts`, which offers them when pressed, put
   first if `keys` leaves it out),
   and what the send button presses to stop it. `commands` are offered by
   the composer's +, and start what you send. `shortcuts` are offered on the
   key bar, and sent at once: `keys` by those names, anything else typed as
   it is (text with `Enter` after it goes in place of what the program's
   input line holds, as what you send does; text alone starts what you
-  send), with a `label` if it shouldn't show as its keys; you can hide
-  them, and add your own, in the app. `newline` is what the
+  send), with a `label` if it shouldn't show as its keys. A few that show
+  what a shortcut can be do better than many: you can hide them, and add
+  your own, in the app (made of keys, ctrl, alt or shift with a key, and
+  text; sent as if typed on a keyboard attached to the multiplexer, so its
+  own keys work: the prefix, then a key). `newline` is what the
   keyboard's return key presses, if the program takes several lines; `clear`
   empties a row of its input.
 - `view`, optional: a program that reads the panes for a mobile view (a

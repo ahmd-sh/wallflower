@@ -21,7 +21,7 @@ struct KeyFace: View {
     }
 }
 
-/** [keys] with icons for those that have one, and the rest as the bar names them. */
+/** [keys] with icons for those that have one, and the rest as the bar names them (alt, which keyboards mark differently). */
 struct KeysFace: View {
     let keys: [String]
     let color: Color
@@ -33,7 +33,11 @@ struct KeysFace: View {
                 let (held, rest) = KeyBar.held(key)
                 HStack(spacing: 1) {
                     ForEach(Array(held.enumerated()), id: \.offset) { _, m in
-                        if let g = keyGlyphs["\(m)-"] { GlyphIcon(g, color, size: size * 1.15) }
+                        if let g = keyGlyphs["\(m)-"] {
+                            GlyphIcon(g, color, size: size * 1.15)
+                        } else {
+                            Text(KeyBar.modifierLabel(m)).font(Fonts.mono(size)).foregroundColor(color)
+                        }
                     }
                     if let g = keyGlyphs[rest] {
                         GlyphIcon(g, color, size: size * 1.15)
@@ -48,7 +52,7 @@ struct KeysFace: View {
 }
 
 let keyGlyphs: [String: Glyph] = [
-    "C-": .ctrl, "M-": .alt, "S-": .shift,
+    "C-": .ctrl, "S-": .shift,
     "Escape": .escape, "Tab": .tab, "BTab": .backTab, "Enter": .enter, "BSpace": .backspace, "Space": .space,
     "Up": .up, "Down": .down, "Left": .left, "Right": .right,
 ]

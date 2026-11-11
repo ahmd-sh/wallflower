@@ -27,7 +27,7 @@ struct TerminalScreen: View {
     let onProgram: (String?, String?) -> Void
     let onSettings: () -> Void
     let onEditKeys: () -> Void
-    var onEditShortcuts: () -> Void = {}
+    var onAddShortcut: () -> Void = {}
     let onExit: () -> Void
 
     @State private var screen = PaneScreen()
@@ -390,7 +390,7 @@ struct TerminalScreen: View {
                 if !mobile { handle.scrollToBottom() }
                 actions.shortcut(key, line: screen.line)
             },
-            onEditShortcuts: onEditShortcuts
+            onAddShortcut: onAddShortcut
         )
     }
 

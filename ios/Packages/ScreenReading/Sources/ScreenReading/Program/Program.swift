@@ -456,15 +456,12 @@ public final class Supplied: Program {
 public enum Programs {
     private static let shells = KeyDefaults(name: "shell", keys: ["shortcuts", "ctrl", "Tab", "arrows", "C-r", "C-c", "C-d", "Escape"])
 
-    /// Commands more than keys: a shell's keys are its own (zsh's vi mode
-    /// takes an alt key's Esc to leave insert; the dotfiles' zshrc has ^W run
-    /// the suggestion), but these do the same in any.
+    /// Commands more than keys, as a shell's keys are its own; these do the same in any.
     private static let shellShortcuts = [
         Shortcut(["clear", "Enter"]),
         Shortcut(["cd -", "Enter"]),
         Shortcut(["!!", "Enter"]),
         Shortcut(["C-z"], label: "suspend"),
-        Shortcut(["fg", "Enter"]),
     ]
     private static let other = Shell()
 

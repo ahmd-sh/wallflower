@@ -29,19 +29,14 @@ public final class Codex: Program {
         stop: ["Escape"]
     )
 
-    /// Its keys (← and its agents, from an empty composer), then its
-    /// commands, run as sent; /side starts what's sent, the question to ask
-    /// aside. Not Esc Esc and its rewind: two Escs that come together it
-    /// takes for one.
+    /// A few, to show what a shortcut can be: a key, commands run as sent,
+    /// and /side, which starts what's sent, the question to ask aside.
     public let shortcuts: [Shortcut] = [
-        Shortcut(["BTab"], label: "mode"),
         Shortcut(["F4"], label: "activity"),
-        Shortcut(["S-Left"], label: "answer questions"),
-        Shortcut(["Left"], label: "agents"),
-        Shortcut(["M-,"], label: "less reasoning"),
-        Shortcut(["M-."], label: "more reasoning"),
-    ] + ["/model", "/new", "/resume", "/compact", "/diff", "/review", "/status", "/plan", "/recap", "/agents"]
-        .map { Shortcut([$0, "Enter"]) } + [Shortcut(["/side"])]
+        Shortcut(["/model", "Enter"]),
+        Shortcut(["/diff", "Enter"]),
+        Shortcut(["/side"]),
+    ]
 
     /// The composer: a first row starting `› `, rows under it indented two,
     /// then a blank row and the footer, `  <model> <mode> · <directory>…`,

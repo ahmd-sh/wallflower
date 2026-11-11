@@ -42,7 +42,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
-import sh.ahmd.wallflower.BarKey
 import sh.ahmd.wallflower.BuildConfig
 import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.KeyBarStore
@@ -51,7 +50,6 @@ import sh.ahmd.wallflower.prefs.Look
 import sh.ahmd.wallflower.prefs.Preferences
 import sh.ahmd.wallflower.prefs.Scheme
 import sh.ahmd.wallflower.program.Programs
-import sh.ahmd.wallflower.protocol.Mux
 import sh.ahmd.wallflower.protocol.VERSION as PROTOCOL_VERSION
 import sh.ahmd.wallflower.session.Host
 
@@ -280,7 +278,6 @@ fun ProfileScreen(
     ref: ProfileRef,
     program: String?,
     programId: String?,
-    mux: Mux?,
     onBack: () -> Unit,
     onOpen: (ProfileRef) -> Unit,
     onShortcuts: () -> Unit,
@@ -294,8 +291,6 @@ fun ProfileScreen(
         LaunchedEffect(Unit) { onBack() }
         return
     }
-    // What a multiplexer that can't take keys through its bindings doesn't offer; unknown until connected.
-    val bindings = mux?.let { Mux.BINDINGS in it.can } ?: true
     fun save(p: KeyProfile) = store.update { b ->
         when (ref) {
             ProfileRef.Default -> b.copy(default = p)
@@ -379,34 +374,23 @@ fun ProfileScreen(
         }
 
         Section("clear")
-        Body("What empties the app's line, so what's in the box replaces it (sent once per row of the line). Empty: the box adds to the line.")
-        var clear by remember(ref) { mutableStateOf((profile.clear ?: Programs.of(profile.programs.firstOrNull().orEmpty()).clearKeys).joinToString(" ")) }
-        Field("keys", clear) {
-            clear = it
-            save(profile.copy(clear = it.split(' ').filter(String::isNotEmpty)))
+        Body("What empties the app's line, so what's in the box replaces it (once per row of the line). none: the box adds to the line.")
+        val usual = Programs.of(profile.programs.firstOrNull().orEmpty()).clearKeys
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Chip("the program's", profile.clear == null || profile.clear == usual, font = words) { save(profile.copy(clear = null)) }
+            for (keys in clears.filter { it != usual }) {
+                if (keys.isEmpty()) {
+                    Chip("none", profile.clear == keys, font = words) { save(profile.copy(clear = keys)) }
+                } else {
+                    KeyChoice(faceOf(keys), KeyBar.nameOf(keys), profile.clear == keys) { save(profile.copy(clear = keys)) }
+                }
+            }
         }
 
         Section("add")
+        Body("Your own keys, like ctrl with a letter or several in a row, are shortcuts: add them from the shortcuts key.")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (k in KeyBar.common.filter { bindings || !it.bindings }) KeyChoice(faceOf(k), KeyBar.nameOf(k), false) { save(profile.copy(keys = profile.keys + k)) }
-        }
-
-        Section("custom")
-        Body(KEY_NAMES + " Tap one to add it.")
-        var label by remember(ref) { mutableStateOf("") }
-        var sends by remember(ref) { mutableStateOf("") }
-        var bound by remember(ref) { mutableStateOf(false) }
-        val keys = KeyBar.keysOf(sends)
-        Field("sends", sends) { sends = it }
-        KeyNames(sends) { sends = it }
-        Field(if (label.isBlank() && keys.isNotEmpty()) "label (blank: ${KeyBar.labelOf(keys)})" else "label", label) { label = it }
-        if (bindings) Toggle("through ${mux?.name ?: "the multiplexer"}'s key bindings (C-j to change pane; prefix is your prefix)", bound) { bound = it }
-        Button("add key") {
-            if (keys.isNotEmpty()) {
-                save(profile.copy(keys = profile.keys + BarKey(label.ifBlank { KeyBar.labelOf(keys) }, keys, bindings = bound && bindings)))
-                label = ""
-                sends = ""
-            }
+            for (k in KeyBar.common) KeyChoice(faceOf(k), KeyBar.nameOf(k), false) { save(profile.copy(keys = profile.keys + k)) }
         }
 
         if (ref is ProfileRef.At) {
@@ -422,29 +406,8 @@ fun ProfileScreen(
 private val stops = listOf("C-c", "Escape", "C-d", "q").map { listOf(it) }
 private val presses = listOf("Enter", "C-j", "M-Enter").map { listOf(it) }
 
-/** How a custom key's keys are written. */
-internal const val KEY_NAMES = "Key names, space-separated; the words between them are typed as they are (Escape :w Enter). C- is ctrl, M- alt and S- shift, " +
-    "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is shift tab, BSpace backspace, DC delete, IC insert; F1 to F12 work too."
-
-/** wallflower's names (tmux's) for what a custom key sends, beyond text, to tap onto the end of [sends]: joined to a modifier written last (C-), else a word of its own. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun KeyNames(sends: String, onChange: (String) -> Unit) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (name in names) {
-            Chip(name, false) {
-                val joins = sends.isEmpty() || sends.endsWith(' ') || sends.substringAfterLast(' ').matches(held)
-                onChange(if (joins) sends + name else "$sends $name")
-            }
-        }
-    }
-}
-
-private val names = listOf(
-    "C-", "M-", "S-", "Enter", "Escape", "Tab", "BTab", "BSpace", "Space",
-    "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "DC", "IC",
-)
-private val held = Regex("([CMS]-)+")
+/** What can empty a row of a program's line: ctrl u (most), ctrl x ctrl k (zsh's kill-buffer), end then ctrl u (readline's from the end), or nothing. */
+private val clears = listOf(listOf("C-u"), listOf("C-x", "C-k"), listOf("End", "C-u"), emptyList())
 
 /** A full-screen page over the terminal, with a back arrow. */
 @Composable

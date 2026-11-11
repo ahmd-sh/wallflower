@@ -1,8 +1,8 @@
 /// A key on the bar: what it shows, and the keys it sends by wallflower's
 /// names (`Escape`, `C-c`, or literal text). A `sticky` key waits for the next
-/// key, from the bar or the keyboard, and goes with it. With `bindings`, the
-/// multiplexer's key bindings apply, as if typed on a keyboard attached to it;
-/// `prefix` is its prefix key. A `cluster` gathers keys, each its own, laid
+/// key, from the bar or the keyboard, and goes with it. With `bindings`, it
+/// goes as if typed on a keyboard attached to the multiplexer, so its key
+/// bindings apply (the user's own shortcuts do). A `cluster` gathers keys, each its own, laid
 /// out as arrow keys with two more above: `keys` up, left, the one top left,
 /// right, down, and the one top right. A `shortcuts` key sends none of its
 /// own: it offers the pane's shortcuts (`KeyProfile.shortcuts(for:)`).
@@ -33,10 +33,10 @@ public struct BarKey: Codable, Hashable, Sendable {
         shortcuts = try c.decodeIfPresent(Bool.self, forKey: .shortcuts) ?? false
     }
 
-    /// This sticky key with the next one: a modifier (`C-`, `M-`) joins it, anything else goes first.
+    /// This sticky key with the next one: a modifier (`C-`, `M-`, `S-`) joins it, anything else goes first.
     public func then(_ next: BarKey) -> BarKey {
         let first = keys.first ?? ""
-        let joined: [String] = first.endsWith("-") && !next.keys.isEmpty ? [first + next.keys[0]] + next.keys.dropFirst() : keys + next.keys
+        let joined: [String] = KeyBar.modifiers.contains(first) && !next.keys.isEmpty ? [KeyBar.held(first, next.keys[0])] + next.keys.dropFirst() : keys + next.keys
         return BarKey(label: "\(label) \(next.label)", keys: joined, bindings: bindings || next.bindings)
     }
 
@@ -194,32 +194,45 @@ public struct KeyBar: Codable, Hashable, Sendable {
     /// The pane's shortcuts, in one key; `shortcuts` by name.
     public static let shortcutsKey = BarKey(label: "shortcuts", keys: [], shortcuts: true)
 
+    /// The modifiers, held with the next key: ctrl, alt and shift.
+    public static let modifiers = ["C-", "M-", "S-"]
+
+    /// Keys every keyboard has, which a shortcut's keys are made of, besides text and the modifiers.
+    public static let named = ["Escape", "Tab", "Enter", "BSpace", "Space", "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "DC"]
+
     /// Keys offered when editing a bar.
     public static let common: [BarKey] = ([
-        ("esc", "Escape"), ("tab", "Tab"), ("⇧tab", "BTab"), ("⏎", "Enter"),
+        ("esc", "Escape"), ("tab", "Tab"), ("⇧tab", "BTab"), ("⏎", "Enter"), ("⌫", "BSpace"), ("space", "Space"),
         ("↑", "Up"), ("↓", "Down"), ("←", "Left"), ("→", "Right"),
         ("home", "Home"), ("end", "End"), ("pgup", "PageUp"), ("pgdn", "PageDown"),
-        ("⌫", "BSpace"), ("space", "Space"), ("⌥⏎", "M-Enter"),
         ("^c", "C-c"), ("^d", "C-d"), ("^z", "C-z"), ("^r", "C-r"), ("^l", "C-l"),
-        ("^a", "C-a"), ("^e", "C-e"), ("^u", "C-u"), ("^w", "C-w"), ("^o", "C-o"),
-        ("^t", "C-t"), ("^b", "C-b"),
-        ("y", "y"), ("n", "n"), ("q", "q"), ("1", "1"), ("2", "2"), ("3", "3"),
-        ("/", "/"), ("|", "|"), ("~", "~"), ("-", "-"), ("`", "`"),
+        ("y", "y"), ("n", "n"), ("1", "1"), ("2", "2"), ("3", "3"),
     ] as [(String, String)]).map { label, key in BarKey(label: label, keys: [key]) } + [
         arrows,
         shortcutsKey,
-        BarKey(label: "pfx", keys: ["prefix"], sticky: true, bindings: true),
         BarKey(label: "ctrl", keys: ["C-"], sticky: true),
         BarKey(label: "alt", keys: ["M-"], sticky: true),
+        BarKey(label: "shift", keys: ["S-"], sticky: true),
     ]
 
-    /// How `keys` show on a key: ^c, ⌥⏎, ⇧↑, esc :w ⏎.
+    /// `key` with `modifier` held: shift tab is back tab, and a shifted letter its capital.
+    public static func held(_ modifier: String, _ key: String) -> String {
+        if modifier != "S-" { return modifier + key }
+        if key == "Tab" { return "BTab" }
+        if key.count == 1, let c = key.first, c.isLetter { return key.uppercased() }
+        return modifier + key
+    }
+
+    /// How `keys` show on a key: ^c, alt+⏎, ⇧↑, esc :w ⏎; a modifier alone, by its name.
     public static func label(of keys: [String]) -> String {
         keys.map { key in
             let (held, rest) = KeyBar.held(key)
-            return held.map { modifiers[$0]! }.joined() + (named[rest] ?? rest)
+            return held.map { modifierLabels[$0]! }.joined() + (labels[rest] ?? (modifiers.contains(rest) ? said[rest] : nil) ?? rest)
         }.joined(separator: " ")
     }
+
+    /// How a modifier held with a key shows before it: ^, alt+ or ⇧.
+    public static func modifierLabel(_ modifier: Character) -> String { modifierLabels[modifier]! }
 
     /// What `key` sends, in words; a sticky one, with a key.
     public static func name(of key: BarKey) -> String {
@@ -240,18 +253,18 @@ public struct KeyBar: Codable, Hashable, Sendable {
     public static func held(_ key: String) -> (held: [Character], rest: String) {
         var rest = Array(key.utf16)
         var held: [Character] = []
-        while rest.count > 2 && rest[1] == unit("-"), let m = Unicode.Scalar(rest[0]).map(Character.init), modifiers[m] != nil {
+        while rest.count > 2 && rest[1] == unit("-"), let m = Unicode.Scalar(rest[0]).map(Character.init), modifierLabels[m] != nil {
             held.append(m)
             rest.removeFirst(2)
         }
         return (held, String(units: rest))
     }
 
-    private static let modifiers: [Character: String] = ["C": "^", "M": "⌥", "S": "⇧"]
-    private static let named = [
+    private static let modifierLabels: [Character: String] = ["C": "^", "M": "alt+", "S": "⇧"]
+    private static let labels = [
         "Enter": "⏎", "Escape": "esc", "Tab": "tab", "BTab": "⇧tab", "BSpace": "⌫", "Space": "space",
         "Up": "↑", "Down": "↓", "Left": "←", "Right": "→", "Home": "home", "End": "end",
-        "PageUp": "pgup", "PageDown": "pgdn", "DC": "del", "IC": "ins", "prefix": "pfx",
+        "PageUp": "pgup", "PageDown": "pgdn", "DC": "del", "IC": "ins", "prefix": "prefix",
     ]
     private static let said = [
         "C-": "ctrl", "M-": "alt", "S-": "shift",
@@ -266,7 +279,7 @@ public struct KeyBar: Codable, Hashable, Sendable {
         return keyNames.contains(rest) || !held.isEmpty && rest.utf16.count == 1
     }
 
-    private static let keyNames = Set(named.keys).union((1...12).map { "F\($0)" })
+    private static let keyNames = Set(labels.keys).union((1...12).map { "F\($0)" })
 
     /// Keys as the user writes them, space-separated: words that are
     /// keys by name go as they are, and the words between them as one
@@ -320,7 +333,7 @@ public struct KeyBar: Codable, Hashable, Sendable {
 
     private static func keys(_ labels: String...) -> [BarKey] { labels.map { l in common.first { $0.label == l }! } }
 
-    /// A key by name, as the bar shows it: `arrows`, `shortcuts` and the sticky ones (`ctrl`, `alt`, `pfx`) by theirs.
+    /// A key by name, as the bar shows it: `arrows`, `shortcuts` and the sticky ones (`ctrl`, `alt`, `shift`) by theirs.
     private static func key(_ name: String) -> BarKey {
         common.first { ($0.sticky || $0.cluster || $0.shortcuts) && $0.label == name }
             ?? common.first { !$0.sticky && !$0.cluster && $0.keys == [name] } ?? BarKey(label: label(of: [name]), keys: [name])

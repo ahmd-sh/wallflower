@@ -19,14 +19,14 @@ func faceOf(_ key: BarKey) -> Face {
     return [.text(key.label)]
 }
 
-/** [keys] with icons for those that have one (esc, tab, ⏎, the arrows, ctrl…) and the rest as the bar names them. */
+/** [keys] with icons for those that have one (esc, tab, ⏎, the arrows, ctrl, shift…) and the rest as the bar names them (alt, which keyboards mark differently). */
 func faceOf(_ keys: [String]) -> Face {
     var parts: Face = []
     for (i, key) in keys.enumerated() {
         if i > 0 { parts.append(.text(" ")) }
         let (held, rest) = KeyBar.held(key)
         for m in held {
-            if let g = glyphs["\(m)-"] { parts.append(.glyph(g)) }
+            parts.append(glyphs["\(m)-"].map(FacePart.glyph) ?? .text(KeyBar.modifierLabel(m)))
         }
         if let g = glyphs[rest] { parts.append(.glyph(g)) } else { parts.append(.text(KeyBar.label(of: [rest]))) }
     }
@@ -64,7 +64,7 @@ func faceText(_ face: Face, size: CGFloat, color: Color) -> Text {
 }
 
 private let glyphs: [String: Glyph] = [
-    "C-": .ctrl, "M-": .alt, "S-": .shift,
+    "C-": .ctrl, "S-": .shift,
     "Escape": .escape, "Tab": .tab, "BTab": .backTab, "Enter": .enter, "BSpace": .backspace, "Space": .space,
     "Up": .up, "Down": .down, "Left": .left, "Right": .right,
 ]

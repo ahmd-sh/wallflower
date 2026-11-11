@@ -12,23 +12,17 @@ import sh.ahmd.wallflower.program.Shortcut
 import sh.ahmd.wallflower.program.Supplied
 import sh.ahmd.wallflower.ui.ProfileRef
 import sh.ahmd.wallflower.ui.shippedFor
+import sh.ahmd.wallflower.ui.composer.paged
 import sh.ahmd.wallflower.ui.shortcutsSummary
 
 class ShortcutsTest {
     private val bar = KeyBar.defaults
 
     @Test
-    fun claudeShipsItsKeysThenItsCommands() {
+    fun claudeShipsAFewToShowWhatTheyCanBe() {
         val claude = bar.profileFor("claude", "claude").shortcutsFor(Programs.of("claude"))
-        assertEquals(
-            listOf(
-                "transcript", "mode", "todos", "background", "stash", "send now", "redraw",
-                "/compact ⏎", "/clear ⏎", "/context ⏎", "/model ⏎", "/rewind ⏎", "/usage ⏎", "/diff ⏎", "/resume ⏎", "/tasks ⏎", "/recap ⏎", "/plan ⏎", "/btw",
-            ),
-            claude.map { it.label },
-        )
+        assertEquals(listOf("transcript", "todos", "/compact ⏎", "/btw"), claude.map { it.label })
         assertEquals(listOf("C-o"), claude.first().keys)
-        assertEquals(listOf("C-x", "C-s"), claude.first { it.label == "send now" }.keys)
         assertEquals(listOf("/compact", "Enter"), claude.first { it.label == "/compact ⏎" }.keys)
         // A command's label is its keys', so it shows as them.
         assertTrue(claude.first { it.label == "/compact ⏎" }.ownLabel)
@@ -38,7 +32,7 @@ class ShortcutsTest {
     @Test
     fun shellsShipCommandsThatWorkInAny() {
         val zsh = bar.profileFor("zsh", "zsh").shortcutsFor(Programs.of("zsh"))
-        assertEquals(listOf("clear ⏎", "cd - ⏎", "!! ⏎", "suspend", "fg ⏎"), zsh.map { it.label })
+        assertEquals(listOf("clear ⏎", "cd - ⏎", "!! ⏎", "suspend"), zsh.map { it.label })
         assertEquals(zsh, bar.profileFor("bash", "shell").shortcutsFor(Programs.of("shell")))
         assertEquals(emptyList<BarKey>(), bar.default.shortcutsFor(Programs.of("hntui")))
     }
@@ -46,11 +40,11 @@ class ShortcutsTest {
     @Test
     fun theUsersComeAfterTheProgramsTheyDidntHide() {
         val mine = BarKey("review", listOf("/review", "Enter"))
-        val claude = bar.profileFor("claude", "claude").copy(shortcuts = listOf(mine), hidden = listOf("redraw", "/plan ⏎"))
+        val claude = bar.profileFor("claude", "claude").copy(shortcuts = listOf(mine), hidden = listOf("todos", "/btw"))
         val offered = claude.shortcutsFor(Programs.of("claude"))
         assertEquals(mine, offered.last())
-        assertFalse(offered.any { it.label == "redraw" || it.label == "/plan ⏎" })
-        assertEquals(19 - 2 + 1, offered.size)
+        assertFalse(offered.any { it.label == "todos" || it.label == "/btw" })
+        assertEquals(4 - 2 + 1, offered.size)
     }
 
     @Test
@@ -112,14 +106,14 @@ class ShortcutsTest {
     fun aProfilesPageListsWhatItsProgramsShip() {
         val claude = bar.profiles.indexOfFirst { "claude" in it.programs }
         val ref = ProfileRef.At(claude)
-        assertEquals(19, shippedFor(bar, ref, bar.profiles[claude], null, null).size)
+        assertEquals(4, shippedFor(bar, ref, bar.profiles[claude], null, null).size)
         // zsh's and shell's are the same, once.
         val shell = bar.profiles.indexOfFirst { "zsh" in it.programs }
-        assertEquals(5, shippedFor(bar, ProfileRef.At(shell), bar.profiles[shell], null, null).size)
+        assertEquals(4, shippedFor(bar, ProfileRef.At(shell), bar.profiles[shell], null, null).size)
         // A profile by command (bash) gets the focused pane's program's, if the pane's is it.
         val mine = bar.copy(profiles = listOf(KeyProfile("mine", listOf("bash"), emptyList())))
         val at = ProfileRef.At(0)
-        assertEquals(5, shippedFor(mine, at, mine.profiles.last(), "bash", "shell").size)
+        assertEquals(4, shippedFor(mine, at, mine.profiles.last(), "bash", "shell").size)
         assertEquals(0, shippedFor(mine, at, mine.profiles.last(), "vim", null).size)
         // The default's are the focused pane's, if it has no profile.
         assertEquals(0, shippedFor(bar, ProfileRef.Default, bar.default, "hntui", null).size)
@@ -129,20 +123,30 @@ class ShortcutsTest {
     fun aProfilesShortcutsSayHowManyInALine() {
         val claude = bar.profileFor("claude", "claude")
         val shipped = claude.shortcutsFor(Programs.of("claude"))
-        assertEquals("19", shortcutsSummary(claude, shipped))
-        assertEquals("18 · 1 yours · 2 hidden", shortcutsSummary(claude.copy(shortcuts = listOf(BarKey("x", listOf("x"))), hidden = listOf("mode", "/plan ⏎")), shipped))
+        assertEquals("4", shortcutsSummary(claude, shipped))
+        assertEquals("3 · 1 yours · 2 hidden", shortcutsSummary(claude.copy(shortcuts = listOf(BarKey("x", listOf("x"))), hidden = listOf("todos", "/btw")), shipped))
         assertEquals("none yet", shortcutsSummary(bar.default, emptyList()))
     }
 
     @Test
+    fun overThreeRowsTheyGoOnPages() {
+        // Rows 100 wide, 10 apart: two of 40 fit one, and one of 120 has one to itself.
+        assertEquals(
+            listOf(listOf(listOf(0, 1), listOf(2), listOf(3, 4)), listOf(listOf(5))),
+            paged(listOf(40, 40, 120, 40, 40, 40), 100, 10, 3),
+        )
+        assertEquals(listOf(listOf(listOf(0))), paged(listOf(40), 100, 10, 3))
+    }
+
+    @Test
     fun survivesStorage() {
-        val mine = bar.copy(default = bar.default.copy(shortcuts = listOf(BarKey("new window", listOf("prefix", "c"), bindings = true)), hidden = listOf("redraw")))
+        val mine = bar.copy(default = bar.default.copy(shortcuts = listOf(BarKey("new window", listOf("C-b", "c"), bindings = true)), hidden = listOf("todos")))
         assertEquals(mine, Json.decodeFromString<KeyBar>(Json.encodeToString(mine)))
         // A bar saved before there were shortcuts loads with none of the user's, and none hidden.
         val old = Json.decodeFromString<KeyBar>("""{"profiles":[{"name":"c","programs":["claude"],"keys":[{"label":"^o","keys":["C-o"]}]}],"default":{"name":"d","keys":[]}}""")
         assertEquals(emptyList<BarKey>(), old.profiles[0].shortcuts)
         assertEquals(emptyList<String>(), old.profiles[0].hidden)
         assertFalse(old.profiles[0].keys[0].shortcuts)
-        assertEquals(19, old.profileFor("claude", "claude").shortcutsFor(Programs.of("claude")).size)
+        assertEquals(4, old.profileFor("claude", "claude").shortcutsFor(Programs.of("claude")).size)
     }
 }

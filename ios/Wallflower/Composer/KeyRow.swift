@@ -4,17 +4,15 @@ import WallflowerDesign
 
 /**
  * The key bar: its keys, scrolling sideways, then a pencil to edit them.
- * Held, each says what it is; the shortcuts key, pressed, offers the
- * pane's [shortcuts], and one picked goes to [onShortcut].
+ * Held, each says what it is; the shortcuts key, pressed, brings up the
+ * pane's shortcuts ([menu], which the composer shows: ShortcutsUp).
  */
 struct KeyRow: View {
     let keys: [BarKey]
     let armed: BarKey?
-    var shortcuts: [BarKey] = []
+    let menu: ShortcutsMenu
     let onKey: (BarKey) -> Void
-    var onShortcut: (BarKey) -> Void = { _ in }
     let onEdit: () -> Void
-    var onEditShortcuts: () -> Void = {}
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -23,7 +21,7 @@ struct KeyRow: View {
                     if key.cluster {
                         ClusterChip(key: key, onKey: onKey)
                     } else if key.shortcuts {
-                        ShortcutsChip(key: key, shortcuts: shortcuts, onShortcut: onShortcut, onEdit: onEditShortcuts)
+                        ShortcutsChip(key: key, menu: menu)
                     } else {
                         KeyChip(key: key, armed: armed == key, onKey: onKey)
                     }
@@ -120,48 +118,52 @@ private struct KeyChip: View {
     }
 }
 
-/** Pressed, the pane's shortcuts open as a menu, to slide onto or tap. */
+/**
+ * Pressed, the pane's shortcuts come up ([menu]), to slide onto and let go
+ * of, or, let go of here, to tap; pressed again, they go.
+ */
 private struct ShortcutsChip: View {
-    let key: BarKey
-    let shortcuts: [BarKey]
-    let onShortcut: (BarKey) -> Void
-    let onEdit: () -> Void
-    @State private var pressed = false
-
-    var body: some View {
-        Menu {
-            ShortcutItems(shortcuts: shortcuts, onShortcut: onShortcut, onEdit: onEdit)
-        } label: {
-            Pill(on: false, pressed: pressed) { ink in KeyFace(key: key, color: ink) }
-                .frame(height: 36)
-        }
-        .menuStyle(.button)
-        .buttonStyle(PressReporting { pressed = $0 })
-    }
-}
-
-/** The pane's shortcuts as a menu's choices, each with what it sends beneath, then one to change them. */
-private struct ShortcutItems: View {
     @Environment(\.haptics) private var haptics
-    let shortcuts: [BarKey]
-    let onShortcut: (BarKey) -> Void
-    let onEdit: () -> Void
+    let key: BarKey
+    let menu: ShortcutsMenu
+    @State private var slid = false
+    @State private var openedThisPress = false
+    @State private var shutting = false
 
     var body: some View {
-        Section {
-            ForEach(Array(shortcuts.enumerated()), id: \.offset) { _, s in
-                Button {
-                    haptics.key()
-                    onShortcut(s)
-                } label: {
-                    Text(s.label)
-                    Text(KeyBar.name(of: s))
-                }
-            }
-        }
-        Section {
-            Button(action: onEdit) { Label("change shortcuts", systemImage: "pencil") }
-        }
+        Pill(on: false, pressed: menu.open) { ink in KeyFace(key: key, color: ink) }
+            .frame(height: 36)
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { v in
+                        if !openedThisPress {
+                            openedThisPress = true
+                            if menu.open {
+                                shutting = true
+                                menu.close()
+                            } else {
+                                haptics.tick()
+                                menu.show()
+                            }
+                            return
+                        }
+                        guard menu.open, !shutting else { return }
+                        if !slid && hypot(v.translation.width, v.translation.height) > 8 { slid = true }
+                        if slid {
+                            let now = menu.places.first { $0.value.contains(v.location) }?.key
+                            if now != menu.over, now != nil { haptics.tick() }
+                            menu.over = now
+                        }
+                    }
+                    .onEnded { _ in
+                        openedThisPress = false
+                        shutting = false
+                        if slid {
+                            if let i = menu.over { menu.pick(i) } else { menu.close() }
+                        }
+                        slid = false
+                    }
+            )
     }
 }
 

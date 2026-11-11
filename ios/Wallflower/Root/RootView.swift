@@ -68,7 +68,7 @@ struct RootView: View {
                             onProgram: { c, id in program = c; programId = id },
                             onSettings: { go(.settings) },
                             onEditKeys: { go(.profile(model.keyBar.bar.refFor(command: program, program: programId), back: nil)) },
-                            onEditShortcuts: { go(.shortcuts(model.keyBar.bar.refFor(command: program, program: programId), back: nil)) },
+                            onAddShortcut: { go(.shortcuts(model.keyBar.bar.refFor(command: program, program: programId), back: nil)) },
                             onExit: exit
                         )
                         .transition(.opacity)
@@ -162,11 +162,11 @@ struct RootView: View {
             KeyBarsScreen(store: model.keyBar, program: program, programId: programId, onBack: { go(.settings) }) { go(.profile($0, back: .keyBars)) }
         case .profile(let ref, let back):
             ProfileScreen(
-                store: model.keyBar, ref: ref, program: program, programId: programId, mux: session.mux,
+                store: model.keyBar, ref: ref, program: program, programId: programId,
                 onBack: { go(back) }, onShortcuts: { go(.shortcuts(ref, back: p)) }
             ) { go(.profile($0, back: back)) }
         case .shortcuts(let ref, let back):
-            ShortcutsScreen(store: model.keyBar, ref: ref, program: program, programId: programId, mux: session.mux, onBack: { go(back) }) { go(.shortcuts($0, back: back)) }
+            ShortcutsScreen(store: model.keyBar, ref: ref, program: program, programId: programId, onBack: { go(back) }) { go(.shortcuts($0, back: back)) }
         }
     }
 

@@ -11,18 +11,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import sh.ahmd.wallflower.ui.FloatAbove
 import sh.ahmd.wallflower.ui.frosted
 import sh.ahmd.wallflower.ui.Mono
-import sh.ahmd.wallflower.ui.Opener
-import sh.ahmd.wallflower.ui.chrome
 import sh.ahmd.wallflower.ui.choice
 import sh.ahmd.wallflower.ui.opens
 import sh.ahmd.wallflower.ui.rememberOpener
 import sh.ahmd.wallflower.ui.glyphs
-import sh.ahmd.wallflower.ui.Type
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -70,7 +65,8 @@ import sh.ahmd.wallflower.ui.onLetGo
 /**
  * The key bar: its keys, scrolling sideways, then a pencil to edit them.
  * Held, each says what it is; the shortcuts key, pressed, offers the
- * pane's [shortcuts], and one picked goes to [onShortcut].
+ * pane's [shortcuts], and one picked goes to [onShortcut], or a new one
+ * to add ([onAddShortcut]).
  */
 @Composable
 internal fun KeyRow(
@@ -80,7 +76,7 @@ internal fun KeyRow(
     onKey: (BarKey) -> Unit,
     onShortcut: (BarKey) -> Unit,
     onEdit: () -> Unit,
-    onEditShortcuts: () -> Unit,
+    onAddShortcut: () -> Unit,
     modifier: Modifier,
 ) {
     val list = rememberLazyListState()
@@ -108,7 +104,7 @@ internal fun KeyRow(
         items(keys) {
             when {
                 it.cluster -> ClusterChip(it, onKey)
-                it.shortcuts -> ShortcutsChip(it, shortcuts, onShortcut, onEditShortcuts)
+                it.shortcuts -> ShortcutsChip(it, shortcuts, onShortcut, onAddShortcut)
                 else -> KeyChip(it, armed == it, onKey)
             }
         }
@@ -174,7 +170,7 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
 
 /** Pressed, the pane's shortcuts come up over it, to slide onto or tap; see [ShortcutsUp]. */
 @Composable
-private fun ShortcutsChip(key: BarKey, shortcuts: List<BarKey>, onShortcut: (BarKey) -> Unit, onEdit: () -> Unit) {
+private fun ShortcutsChip(key: BarKey, shortcuts: List<BarKey>, onShortcut: (BarKey) -> Unit, onAdd: () -> Unit) {
     val haptics = haptics()
     val menu = rememberOpener()
     var chip by remember { mutableStateOf(Rect.Zero) }
@@ -186,83 +182,9 @@ private fun ShortcutsChip(key: BarKey, shortcuts: List<BarKey>, onShortcut: (Bar
             modifier = Modifier.height(36.dp).onGloballyPositioned { chip = it.boundsInWindow() },
             input = Modifier.opens(menu) { haptics.tick() },
         )
-        ShortcutsUp(menu, chip, shortcuts, onShortcut, onEdit)
+        ShortcutsUp(menu, chip, shortcuts, onShortcut, onAdd)
     }
 }
-
-/**
- * While [menu] is open, the pane's [shortcuts] float over the key that
- * opened it ([anchor]), frosted as the arrows are, then a pencil to change
- * them. Slid onto from that key and let go of, one goes and they shut; let
- * go of on the key, they stay up for a tap on one. What the one slid onto
- * sends shows above them.
- */
-@OptIn(ExperimentalLayoutApi::class) // FlowRow
-@Composable
-private fun ShortcutsUp(menu: Opener, anchor: Rect, shortcuts: List<BarKey>, onShortcut: (BarKey) -> Unit, onEdit: () -> Unit) {
-    if (!menu.open) return
-    val haptics = haptics()
-    fun pick(key: BarKey) {
-        haptics.key()
-        menu.open = false
-        onShortcut(key)
-    }
-    fun edit() {
-        menu.open = false
-        onEdit()
-    }
-    FloatAbove(anchor, gap = 16.dp, onDismiss = menu::dismiss) {
-        Column(Modifier.padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            shortcuts.getOrNull(menu.over)?.let {
-                Text(
-                    KeyBar.nameOf(it),
-                    color = Palette.fg,
-                    style = Type.label,
-                    maxLines = 1,
-                    modifier = Modifier.chrome().padding(horizontal = 10.dp, vertical = 6.dp),
-                )
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                shortcuts.forEachIndexed { i, s ->
-                    ShortcutPlace(menu.over == i, Modifier.choice(menu, i) { pick(s) }, { pick(s) }) {
-                        Text(faceOf(s), color = Palette.fg, fontFamily = Mono, fontSize = 14.sp, maxLines = 1, inlineContent = glyphs(Palette.fg))
-                    }
-                }
-                ShortcutPlace(menu.over == shortcuts.size, Modifier.choice(menu, shortcuts.size) { edit() }, ::edit) {
-                    GlyphIcon(Glyph.Edit, Palette.grey)
-                }
-            }
-        }
-    }
-}
-
-/** A shortcut floating over the bar: frosted, lit while slid onto or pressed, and [onTap] tapped. */
-@Composable
-private fun ShortcutPlace(lit: Boolean, modifier: Modifier, onTap: () -> Unit, content: @Composable () -> Unit) {
-    val tap by rememberUpdatedState(onTap)
-    var pressed by remember { mutableStateOf(false) }
-    Box(
-        modifier
-            .height(SHORTCUT)
-            .clip(RoundedCornerShape(12.dp))
-            .frosted(8.dp)
-            .background(if (lit || pressed) Palette.bg3.copy(alpha = 0.85f) else Palette.bg2.copy(alpha = 0.45f))
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        pressed = true
-                        tryAwaitRelease()
-                        pressed = false
-                    },
-                    onTap = { tap() },
-                )
-            }
-            .padding(horizontal = 14.dp),
-        contentAlignment = Alignment.Center,
-    ) { content() }
-}
-
-private val SHORTCUT = 40.dp
 
 /**
  * Keys gathered in one ([BarKey.cluster]): pressed, they bubble up above

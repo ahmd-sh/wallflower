@@ -178,7 +178,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                             onSessions = current::detach,
                             onSettings = { screen = Screen.Settings },
                             onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
-                            onEditShortcuts = { screen = Screen.Shortcuts(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
+                            onAddShortcut = { screen = Screen.Shortcuts(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
                             onExit = onExit,
                             onFiles = if (canFiles) ({ start, pane -> screen = Screen.Files(start, pane) }) else null,
                         )
@@ -227,7 +227,6 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     ref = s.ref,
                     program = program,
                     programId = programId,
-                    mux = mux,
                     onBack = { screen = s.back },
                     onOpen = { screen = s.copy(ref = it) },
                     onShortcuts = { screen = Screen.Shortcuts(s.ref, s) },
@@ -237,7 +236,6 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     ref = s.ref,
                     program = program,
                     programId = programId,
-                    mux = mux,
                     onBack = { screen = s.back },
                     onOpen = { screen = s.copy(ref = it) },
                 )
@@ -275,7 +273,7 @@ private fun TerminalScreen(
     onSessions: () -> Unit,
     onSettings: () -> Unit,
     onEditKeys: () -> Unit,
-    onEditShortcuts: () -> Unit,
+    onAddShortcut: () -> Unit,
     onExit: () -> Unit,
     onFiles: ((start: String, pane: String?) -> Unit)?,
 ) {
@@ -708,7 +706,7 @@ private fun TerminalScreen(
                                 if (!mobileView) view?.scrollToBottom()
                                 actions.shortcut(it, screen.line)
                             },
-                            onEditShortcuts = onEditShortcuts,
+                            onAddShortcut = onAddShortcut,
                         )
                     }
                 },

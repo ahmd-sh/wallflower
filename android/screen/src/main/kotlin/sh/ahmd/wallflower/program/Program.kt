@@ -297,17 +297,12 @@ class Supplied(
 object Programs {
     private val shells = KeyDefaults("shell", listOf("shortcuts", "ctrl", "Tab", "arrows", "C-r", "C-c", "C-d", "Escape"))
 
-    /**
-     * Commands more than keys: a shell's keys are its own (zsh's vi mode
-     * takes an alt key's Esc to leave insert; the dotfiles' zshrc has ^W run
-     * the suggestion), but these do the same in any.
-     */
+    /** Commands more than keys, as a shell's keys are its own; these do the same in any. */
     private val shellShortcuts = listOf(
         Shortcut(listOf("clear", "Enter")),
         Shortcut(listOf("cd -", "Enter")),
         Shortcut(listOf("!!", "Enter")),
         Shortcut(listOf("C-z"), "suspend"),
-        Shortcut(listOf("fg", "Enter")),
     )
     private val other = Shell()
 

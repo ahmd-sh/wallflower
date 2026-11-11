@@ -69,10 +69,10 @@ class KeyBarTest {
     @Test
     fun keysShowAsTheyWouldOnTheBar() {
         assertEquals("^j", KeyBar.labelOf(listOf("C-j")))
-        assertEquals("⌥⏎", KeyBar.labelOf(listOf("M-Enter")))
-        assertEquals("^⌥←", KeyBar.labelOf(listOf("C-M-Left")))
+        assertEquals("alt+⏎", KeyBar.labelOf(listOf("M-Enter"))) // alt, as keyboards mark it differently
+        assertEquals("^alt+←", KeyBar.labelOf(listOf("C-M-Left")))
         assertEquals("esc :w ⏎", KeyBar.labelOf(listOf("Escape", ":w", "Enter")))
-        assertEquals("C-", KeyBar.labelOf(listOf("C-")))
+        assertEquals("ctrl", KeyBar.labelOf(listOf("C-")))
         assertEquals("q", KeyBar.labelOf(listOf("q")))
     }
 
@@ -92,17 +92,17 @@ class KeyBarTest {
     @Test
     fun aHeldKeySaysWhatItSends() {
         assertEquals("ctrl c", KeyBar.nameOf(BarKey("^c", listOf("C-c"))))
-        assertEquals("ctrl alt left", KeyBar.nameOf(BarKey("^⌥←", listOf("C-M-Left"))))
+        assertEquals("ctrl alt left", KeyBar.nameOf(BarKey("^alt+←", listOf("C-M-Left"))))
         assertEquals("escape :w enter", KeyBar.nameOf(BarKey("save", listOf("Escape", ":w", "Enter"))))
         assertEquals("shift tab", KeyBar.nameOf(KeyBar.common.first { it.label == "⇧tab" }))
         assertEquals("ctrl + key", KeyBar.nameOf(KeyBar.common.first { it.label == "ctrl" }))
-        assertEquals("prefix + key", KeyBar.nameOf(KeyBar.common.first { it.label == "pfx" }))
+        assertEquals("shift + key", KeyBar.nameOf(KeyBar.common.first { it.label == "shift" }))
     }
 
     @Test
     fun aLabelTheUserWroteIsTheirs() {
         assertTrue(KeyBar.common.all { it.ownLabel })
-        assertTrue(BarKey("^⌥←", listOf("C-M-Left")).ownLabel)
+        assertTrue(BarKey("^alt+←", listOf("C-M-Left")).ownLabel)
         assertFalse(BarKey("save", listOf("Escape", ":w", "Enter")).ownLabel)
         assertFalse(BarKey("pfx", listOf("C-f")).ownLabel)
     }
@@ -116,11 +116,14 @@ class KeyBarTest {
 
     @Test
     fun stickyKeysGoWithTheNextKey() {
-        val pfx = KeyBar.common.first { it.label == "pfx" }
         val ctrl = KeyBar.common.first { it.label == "ctrl" }
-        assertEquals(BarKey("pfx j", listOf("prefix", "j"), bindings = true), pfx.then(BarKey.typed('j')))
+        val shift = KeyBar.common.first { it.label == "shift" }
         assertEquals(listOf("C-j"), ctrl.then(BarKey.typed('j')).keys)
         assertEquals(listOf("C-Up"), ctrl.then(KeyBar.common.first { it.label == "↑" }).keys)
+        assertEquals(listOf("S-Up"), shift.then(KeyBar.common.first { it.label == "↑" }).keys)
+        assertEquals(listOf("BTab"), shift.then(KeyBar.common.first { it.label == "tab" }).keys) // shift tab is back tab
+        assertEquals(listOf("J"), shift.then(BarKey.typed('j')).keys) // a capital
+        assertEquals(listOf("prefix", "j"), BarKey("pfx", listOf("prefix"), sticky = true, bindings = true).then(BarKey.typed('j')).keys) // a saved prefix key still goes first
         assertEquals(listOf("Space"), BarKey.typed(' ').keys)
     }
 

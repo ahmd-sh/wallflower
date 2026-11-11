@@ -87,18 +87,19 @@ struct PaneActions {
     }
 
     /**
-     * A shortcut, picked from the bar: its keys, through the multiplexer's
-     * bindings if it says. Text it starts with that Enter sends goes in
-     * place of what [line] holds, as the box's does, so a command runs as
-     * itself whatever's in the line (and in vim mode's NORMAL, where it
-     * can't be seen); other text is typed where the cursor is.
+     * A shortcut, picked from the bar. Text it starts with that Enter sends
+     * goes in place of what [line] holds, as the box's does, so a command
+     * runs as itself whatever's in the line (and in vim mode's NORMAL, where
+     * it can't be seen). Its other keys and text go where the cursor is: as
+     * if typed on a keyboard attached to the multiplexer if it says, so its
+     * key bindings apply (the user's prefix, then a key), where it can.
      */
     func shortcut(_ key: BarKey, line: InputLine?) {
-        if key.bindings { return keys(key.keys, bindings: true) }
+        let bound = key.bindings && session.mux?.can.contains(Mux.BINDINGS) == true
         for (i, step) in KeyBar.steps(key.keys).enumerated() {
             switch step {
-            case .keys(let k): keys(k)
-            case .text(let text, enter: false): type(text)
+            case .keys(let k): keys(k, bindings: bound)
+            case .text(let text, enter: false): if bound { keys([text], bindings: true) } else { type(text) }
             case .text(let text, enter: true) where i == 0: send(text, enter: true, line: line, unseen: true)
             case .text(let text, enter: true): _ = session.submit(pane.id, text)
             }

@@ -14,9 +14,9 @@ import sh.ahmd.wallflower.program.Shortcut
 /**
  * A key on the bar: what it shows, and the keys it sends by wallflower's
  * names (`Escape`, `C-c`, or literal text). A [sticky] key waits for the next
- * key, from the bar or the keyboard, and goes with it. With [bindings], the
- * multiplexer's key bindings apply, as if typed on a keyboard attached to it;
- * `prefix` is its prefix key. A [cluster] gathers keys, each its own, laid
+ * key, from the bar or the keyboard, and goes with it. With [bindings], it
+ * goes as if typed on a keyboard attached to the multiplexer, so its key
+ * bindings apply (the user's own shortcuts do). A [cluster] gathers keys, each its own, laid
  * out as arrow keys with two more above: [keys] up, left, the one top left,
  * right, down, and the one top right. A [shortcuts] key sends none of its
  * own: it offers the pane's shortcuts ([KeyProfile.shortcutsFor]).
@@ -30,11 +30,11 @@ data class BarKey(
     val cluster: Boolean = false,
     val shortcuts: Boolean = false,
 ) {
-    /** This sticky key with the next one: a modifier (`C-`, `M-`) joins it, anything else goes first. */
+    /** This sticky key with the next one: a modifier (`C-`, `M-`, `S-`) joins it, anything else goes first. */
     fun then(next: BarKey): BarKey {
         val first = keys.firstOrNull().orEmpty()
-        val joined = if (first.endsWith("-") && next.keys.isNotEmpty()) {
-            listOf(first + next.keys[0]) + next.keys.drop(1)
+        val joined = if (first in KeyBar.modifiers && next.keys.isNotEmpty()) {
+            listOf(KeyBar.held(first, next.keys[0])) + next.keys.drop(1)
         } else {
             keys + next.keys
         }
@@ -139,30 +139,43 @@ data class KeyBar(
         /** The pane's shortcuts, in one key; `shortcuts` by name. */
         val SHORTCUTS = BarKey("shortcuts", emptyList(), shortcuts = true)
 
+        /** The modifiers, held with the next key: ctrl, alt and shift. */
+        val modifiers = listOf("C-", "M-", "S-")
+
+        /** Keys every keyboard has, which a shortcut's keys are made of, besides text and the modifiers. */
+        val named = listOf("Escape", "Tab", "Enter", "BSpace", "Space", "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "DC")
+
         /** Keys offered when editing a bar. */
         val common = listOf(
-            "esc" to "Escape", "tab" to "Tab", "⇧tab" to "BTab", "⏎" to "Enter",
+            "esc" to "Escape", "tab" to "Tab", "⇧tab" to "BTab", "⏎" to "Enter", "⌫" to "BSpace", "space" to "Space",
             "↑" to "Up", "↓" to "Down", "←" to "Left", "→" to "Right",
             "home" to "Home", "end" to "End", "pgup" to "PageUp", "pgdn" to "PageDown",
-            "⌫" to "BSpace", "space" to "Space", "⌥⏎" to "M-Enter",
             "^c" to "C-c", "^d" to "C-d", "^z" to "C-z", "^r" to "C-r", "^l" to "C-l",
-            "^a" to "C-a", "^e" to "C-e", "^u" to "C-u", "^w" to "C-w", "^o" to "C-o",
-            "^t" to "C-t", "^b" to "C-b",
-            "y" to "y", "n" to "n", "q" to "q", "1" to "1", "2" to "2", "3" to "3",
-            "/" to "/", "|" to "|", "~" to "~", "-" to "-", "`" to "`",
+            "y" to "y", "n" to "n", "1" to "1", "2" to "2", "3" to "3",
         ).map { (label, key) -> BarKey(label, listOf(key)) } + listOf(
             ARROWS,
             SHORTCUTS,
-            BarKey("pfx", listOf("prefix"), sticky = true, bindings = true),
             BarKey("ctrl", listOf("C-"), sticky = true),
             BarKey("alt", listOf("M-"), sticky = true),
+            BarKey("shift", listOf("S-"), sticky = true),
         )
 
-        /** How [keys] show on a key: ^c, ⌥⏎, ⇧↑, esc :w ⏎. */
+        /** [key] with [modifier] held: shift tab is back tab, and a shifted letter its capital. */
+        fun held(modifier: String, key: String): String = when {
+            modifier != "S-" -> modifier + key
+            key == "Tab" -> "BTab"
+            key.length == 1 && key[0].isLetter() -> key.uppercase()
+            else -> modifier + key
+        }
+
+        /** How [keys] show on a key: ^c, alt+⏎, ⇧↑, esc :w ⏎; a modifier alone, by its name. */
         fun labelOf(keys: List<String>): String = keys.joinToString(" ") { key ->
             val (held, rest) = held(key)
-            held.joinToString("") { MODIFIERS.getValue(it) } + (NAMED[rest] ?: rest)
+            held.joinToString("") { MODIFIERS.getValue(it) } + (NAMED[rest] ?: SAID[rest]?.takeIf { rest in modifiers } ?: rest)
         }
+
+        /** How a modifier held with a key shows before it: ^, alt+ or ⇧. */
+        fun modifierLabel(modifier: Char): String = MODIFIERS.getValue(modifier)
 
         /** What [key] sends, in words; a sticky one, with a key. */
         fun nameOf(key: BarKey): String = when {
@@ -188,11 +201,11 @@ data class KeyBar(
             return held to rest
         }
 
-        private val MODIFIERS = mapOf('C' to "^", 'M' to "⌥", 'S' to "⇧")
+        private val MODIFIERS = mapOf('C' to "^", 'M' to "alt+", 'S' to "⇧")
         private val NAMED = mapOf(
             "Enter" to "⏎", "Escape" to "esc", "Tab" to "tab", "BTab" to "⇧tab", "BSpace" to "⌫", "Space" to "space",
             "Up" to "↑", "Down" to "↓", "Left" to "←", "Right" to "→", "Home" to "home", "End" to "end",
-            "PageUp" to "pgup", "PageDown" to "pgdn", "DC" to "del", "IC" to "ins", "prefix" to "pfx",
+            "PageUp" to "pgup", "PageDown" to "pgdn", "DC" to "del", "IC" to "ins", "prefix" to "prefix",
         )
         private val SAID = mapOf(
             "C-" to "ctrl", "M-" to "alt", "S-" to "shift",
@@ -265,7 +278,7 @@ data class KeyBar(
 
         private fun keys(vararg labels: String) = labels.map { l -> common.first { it.label == l } }
 
-        /** A key by name, as the bar shows it: `arrows`, `shortcuts` and the sticky ones (`ctrl`, `alt`, `pfx`) by theirs. */
+        /** A key by name, as the bar shows it: `arrows`, `shortcuts` and the sticky ones (`ctrl`, `alt`, `shift`) by theirs. */
         private fun key(name: String) = common.firstOrNull { (it.sticky || it.cluster || it.shortcuts) && it.label == name }
             ?: common.firstOrNull { !it.sticky && !it.cluster && it.keys == listOf(name) } ?: BarKey(labelOf(listOf(name)), listOf(name))
 

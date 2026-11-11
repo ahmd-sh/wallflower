@@ -5,9 +5,9 @@ import Wire
 
 /**
  * A profile of the key bar to change: its name and programs (the default's
- * for everything else), its keys to move, remove and add (custom ones too),
- * its shortcuts (a page of their own), and what stop, the send button, the
- * return key and clear press.
+ * for everything else), its keys to move, remove and add, its shortcuts (a
+ * page of their own), and what stop, the send button, the return key and
+ * clear press.
  */
 public struct ProfileScreen: View {
     @Environment(\.palette) private var palette
@@ -15,7 +15,6 @@ public struct ProfileScreen: View {
     let ref: ProfileRef
     let program: String?
     let programId: String?
-    let mux: Mux?
     let onBack: () -> Void
     let onShortcuts: () -> Void
     let onOpen: (ProfileRef) -> Void
@@ -25,14 +24,13 @@ public struct ProfileScreen: View {
     @State private var deleted: KeyProfile?
 
     public init(
-        store: KeyBarStore, ref: ProfileRef, program: String?, programId: String?, mux: Mux?,
+        store: KeyBarStore, ref: ProfileRef, program: String?, programId: String?,
         onBack: @escaping () -> Void, onShortcuts: @escaping () -> Void, onOpen: @escaping (ProfileRef) -> Void
     ) {
         self.store = store
         self.ref = ref
         self.program = program
         self.programId = programId
-        self.mux = mux
         self.onBack = onBack
         self.onShortcuts = onShortcuts
         self.onOpen = onOpen
@@ -41,7 +39,7 @@ public struct ProfileScreen: View {
     public var body: some View {
         Group {
             if let profile = deleted ?? store.bar.profile(at: ref) {
-                ProfileEditor(store: store, ref: ref, profile: profile, program: program, programId: programId, mux: mux, onBack: onBack, onShortcuts: onShortcuts, onOpen: onOpen) {
+                ProfileEditor(store: store, ref: ref, profile: profile, program: program, programId: programId, onBack: onBack, onShortcuts: onShortcuts, onOpen: onOpen) {
                     deleted = profile
                     onBack()
                 }
@@ -69,7 +67,6 @@ private struct ProfileEditor: View {
     let profile: KeyProfile
     let program: String?
     let programId: String?
-    let mux: Mux?
     let onBack: () -> Void
     let onShortcuts: () -> Void
     let onOpen: (ProfileRef) -> Void
@@ -78,13 +75,9 @@ private struct ProfileEditor: View {
     @State private var dragging = false
     @State private var name: String
     @State private var programs: String
-    @State private var clear: String
-    @State private var label = ""
-    @State private var sends = ""
-    @State private var bound = false
 
     init(
-        store: KeyBarStore, ref: ProfileRef, profile: KeyProfile, program: String?, programId: String?, mux: Mux?,
+        store: KeyBarStore, ref: ProfileRef, profile: KeyProfile, program: String?, programId: String?,
         onBack: @escaping () -> Void, onShortcuts: @escaping () -> Void, onOpen: @escaping (ProfileRef) -> Void, onDelete: @escaping () -> Void
     ) {
         self.store = store
@@ -92,18 +85,13 @@ private struct ProfileEditor: View {
         self.profile = profile
         self.program = program
         self.programId = programId
-        self.mux = mux
         self.onBack = onBack
         self.onShortcuts = onShortcuts
         self.onDelete = onDelete
         self.onOpen = onOpen
         _name = State(initialValue: profile.name)
         _programs = State(initialValue: profile.programs.joined(separator: " "))
-        _clear = State(initialValue: (profile.clear ?? Programs.of(profile.programs.first).clearKeys).joined(separator: " "))
     }
-
-    /** What a multiplexer that can't take keys through its bindings doesn't offer; unknown until connected. */
-    private var bindings: Bool { mux.map { $0.can.contains(Mux.BINDINGS) } ?? true }
 
     var body: some View {
         Page(ref == .default ? "default keys" : profile.name, onBack: onBack, scrolls: !dragging) {
@@ -164,31 +152,18 @@ private struct ProfileEditor: View {
             KeyChoices(choices: presses.map { keys in KeyChoice(keys: keys, selected: profile.returnKeys(runs) == keys) { save { $0.returnKey = keys } } })
 
             Section("clear")
-            Paragraph("What empties the app's line, so what's in the box replaces it (sent once per row of the line). Empty: the box adds to the line.")
-            Field("keys", value: Binding(get: { clear }, set: { v in
-                clear = v
-                save { $0.clear = v.split(separator: " ").map(String.init) }
-            }))
+            Paragraph("What empties the app's line, so what's in the box replaces it (once per row of the line). none: the box adds to the line.")
+            let usual = Programs.of(profile.programs.first).clearKeys
+            KeyChoices(choices: [KeyChoice(id: "program", face: [.text("the program's")], name: usual.isEmpty ? "nothing" : KeyBar.name(of: usual), selected: profile.clear == nil || profile.clear == usual) { save { $0.clear = nil } }]
+                + clears.filter { $0 != usual }.map { keys in
+                    keys.isEmpty
+                        ? KeyChoice(id: "none", face: [.text("none")], name: "nothing", selected: profile.clear == keys) { save { $0.clear = keys } }
+                        : KeyChoice(keys: keys, selected: profile.clear == keys) { save { $0.clear = keys } }
+                })
 
             Section("add")
-            KeyChoices(choices: KeyBar.common.filter { bindings || !$0.bindings }.map { k in KeyChoice(k, id: k, selected: false) { save { $0.keys.append(k) } } })
-
-            Section("custom")
-            Paragraph(keyNamesHelp + " Tap one to add it.")
-            let keys = KeyBar.keys(of: sends)
-            Field("sends", value: $sends)
-            KeyNames(sends: $sends)
-            Field(label.trimmingCharacters(in: .whitespaces).isEmpty && !keys.isEmpty ? "label (blank: \(KeyBar.label(of: keys)))" : "label", value: $label)
-            if bindings {
-                Toggle("through \(mux?.name ?? "the multiplexer")'s key bindings (C-j to change pane; prefix is your prefix)", on: bound) { bound = $0 }
-            }
-            WordButton("add key") {
-                guard !keys.isEmpty else { return }
-                let named = label.trimmingCharacters(in: .whitespaces).isEmpty ? KeyBar.label(of: keys) : label
-                save { $0.keys.append(BarKey(label: named, keys: keys, bindings: bound && bindings)) }
-                label = ""
-                sends = ""
-            }
+            Paragraph("Your own keys, like ctrl with a letter or several in a row, are shortcuts: add them from the shortcuts key.")
+            KeyChoices(choices: KeyBar.common.map { k in KeyChoice(k, id: k, selected: false) { save { $0.keys.append(k) } } })
 
             if case .at(let i) = ref {
                 Spacer().frame(height: 8)
@@ -254,34 +229,5 @@ private struct KeyID: Hashable {
 private let stops = ["C-c", "Escape", "C-d", "q"].map { [$0] }
 private let presses = ["Enter", "C-j", "M-Enter"].map { [$0] }
 
-/** How a custom key's keys are written. */
-let keyNamesHelp = "Key names, space-separated; the words between them are typed as they are (Escape :w Enter). C- is ctrl, M- alt and S- shift, "
-    + "joined to the key they're held with (C-a, M-Enter, S-Up). BTab is shift tab, BSpace backspace, DC delete, IC insert; F1 to F12 work too."
-
-/** wallflower's names (tmux's) for what a custom key sends, beyond text, to tap onto the end of [sends]: joined to a modifier written last (C-), else a word of its own. */
-struct KeyNames: View {
-    @Binding var sends: String
-
-    var body: some View {
-        Flow(spacing: 6) {
-            ForEach(names, id: \.self) { n in
-                Chip(n, selected: false) {
-                    let joins = sends.isEmpty || sends.hasSuffix(" ") || isHeld(sends.components(separatedBy: " ").last ?? "")
-                    sends = joins ? sends + n : "\(sends) \(n)"
-                }
-            }
-        }
-    }
-}
-
-private let names = [
-    "C-", "M-", "S-", "Enter", "Escape", "Tab", "BTab", "BSpace", "Space",
-    "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "DC", "IC",
-]
-
-/** Whether [s] is only modifiers held (C-, C-M-), for a key to join. */
-private func isHeld(_ s: String) -> Bool {
-    let c = Array(s)
-    guard !c.isEmpty, c.count % 2 == 0 else { return false }
-    return stride(from: 0, to: c.count, by: 2).allSatisfy { "CMS".contains(c[$0]) && c[$0 + 1] == "-" }
-}
+/** What can empty a row of a program's line: ctrl u (most), ctrl x ctrl k (zsh's kill-buffer), end then ctrl u (readline's from the end), or nothing. */
+private let clears = [["C-u"], ["C-x", "C-k"], ["End", "C-u"], []]

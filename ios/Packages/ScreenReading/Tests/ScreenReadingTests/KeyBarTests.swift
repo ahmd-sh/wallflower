@@ -63,10 +63,10 @@ final class KeyBarTests: XCTestCase {
 
     func testKeysShowAsTheyWouldOnTheBar() {
         XCTAssertEqual("^j", KeyBar.label(of: ["C-j"]))
-        XCTAssertEqual("⌥⏎", KeyBar.label(of: ["M-Enter"]))
-        XCTAssertEqual("^⌥←", KeyBar.label(of: ["C-M-Left"]))
+        XCTAssertEqual("alt+⏎", KeyBar.label(of: ["M-Enter"])) // alt, as keyboards mark it differently
+        XCTAssertEqual("^alt+←", KeyBar.label(of: ["C-M-Left"]))
         XCTAssertEqual("esc :w ⏎", KeyBar.label(of: ["Escape", ":w", "Enter"]))
-        XCTAssertEqual("C-", KeyBar.label(of: ["C-"]))
+        XCTAssertEqual("ctrl", KeyBar.label(of: ["C-"]))
         XCTAssertEqual("q", KeyBar.label(of: ["q"]))
     }
 
@@ -81,16 +81,16 @@ final class KeyBarTests: XCTestCase {
 
     func testAHeldKeySaysWhatItSends() {
         XCTAssertEqual("ctrl c", KeyBar.name(of: BarKey(label: "^c", keys: ["C-c"])))
-        XCTAssertEqual("ctrl alt left", KeyBar.name(of: BarKey(label: "^⌥←", keys: ["C-M-Left"])))
+        XCTAssertEqual("ctrl alt left", KeyBar.name(of: BarKey(label: "^alt+←", keys: ["C-M-Left"])))
         XCTAssertEqual("escape :w enter", KeyBar.name(of: BarKey(label: "save", keys: ["Escape", ":w", "Enter"])))
         XCTAssertEqual("shift tab", KeyBar.name(of: KeyBar.common.first { $0.label == "⇧tab" }!))
         XCTAssertEqual("ctrl + key", KeyBar.name(of: KeyBar.common.first { $0.label == "ctrl" }!))
-        XCTAssertEqual("prefix + key", KeyBar.name(of: KeyBar.common.first { $0.label == "pfx" }!))
+        XCTAssertEqual("shift + key", KeyBar.name(of: KeyBar.common.first { $0.label == "shift" }!))
     }
 
     func testALabelTheUserWroteIsTheirs() {
         XCTAssertTrue(KeyBar.common.allSatisfy(\.hasOwnLabel))
-        XCTAssertTrue(BarKey(label: "^⌥←", keys: ["C-M-Left"]).hasOwnLabel)
+        XCTAssertTrue(BarKey(label: "^alt+←", keys: ["C-M-Left"]).hasOwnLabel)
         XCTAssertFalse(BarKey(label: "save", keys: ["Escape", ":w", "Enter"]).hasOwnLabel)
         XCTAssertFalse(BarKey(label: "pfx", keys: ["C-f"]).hasOwnLabel)
     }
@@ -101,11 +101,14 @@ final class KeyBarTests: XCTestCase {
     }
 
     func testStickyKeysGoWithTheNextKey() {
-        let pfx = KeyBar.common.first { $0.label == "pfx" }!
         let ctrl = KeyBar.common.first { $0.label == "ctrl" }!
-        XCTAssertEqual(BarKey(label: "pfx j", keys: ["prefix", "j"], bindings: true), pfx.then(BarKey.typed("j")))
+        let shift = KeyBar.common.first { $0.label == "shift" }!
         XCTAssertEqual(["C-j"], ctrl.then(BarKey.typed("j")).keys)
         XCTAssertEqual(["C-Up"], ctrl.then(KeyBar.common.first { $0.label == "↑" }!).keys)
+        XCTAssertEqual(["S-Up"], shift.then(KeyBar.common.first { $0.label == "↑" }!).keys)
+        XCTAssertEqual(["BTab"], shift.then(KeyBar.common.first { $0.label == "tab" }!).keys) // shift tab is back tab
+        XCTAssertEqual(["J"], shift.then(BarKey.typed("j")).keys) // a capital
+        XCTAssertEqual(["prefix", "j"], BarKey(label: "pfx", keys: ["prefix"], sticky: true, bindings: true).then(BarKey.typed("j")).keys) // a saved prefix key still goes first
         XCTAssertEqual(["Space"], BarKey.typed(" ").keys)
     }
 
