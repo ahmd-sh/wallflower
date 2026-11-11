@@ -84,6 +84,7 @@ public final class Session {
     @ObservationIgnored private let link: Link
     @ObservationIgnored private let panes = Terminals()
     @ObservationIgnored private let transfer = Transfer()
+    @ObservationIgnored private let files = Files()
     @ObservationIgnored private let hidden: Hidden?
     @ObservationIgnored private let fast: Fast
 
@@ -118,6 +119,8 @@ public final class Session {
     public private(set) var machine: String? { didSet { if let m = machine, m != oldValue { onMachine?(m) } } }
     /** Where the gateway saves uploads: paths under it in what's sent are uploads. */
     public private(set) var uploadDir: String?
+    /** The gateway shows the Mac's files ([list], [fetch]), as it last said. */
+    public private(set) var canFiles = false
     /** The terminal's size, in cells, as the gateway was last told it. */
     public private(set) var size: (cols: Int, rows: Int)
 
@@ -169,8 +172,10 @@ public final class Session {
         back = p
         fast.panes = panes
         fast.transfer = transfer
+        fast.fetches = files.fetches
         panes.link = link
         transfer.link = link
+        files.link = link
         link.events = self
         link.onStatus = { [weak self] s in self?.status = s }
         panes.changed = { [weak self] in
@@ -519,6 +524,20 @@ public final class Session {
         try await transfer.upload(id: id, name: name, data: data, progress: progress)
     }
 
+    // MARK: Files
+
+    /** A directory of the Mac's (absolute, or from ~), its entries by name; throws why it couldn't be read. */
+    public func list(_ path: String) async throws -> Listing { try await files.list(path) }
+
+    /**
+     * A file of the Mac's, all of it or its first [limit] bytes, written to
+     * [to] as it comes, with [progress] in bytes so far of how many; what the
+     * gateway said of it. Cancelled, it stops coming.
+     */
+    public func fetch(_ path: String, limit: Int64? = nil, to url: URL, progress: @escaping @MainActor (Int64, Int64) -> Void = { _, _ in }) async throws -> FileReply {
+        try await files.fetch(path, limit: limit, to: url, progress: progress)
+    }
+
     static func millis() -> Int { Int(Date().timeIntervalSince1970 * 1000) }
 
     static let PROBE_TIMEOUT: TimeInterval = 5
@@ -547,6 +566,7 @@ extension Session: Link.Events {
         switch m {
         case .hello(let h):
             uploadDir = h.uploads
+            canFiles = h.can.contains(ServerHello.FILES)
             if let name = h.machine { machine = name }
             Programs.supply(Dictionary(h.programs.map { ($0.id, $0.program()) }, uniquingKeysWith: { a, _ in a }))
         case .attached(let a):
@@ -578,6 +598,8 @@ extension Session: Link.Events {
             arrived(p.id)
         case .uploaded(let u):
             transfer.uploaded(u)
+        case .listing(let l):
+            files.listing(l)
         case .notification(let n):
             onNotification?(n)
         default:
@@ -588,14 +610,17 @@ extension Session: Link.Events {
     func down() { undelivered() }
 }
 
-/** The connection thread's way in: pane output and repaints to the terminals, pictures to their askers. */
+/** The connection thread's way in: pane output and repaints to the terminals, pictures to their askers, fetched files to theirs. */
 private final class Fast: FastPath, @unchecked Sendable {
     var panes: Terminals?
     var transfer: Transfer?
+    var fetches: Fetches?
 
     func data(_ pane: String, _ bytes: Data) { panes?.write(pane, bytes) }
     func reset(_ m: Reset) { panes?.reset(m) }
     func picture(_ id: String, _ bytes: Data) { transfer?.picture(id, bytes) }
+    func file(_ m: FileReply) { fetches?.reply(m) }
+    func file(_ id: String, _ bytes: Data) { fetches?.bytes(id, bytes) }
 }
 
 private extension ProgramData {

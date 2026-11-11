@@ -4,6 +4,7 @@ public let FRAME_JSON: UInt8 = 1
 public let FRAME_DATA: UInt8 = 2
 public let FRAME_UPLOAD: UInt8 = 3
 public let FRAME_PICTURE: UInt8 = 4
+public let FRAME_FILE: UInt8 = 5
 
 /// Bounds a frame's length field, so a corrupt stream can't make a reader allocate without limit.
 public let MAX_FRAME = 16 << 20
@@ -29,6 +30,9 @@ public enum Frame: Sendable, Equatable {
 
     /// A picture entry's bytes; none if they're gone.
     case picture(id: String, bytes: Data)
+
+    /// The next of a fetched file's bytes, by the fetch's id.
+    case file(id: String, bytes: Data)
 }
 
 /// Frames from bytes as they arrive, however they're split.
@@ -66,7 +70,7 @@ public struct FrameDecoder: Sendable {
             guard buffer.count - start >= 5 else { return nil }
             let type = buffer[start + 4]
             switch type {
-            case FRAME_JSON, FRAME_DATA, FRAME_PICTURE: break
+            case FRAME_JSON, FRAME_DATA, FRAME_PICTURE, FRAME_FILE: break
             default:
                 start += 5
                 skip = length - 1
@@ -83,6 +87,9 @@ public struct FrameDecoder: Sendable {
             case FRAME_DATA:
                 let (id, bytes) = try self.id(payload)
                 return .data(pane: id, bytes: bytes)
+            case FRAME_FILE:
+                let (id, bytes) = try self.id(payload)
+                return .file(id: id, bytes: bytes)
             default:
                 let (id, bytes) = try self.id(payload)
                 return .picture(id: id, bytes: bytes)

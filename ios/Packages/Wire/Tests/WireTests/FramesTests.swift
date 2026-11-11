@@ -46,6 +46,11 @@ final class FramesTests: XCTestCase {
             .renameSession(mux: "tmux", session: "$2", name: "play"),
             .killSession(mux: "tmux", session: "$2"),
             .detach,
+            .list(id: "l1", path: "~/dev ✓"),
+            .list(id: "l2", path: ""),
+            .fetch(id: "f1", path: "/Users/me/shot.png"),
+            .fetch(id: "f2", path: "~/log.txt", limit: 65536),
+            .cancel(id: "f1"),
         ]
         for m in messages { out.append(FrameEncoder.message(m)) }
         out.append(FrameEncoder.data(pane: "%1", bytes: Data("\u{1b}[<64;10;5M".utf8)))
@@ -75,7 +80,7 @@ final class FramesTests: XCTestCase {
             return m
         }
 
-        XCTAssertEqual(.hello(ServerHello(v: VERSION, uploads: "/Users/me/Library/Caches/wallflower/uploads", machine: "vishingstar")), try message())
+        XCTAssertEqual(.hello(ServerHello(v: VERSION, uploads: "/Users/me/Library/Caches/wallflower/uploads", machine: "vishingstar", can: [ServerHello.FILES])), try message())
         XCTAssertEqual(.attached(Attached(mux: Mux(name: "tmux", version: "3.8", can: [Mux.BINDINGS]))), try message())
         guard case let .state(state) = try message() else { throw Failure("not state") }
         XCTAssertEqual("o", state.name)
@@ -150,6 +155,27 @@ final class FramesTests: XCTestCase {
             ),
             try message()
         )
+        XCTAssertEqual(
+            .listing(
+                Listing(
+                    id: "l1", path: "/Users/me/dev ✓",
+                    entries: [
+                        FileEntry(name: ".git", kind: FileEntry.DIR, mtime: 1792209270006, hidden: true),
+                        FileEntry(name: "latest", kind: FileEntry.DIR, link: true, mtime: 1792209270007),
+                        FileEntry(name: "notes ✓.md", kind: FileEntry.FILE, size: 1234, mtime: 1792209270008),
+                        FileEntry(name: "wf.sock", kind: FileEntry.OTHER),
+                    ],
+                    more: true
+                )
+            ),
+            try message()
+        )
+        XCTAssertEqual(.listing(Listing(id: "l2", path: "/Users/me/Library/Mail", error: "operation not permitted")), try message())
+        XCTAssertEqual(.file(FileReply(id: "f1", path: "/Users/me/shot.png", size: 3)), try message())
+        guard case let .file(fileID, fileBytes) = try frame() else { throw Failure("not a file frame") }
+        XCTAssertEqual("f1", fileID)
+        XCTAssertEqual([0x89, UInt8(ascii: "P"), UInt8(ascii: "N")], [UInt8](fileBytes))
+        XCTAssertEqual(.file(FileReply(id: "f2", path: "/Users/me/log.txt", error: "permission denied")), try message())
         XCTAssertEqual(.bye(Bye(reason: "tmux exited")), try message())
         XCTAssertTrue(frames.isEmpty, "chunk \(chunk)")
     }
