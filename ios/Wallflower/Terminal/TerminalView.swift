@@ -162,6 +162,13 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         guard t.frame(into: fb, force: forceFull, reader: self) else { return }
         forceFull = false
         if fb.cols != cols || fb.rows != gridRows {
+            // The frame before the grid changed size fades into the new one.
+            if cols > 0 {
+                let fade = CATransition()
+                fade.type = .fade
+                fade.duration = 0.18
+                content.add(fade, forKey: "regrid")
+            }
             cols = fb.cols
             gridRows = fb.rows
             rows.forEach { $0.removeFromSuperlayer() }

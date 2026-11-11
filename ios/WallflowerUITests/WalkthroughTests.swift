@@ -150,3 +150,12 @@ extension WalkthroughTests {
         shot("notified-later")
     }
 }
+
+extension WalkthroughTests {
+    /** Lets the app notify, as a first run asks, so later runs aren't covered by the question. */
+    func testAllowNotifications() {
+        app.launch()
+        allowNotifications()
+        sleep(2)
+    }
+}

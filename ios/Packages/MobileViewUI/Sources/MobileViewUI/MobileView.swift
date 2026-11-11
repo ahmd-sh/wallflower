@@ -300,6 +300,7 @@ private struct Conversation: View {
         }
         .scrollPosition($position)
         .defaultScrollAnchor(.bottom)
+        .scrollDismissesKeyboard(.interactively)
         .onScrollPhaseChange { _, now in
             scrolling = now
             if now == .interacting { following = false }
