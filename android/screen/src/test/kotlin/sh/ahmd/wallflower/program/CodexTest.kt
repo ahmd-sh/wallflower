@@ -83,6 +83,13 @@ class CodexTest {
     }
 
     @Test
+    fun itsModeIsPlanWhenItsFooterSaysSo() {
+        assertEquals(Mode("plan", ""), Codex.mode(captured("codex-plan.ansi", 80)))
+        assertEquals(Mode("default", ""), Codex.mode(screen("idle")))
+        assertNull(Codex.mode(screen("question")))
+    }
+
+    @Test
     fun itHasItsOwnBarAndStop() {
         assertEquals(Codex, Programs.of("codex"))
         assertEquals(listOf("Escape"), Codex.keyBar.stop)

@@ -1,0 +1,24 @@
+[1;2m[48;5;8m› [0m[48;5;8mNow read internal/program/program.go, then internal/claude/claude.go, then i…
+[2m[49m•[0m [1mExplored[0m
+[2m  └ [0m[38;2;99;168;248mRead[39m mobileview.go
+[2m    + Show details
+[0m
+[2m• [0m[38;2;148;226;213m• [38;2;166;227;161minternal/program/program.go[39m: Defines a program plugin’s ID, matching
+    commands, optional mobile view and client data, and Wallflower’s built-in
+    Claude and shell programs.
+
+  [38;2;148;226;213m• [38;2;166;227;161minternal/claude/claude.go[39m: Finds running Claude sessions and parses their
+    transcripts into mobile-view updates, including messages, tool steps,
+    titles, queued prompts, and activity.
+
+  [38;2;148;226;213m• [38;2;166;227;161minternal/mobileview/mobileview.go[39m: Defines the shared types and [38;2;166;227;161mSource[39m
+    interface for reporting program activity and streaming pane content to
+    mobile clients.
+
+  I asked the favourite-colour question before starting; you can answer whenever
+                    [38;2;99;168;248m New activity · ↓ Back to bottom · esc[39m
+
+[1m›[0m [2mAsk Codex to do anything[0m
+
+  [38;2;246;226;183mGPT-6-Luna medium[39m · [38;2;171;223;167m~/dev/wallflower[39m · [38;2;137;180;250mRead plugin documentation[39m   [38;5;5mPlan mode[39m
+  [2mNew activity · [0;1menter/esc[0;2m latest[0m · [1m?[0m shortcuts

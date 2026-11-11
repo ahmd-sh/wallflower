@@ -27,7 +27,7 @@ class KeyBarTest {
         val codex = saved.profileFor("codex", "codex")
         assertEquals("codex", codex.name)
         assertEquals(listOf("Escape"), codex.stop) // ^C would quit it
-        assertEquals(listOf("esc", "ctrl", "⇧←", "⇧tab", "arrows", "tab", "1", "2", "3", "^t"), codex.keys.map { it.label })
+        assertEquals(listOf("esc", "ctrl", "⇧←", "⇧tab", "arrows", "tab", "1", "2", "3"), codex.keys.map { it.label })
     }
 
     @Test

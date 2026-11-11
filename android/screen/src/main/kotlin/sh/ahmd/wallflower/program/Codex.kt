@@ -29,7 +29,7 @@ object Codex : Program {
 
     override val keyBar = KeyDefaults(
         "codex",
-        listOf("Escape", "ctrl", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3", "C-t"),
+        listOf("Escape", "ctrl", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3"),
         stop = listOf("Escape"),
     )
 
@@ -39,8 +39,8 @@ object Codex : Program {
      * the question to ask aside.
      */
     override val shortcuts = listOf(
-        Shortcut(listOf("C-t"), "transcript"),
         Shortcut(listOf("BTab"), "mode"),
+        Shortcut(listOf("F4"), "activity"),
         Shortcut(listOf("S-Left"), "answer questions"),
         Shortcut(listOf("Left"), "agents"),
         Shortcut(listOf("Escape", "Escape"), "rewind"),
@@ -90,16 +90,31 @@ object Codex : Program {
     }
 
     /** The composer's first row, if it's on screen: the lowest `› ` row with the footer below it, past a blank row. */
-    private fun composer(s: Screen): Int? {
+    private fun composer(s: Screen): Int? = foot(s)?.first
+
+    /** The composer's first row and its footer's. */
+    private fun foot(s: Screen): Pair<Int, Int>? {
         for (footer in s.rows - 1 downTo maxOf(2, s.rows - 3)) {
             if (s.text(0, footer).isNotBlank() || s.text(1, footer).isNotBlank() || !text(s, footer, 2).contains(" · ")) continue
             if (text(s, footer - 1, 0).isNotBlank()) continue
             var y = footer - 2
             while (y >= 0 && s.text(0, y).isBlank() && s.text(1, y).isBlank() && text(s, y, 2).isNotBlank()) y--
-            if (y >= 0 && s.text(0, y) == "›" && s.text(1, y).isBlank() && !option.matches(text(s, y, 0))) return y
+            if (y >= 0 && s.text(0, y) == "›" && s.text(1, y).isBlank() && !option.matches(text(s, y, 0))) return y to footer
         }
         return null
     }
+
+    /** In plan mode, Codex says so at its footer's end ("Plan mode"); in its default mode, nothing does. Shift+tab goes between them. */
+    override fun mode(screen: Screen): Mode? {
+        val (_, footer) = foot(screen) ?: return null
+        return Mode(if (planning.containsMatchIn(text(screen, footer, 2))) "plan" else "default", "")
+    }
+
+    override val nextMode = listOf("BTab")
+
+    override val modes = listOf("default", "plan")
+
+    private val planning = Regex("""\sPlan mode$""")
 
     private val option = Regex("""^›\s+\d{1,2}\.\s.*""")
 

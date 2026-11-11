@@ -72,6 +72,12 @@ final class CodexTests: XCTestCase {
         XCTAssertNil(codex.label("[ . ] Action Required | wallflower"))
     }
 
+    func testItsModeIsPlanWhenItsFooterSaysSo() {
+        XCTAssertEqual(Mode(name: "plan", mark: ""), codex.mode(captured("codex-plan.ansi", 80)))
+        XCTAssertEqual(Mode(name: "default", mark: ""), codex.mode(screen("idle")))
+        XCTAssertNil(codex.mode(screen("question")))
+    }
+
     func testItHasItsOwnBarAndStop() {
         XCTAssertTrue(Programs.of("codex") === codex)
         XCTAssertEqual(["Escape"], codex.keyBar?.stop)

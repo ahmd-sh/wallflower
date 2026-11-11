@@ -25,7 +25,7 @@ public final class Codex: Program {
 
     public let keyBar: KeyDefaults? = KeyDefaults(
         name: "codex",
-        keys: ["Escape", "ctrl", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3", "C-t"],
+        keys: ["Escape", "ctrl", "S-Left", "BTab", "arrows", "Tab", "1", "2", "3"],
         stop: ["Escape"]
     )
 
@@ -33,8 +33,8 @@ public final class Codex: Program {
     /// composer), then its commands, run as sent; /side starts what's sent,
     /// the question to ask aside.
     public let shortcuts: [Shortcut] = [
-        Shortcut(["C-t"], label: "transcript"),
         Shortcut(["BTab"], label: "mode"),
+        Shortcut(["F4"], label: "activity"),
         Shortcut(["S-Left"], label: "answer questions"),
         Shortcut(["Left"], label: "agents"),
         Shortcut(["Escape", "Escape"], label: "rewind"),
@@ -81,16 +81,31 @@ public final class Codex: Program {
     }
 
     /// The composer's first row, if it's on screen: the lowest `› ` row with the footer below it, past a blank row.
-    private func composer(_ s: Screen) -> Int? {
+    private func composer(_ s: Screen) -> Int? { foot(s)?.composer }
+
+    /// The composer's first row and its footer's.
+    private func foot(_ s: Screen) -> (composer: Int, footer: Int)? {
         for footer in downTo(s.rows - 1, max(2, s.rows - 3)) {
             if !s.text(0, footer).isBlank || !s.text(1, footer).isBlank || !text(s, footer, 2).contains(" · ") { continue }
             if !text(s, footer - 1, 0).isBlank { continue }
             var y = footer - 2
             while y >= 0 && s.text(0, y).isBlank && s.text(1, y).isBlank && !text(s, y, 2).isBlank { y -= 1 }
-            if y >= 0 && s.text(0, y) == "›" && s.text(1, y).isBlank && !Codex.option.matches(text(s, y, 0)) { return y }
+            if y >= 0 && s.text(0, y) == "›" && s.text(1, y).isBlank && !Codex.option.matches(text(s, y, 0)) { return (y, footer) }
         }
         return nil
     }
+
+    /// In plan mode, Codex says so at its footer's end ("Plan mode"); in its default mode, nothing does. Shift+tab goes between them.
+    public func mode(_ screen: Screen) -> Mode? {
+        guard let (_, footer) = foot(screen) else { return nil }
+        return Mode(name: Codex.planning.find(text(screen, footer, 2)) != nil ? "plan" : "default", mark: "")
+    }
+
+    public let nextMode: [String]? = ["BTab"]
+
+    public let modes = ["default", "plan"]
+
+    private static let planning = Pattern("\\sPlan mode$")
 
     private static let option = Pattern("^›\\s+\\d{1,2}\\.\\s.*")
 
