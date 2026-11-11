@@ -131,6 +131,7 @@ final class AppModel {
                 if let state {
                     self.drafts.keep(Set(state.windows.flatMap { $0.panes.map(\.id) }))
                 }
+                if status == .connected && (state != nil || s.place == nil) { self.rehearsal.begin() }
                 self.uploads.dir = s.uploadDir
                 self.activities.update(state: self.settings.liveActivity ? state : nil, connected: status == .connected, machine: self.host.called)
                 if status != lastStatus {
@@ -147,6 +148,7 @@ final class AppModel {
                             _ = s.state
                             _ = s.status
                             _ = s.uploadDir
+                            _ = s.place
                             _ = self.settings.liveActivity
                             _ = self.settings.keepConnected
                             _ = self.away

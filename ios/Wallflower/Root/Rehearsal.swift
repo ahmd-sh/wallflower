@@ -13,13 +13,24 @@ final class Rehearsal {
     private(set) var step: String?
     private(set) var count = 0
 
+    @ObservationIgnored private var steps: [String] = []
+    @ObservationIgnored private var begun = false
+
     init() {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-wfScript"), i + 1 < args.count else { return }
-        let steps = args[i + 1].split(separator: ";").map(String.init)
+        steps = args[i + 1].split(separator: ";").map(String.init)
+        #endif
+    }
+
+    /** The app's ready for them: connected, and in its session if it's going into one. */
+    func begin() {
+        guard !begun, !steps.isEmpty else { return }
+        begun = true
+        let steps = self.steps
         Task {
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(1.5))
             for s in steps {
                 if s.hasPrefix("wait:"), let t = Double(s.dropFirst(5)) {
                     try? await Task.sleep(for: .seconds(t))
@@ -30,7 +41,6 @@ final class Rehearsal {
                 try? await Task.sleep(for: .seconds(1.5))
             }
         }
-        #endif
     }
 
     /** The step, if it's [name] (and what follows its colon). */

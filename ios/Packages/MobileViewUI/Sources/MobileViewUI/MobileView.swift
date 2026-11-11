@@ -255,7 +255,7 @@ private struct Conversation: View {
             }
         }
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 14) { // not lazy: estimated heights corrected as rows come in kept the scroll position and its watchers chasing each other
                 if reading.more { Note(text: "earlier messages are in the terminal") }
                 ForEach(Array(items.enumerated()), id: \.element.key) { i, item in
                     let newest = i == items.count - 1

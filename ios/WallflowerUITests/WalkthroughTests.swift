@@ -172,3 +172,40 @@ extension WalkthroughTests {
         shot("plus-menu")
     }
 }
+
+extension WalkthroughTests {
+    /** Opens a fold in the mobile view and scrolls, then leaves the app be: for watching what it does after. */
+    func testFoldThenScroll() {
+        app.launchArguments = ["-wfDev", ProcessInfo.processInfo.environment["WF_LISTEN"] ?? "41778", "-wfSession", "$0", "-wfScript", "tab:2;mobile:on", "-wfStill", "YES"]
+        app.launch()
+        sleep(8)
+        let steps = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'steps'")).firstMatch
+        if steps.waitForExistence(timeout: 5) { steps.tap() }
+        sleep(2)
+        shot("fold-open")
+        app.swipeDown()
+        sleep(45)
+        shot("after")
+    }
+}
+
+extension WalkthroughTests {
+    /** Swipes between a window's two panes, without the keyboard and with it. */
+    func testSwipes() {
+        app.launch()
+        sleep(7)
+        shot("start")
+        let mid = at(0.5, 0.35)
+        mid.press(forDuration: 0.05, thenDragTo: at(0.02, 0.35), withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(2)
+        shot("swiped-once")
+        mid.press(forDuration: 0.05, thenDragTo: at(0.02, 0.35), withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(2)
+        shot("swiped-twice")
+        mid.tap()
+        sleep(2)
+        mid.press(forDuration: 0.05, thenDragTo: at(0.98, 0.35), withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(2)
+        shot("swiped-typing")
+    }
+}
