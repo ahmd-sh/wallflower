@@ -113,9 +113,12 @@ public struct KeyBar: Codable, Hashable, Sendable {
         self.default = `default`
     }
 
+    /// The profile for a pane's program: one of these, or the bar its plugin ships (a bar saved before it shipped has none for it), or the default.
     public func profile(for command: String, program: String? = nil) -> KeyProfile {
         profiles.first { $0.matches(command, program: program) }
-            ?? Programs.supplied(program)?.keyBar.map { d in KeyProfile(name: d.name, programs: program.map { [$0] } ?? [], keys: d.keys.map(KeyBar.key), stop: d.stop) }
+            ?? (Programs.supplied(program) ?? program.flatMap { Programs.builtin(id: $0) })?.keyBar.map { d in
+                KeyProfile(name: d.name, programs: program.map { [$0] } ?? [], keys: d.keys.map(KeyBar.key), stop: d.stop)
+            }
             ?? self.default
     }
 

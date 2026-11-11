@@ -25,6 +25,8 @@ public struct MobileView: View {
     let prompt: Prompt?
     /** What the program says it's doing, in its words, while it works. */
     let doing: String?
+    /** Questions it asked that wait on its screen to be brought up, which [onKeys] does. */
+    let asked: Asked?
     /** Bumps when something sent was held for the prompt to be answered first. */
     let nudged: Int
     /** A message asked back to edit is being found in what the program lists, which isn't the user's to answer yet. */
@@ -54,6 +56,7 @@ public struct MobileView: View {
         picture: @escaping (String) async -> Data?,
         prompt: Prompt? = nil,
         doing: String? = nil,
+        asked: Asked? = nil,
         nudged: Int = 0,
         seeking: Bool = false,
         onKeys: @escaping ([String]) -> Void = { _ in },
@@ -71,6 +74,7 @@ public struct MobileView: View {
         self.picture = picture
         self.prompt = prompt
         self.doing = doing
+        self.asked = asked
         self.nudged = nudged
         self.seeking = seeking
         self.onKeys = onKeys
@@ -114,6 +118,7 @@ public struct MobileView: View {
                         asking: asking,
                         since: since,
                         doing: stopping ? "stopping" : doing,
+                        asked: asked,
                         nudged: nudged,
                         picture: picture,
                         onKeys: onKeys,
@@ -145,9 +150,14 @@ public struct MobileView: View {
         .background(palette.bg0)
         .environment(\.mobileViewLive, live)
         .gesture(Swipe(onDrag: onSwipe, onEnd: onSwipeEnd))
-        .task(id: Unread(activity: activity, asking: asking != nil)) {
+        .task(id: Unread(activity: activity, asking: asking != nil, asked: asked != nil)) {
             unread = false
             guard activity == .waiting && asking == nil else { return }
+            // What waits to be brought up isn't on its way to the screen: it says so at once.
+            if asked != nil {
+                unread = true
+                return
+            }
             try? await Task.sleep(for: .milliseconds(unreadMs))
             if !Task.isCancelled { unread = true }
         }
@@ -174,6 +184,7 @@ private enum Status { case asking, working, waiting, seeking }
 private struct Unread: Equatable {
     let activity: Activity?
     let asking: Bool
+    let asked: Bool
 }
 
 /** How long a stop from the phone says it's stopping before it's for the program to say. */
@@ -209,6 +220,7 @@ private struct Conversation: View {
     let asking: Prompt?
     let since: Int64
     let doing: String?
+    let asked: Asked?
     let nudged: Int
     let picture: (String) async -> Data?
     let onKeys: ([String]) -> Void
@@ -283,7 +295,7 @@ private struct Conversation: View {
                                     .transition(.opacity)
                             }
                         case .working: Working(since: since, doing: doing).transition(.opacity)
-                        case .waiting: Waiting().transition(.opacity)
+                        case .waiting: Waiting(asked: asked) { if let asked { onKeys(asked.keys) } }.transition(.opacity)
                         case .seeking: Working(since: 0, doing: "finding your message").transition(.opacity)
                         }
                     }
@@ -952,17 +964,45 @@ private func duration(_ seconds: Int64) -> String {
     return "\(seconds / 3_600)h \(seconds % 3_600 / 60)m"
 }
 
-/** The program needs an answer that isn't on its screen as a menu wallflower can read. */
+/**
+ * The program needs an answer that isn't on its screen as a menu wallflower
+ * can read; or it [asked] questions that wait to be brought up, which a tap
+ * on them does ([onBring]), and then they're a menu.
+ */
 private struct Waiting: View {
+    let asked: Asked?
+    let onBring: () -> Void
     @Environment(\.palette) private var palette
+    @Environment(\.haptics) private var haptics
 
     var body: some View {
         HStack(spacing: 0) {
             Circle().fill(palette.orange).frame(width: 6, height: 6)
-            Text("waiting for you · answer in the terminal")
-                .words(.label)
-                .foregroundColor(palette.grey)
-                .padding(.leading, 8)
+            if let asked {
+                Text("\(asked.what) for you")
+                    .words(.label)
+                    .foregroundColor(palette.grey)
+                    .padding(.leading, 8)
+                Button {
+                    haptics.tick()
+                    onBring()
+                } label: {
+                    Text("answer")
+                        .words(.label)
+                        .fontWeight(.semibold)
+                        .foregroundColor(palette.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(palette.orange.opacity(0.14)))
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 10)
+            } else {
+                Text("waiting for you · answer in the terminal")
+                    .words(.label)
+                    .foregroundColor(palette.grey)
+                    .padding(.leading, 8)
+            }
         }
         .padding(.vertical, 2)
     }

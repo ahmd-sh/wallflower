@@ -13,6 +13,9 @@ public protocol Program: AnyObject, Sendable {
     /// What the program says on its screen it's doing, in its own words, while it works; nil if it doesn't say.
     func status(_ screen: Screen) -> String?
 
+    /// Questions the program asked that wait on its screen for the user to bring them up; nil if none do.
+    func asked(_ screen: Screen) -> Asked?
+
     /// What the program's notification says on the phone: a desktop
     /// notification (`title`, `body`), or its terminal's bell (no `body`),
     /// given its `screen` as it came if the program `readsScreenToNotify`
@@ -81,6 +84,8 @@ extension Program {
 
     public func status(_ screen: Screen) -> String? { nil }
 
+    public func asked(_ screen: Screen) -> Asked? { nil }
+
     public func notice(title: String?, body: String?, screen: Screen?) -> Notice? { body.map { Notice(title: title, body: $0) } }
 
     public var readsScreenToNotify: Bool { false }
@@ -144,6 +149,17 @@ public struct Command: Hashable, Sendable {
     public init(text: String, about: String) {
         self.text = text
         self.about = about
+    }
+}
+
+/// Questions waiting to be answered ("2 questions"), and the keys that bring them up.
+public struct Asked: Hashable, Sendable {
+    public var what: String
+    public var keys: [String]
+
+    public init(what: String, keys: [String]) {
+        self.what = what
+        self.keys = keys
     }
 }
 
@@ -238,11 +254,15 @@ public enum Programs {
 
     public static let builtin: [(id: String, program: any Program)] = [
         ("claude", Claude.shared),
+        ("codex", Codex.shared),
         ("zsh", Shell(clearKeys: ["C-x", "C-k"], keyBar: shells)), // kill-buffer, as zsh binds it for emacs mode
         ("shell", Shell(keyBar: shells)),
     ]
 
     private static let builtinById = Dictionary(uniqueKeysWithValues: builtin.map { ($0.id, $0.program) })
+
+    /// A program wallflower ships, by its id; nil if it's not one.
+    public static func builtin(id: String) -> (any Program)? { builtinById[id.lowercased()] }
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var current: [String: any Program] = [:]

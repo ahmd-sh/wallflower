@@ -88,6 +88,8 @@ struct PanePage: View {
     let prompt: Prompt?
     let line: () -> InputLine?
     let status: String?
+    /** Questions the program asked, waiting to be brought up. */
+    var asked: Asked? = nil
     let nudged: Int
     /** The message held to edit, if picking is for it. */
     let held: String?
@@ -119,6 +121,7 @@ struct PanePage: View {
                     picture: { id in await actions.picture(id) },
                     prompt: current ? prompt : nil,
                     doing: current ? status : nil,
+                    asked: current ? asked : nil,
                     nudged: current ? nudged : 0,
                     onKeys: { keys in
                         onPrompt()

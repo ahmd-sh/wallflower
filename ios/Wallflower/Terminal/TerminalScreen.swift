@@ -250,6 +250,7 @@ struct TerminalScreen: View {
             prompt: current ? screen.prompt : nil,
             line: { screen.line },
             status: current ? screen.status : nil,
+            asked: current ? screen.asked : nil,
             nudged: nudged,
             held: seeker.editing,
             handle: handle,

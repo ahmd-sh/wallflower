@@ -17,6 +17,15 @@ final class KeyBarTests: XCTestCase {
         XCTAssertEqual("default", bar.profile(for: "").name)
     }
 
+    func testABarSavedBeforeAProgramShippedGivesItItsOwn() {
+        var saved = bar
+        saved.profiles.removeAll { $0.programs.contains("codex") }
+        let codex = saved.profile(for: "codex", program: "codex")
+        XCTAssertEqual("codex", codex.name)
+        XCTAssertEqual(["Escape"], codex.stop) // ^C would quit it
+        XCTAssertEqual(["esc", "⇧←", "⇧tab", "arrows", "tab", "1", "2", "3", "^t"], codex.keys.map(\.label))
+    }
+
     func testTheProgramsShippedBringTheirBars() {
         let claude = bar.profile(for: "claude", program: "claude")
         XCTAssertEqual(["esc", "⇧tab", "↑", "↓", "⏎", "1", "2", "3", "^o", "^c"], claude.keys.map(\.label))

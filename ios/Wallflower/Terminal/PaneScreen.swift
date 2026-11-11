@@ -5,7 +5,8 @@ import TerminalCore
 
 /**
  * What the shown pane's screen says: its program's input line, what it says
- * it's doing, and a prompt to answer while one can be. Read whenever its
+ * it's doing, questions it asked waiting to be brought up, and a prompt to
+ * answer while one can be. Read whenever its
  * output changes, at most every [every], as the program reads it; the
  * prompt only while [asks] (it can be answered: in the mobile view, the
  * program not working). What it says it's doing holds while its line can't
@@ -17,6 +18,7 @@ final class PaneScreen {
     var line: InputLine?
     var status: String?
     var prompt: Prompt?
+    var asked: Asked?
     @ObservationIgnored private var terminal: Terminal?
     @ObservationIgnored private var pane: String?
     @ObservationIgnored private var program: any Program = Programs.of(nil)
@@ -31,6 +33,7 @@ final class PaneScreen {
             line = nil
             status = nil
             prompt = nil
+            asked = nil
         }
         self.program = program
         if asks != self.asks {
@@ -56,14 +59,15 @@ final class PaneScreen {
                 let p = self.program
                 let a = self.asks
                 let bytes = self.terminal?.screenBytes()
-                let read: (InputLine?, String?, Prompt?) = await Task.detached {
-                    guard let bytes, let s = Screen.parse(bytes) else { return (nil, nil, nil) }
-                    return (p.line(s), p.status(s), a ? p.prompt(s) : nil)
+                let read: (InputLine?, String?, Prompt?, Asked?) = await Task.detached {
+                    guard let bytes, let s = Screen.parse(bytes) else { return (nil, nil, nil, nil) }
+                    return (p.line(s), p.status(s), a ? p.prompt(s) : nil, p.asked(s))
                 }.value
                 if self.line != read.0 { self.line = read.0 }
                 // A screen without the program's line is between drawings, or covered by what it asks: it doesn't say it stopped.
                 if read.0 != nil || read.1 != nil, self.status != read.1 { self.status = read.1 }
                 if self.prompt != read.2 { self.prompt = read.2 }
+                if self.asked != read.3 { self.asked = read.3 }
                 try? await Task.sleep(for: .milliseconds(80))
             }
             self?.reading = nil
