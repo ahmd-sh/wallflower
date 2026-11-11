@@ -107,7 +107,8 @@ two halves, each optional:
   thought, picture, note), and what the program is doing. Those kinds are
   generic, so the phone renders any plugin's view the same way.
 - **Client half**, a `Program` (`android/screen/.../program`). It reads its
-  program's screen, such as the input line and the choices it offers. It
+  program's screen, such as the input line, the choices it offers and the
+  mode it's in (with the color it shows it in, a theme color by name). It
   says what its notifications mean, how to clear a line, start a new one
   and compact, and which key bar its panes get until the user sets one. It
   names the commands the composer's + offers (Claude Code's `/compact`,
