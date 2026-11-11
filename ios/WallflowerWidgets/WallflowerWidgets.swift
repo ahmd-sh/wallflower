@@ -92,7 +92,7 @@ private struct LockScreen: View {
                     Text(doing(state)).foregroundColor(color(state)).lineLimit(1)
                 }
                 .font(.system(.subheadline, design: .monospaced))
-                Text("on \(machine)" + (state.others > 0 ? " · \(state.others) more at work" : ""))
+                Text("on \(machine)" + (state.others > 0 ? " · \(state.others) more" : ""))
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(Ink.grey)
                     .lineLimit(1)

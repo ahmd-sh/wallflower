@@ -133,6 +133,12 @@ extension WalkthroughTests {
         XCUIDevice.shared.press(.home) // wakes it to the Lock Screen
         sleep(2)
         shot("lock-screen")
+        let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow"]
+        if allow.waitForExistence(timeout: 2) {
+            allow.tap()
+            sleep(2)
+            shot("lock-screen-allowed")
+        }
     }
 }
 
