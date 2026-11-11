@@ -986,8 +986,10 @@ private fun Waiting() {
 @Composable
 private fun AsideCard(aside: Aside, answer: List<String>, nudged: Long, onKeys: (List<String>) -> Unit, modifier: Modifier = Modifier) {
     val haptics = haptics()
+    // Something sent while it's up, not before it came.
+    val before = remember { nudged }
     val held by produceState(false, nudged) {
-        if (nudged != 0L) {
+        if (nudged != 0L && nudged != before) {
             value = true
             delay(HELD_MS)
             value = false
