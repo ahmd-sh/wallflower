@@ -17,7 +17,7 @@ import sh.ahmd.wallflower.protocol.ListDir
 import sh.ahmd.wallflower.protocol.Listing
 
 /**
- * The Mac's files, read-only, as the gateway shows them: directories listed,
+ * The computer's files, read-only, as the gateway shows them: directories listed,
  * and files fetched, written to the phone as their frames come, each said
  * to have arrived ([Got]) so the gateway sends the next. What the gateway
  * sends of a fetch arrives on the link's thread, in order.

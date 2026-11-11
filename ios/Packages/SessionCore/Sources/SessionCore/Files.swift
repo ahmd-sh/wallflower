@@ -1,7 +1,7 @@
 import Foundation
 import Wire
 
-/** The Mac's files, as a gateway that can shows them: its directories listed, and its files fetched to the phone. */
+/** The computer's files, as a gateway that can shows them: its directories listed, and its files fetched to the phone. */
 @MainActor
 final class Files {
     weak var link: Link?
@@ -79,7 +79,7 @@ final class Files {
     }
 }
 
-/** Files on their way from the Mac, written as their frames arrive on the connection's thread. */
+/** Files on their way from the computer, written as their frames arrive on the connection's thread. */
 final class Fetches: @unchecked Sendable {
     private struct Fetching {
         let handle: FileHandle

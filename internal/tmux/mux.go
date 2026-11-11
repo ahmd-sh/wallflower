@@ -118,7 +118,7 @@ func (t *attached) forward() {
 				go t.c.Close()
 				continue
 			}
-			t.session = n.Session // moved at the Mac, with its session still there: it follows
+			t.session = n.Session // moved at the computer, with its session still there: it follows
 			e = mux.Event{Changed: true}
 		case "layout-change", "window-add", "window-close", "window-renamed", "window-pane-changed",
 			"session-window-changed", "session-renamed", "subscription-changed":

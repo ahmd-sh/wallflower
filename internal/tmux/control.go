@@ -105,7 +105,7 @@ func Start(ctx context.Context, opts Options) (*Client, error) {
 	// -u: without a UTF-8 locale (ssh may not pass one) tmux replaces tabs
 	// and non-ASCII in replies with "_". -E: attaching doesn't hand the
 	// session the ssh connection's variables (update-environment), which
-	// panes made at the Mac would then have.
+	// panes made at the computer would then have.
 	args := append(socketArgs(opts.Socket), "-u", "-C", "attach-session", "-E")
 	if opts.Session != "" {
 		args = append(args, "-t", opts.Session)

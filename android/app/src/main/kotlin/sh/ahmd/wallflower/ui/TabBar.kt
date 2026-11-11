@@ -49,9 +49,9 @@ import sh.ahmd.wallflower.session.label
 
 /**
  * The tabs (the session's windows), with new tab first and the connection last. It's
- * local: it scrolls natively and a tap switches immediately, the Mac learns
+ * local: it scrolls natively and a tap switches immediately, the computer learns
  * afterwards. The highlight glides to the tab chosen. Holding a tab offers
- * rename and close. The connection's dot opens its menu, which says which Mac
+ * rename and close. The connection's dot opens its menu, which says which computer
  * ([machine], at [address]) and [session] this is, and goes to the others.
  */
 @Composable

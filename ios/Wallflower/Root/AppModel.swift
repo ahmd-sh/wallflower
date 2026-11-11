@@ -9,10 +9,10 @@ import WallflowerDesign
 import Wire
 
 /**
- * The app's connection to the Mac and what it keeps on the phone: the Mac
+ * The app's connection to the computer and what it keeps on the phone: the computer
  * to reach, its key, the settings, drafts and key bars. While the user is
  * away it keeps the connection (as long as iOS lets it, longer with
- * [Preferences.keepConnected]), and what the Mac's programs notify shows in
+ * [Preferences.keepConnected]), and what the computer's programs notify shows in
  * the phone's notifications, as the pane's Program has it said; programs at
  * work show in a Live Activity. It ends when the user disconnects.
  */
@@ -87,7 +87,7 @@ final class AppModel {
         connect(h)
     }
 
-    /** Connects to the configured Mac, unless already connected. */
+    /** Connects to the configured computer, unless already connected. */
     func ensure() {
         if session == nil, let h = host { connect(h) }
     }
@@ -190,7 +190,7 @@ final class AppModel {
         }
     }
 
-    /** Ends the session: the app's done with the Mac until it's opened again. */
+    /** Ends the session: the app's done with the computer until it's opened again. */
     func disconnect() {
         watching?.cancel()
         session?.stop()
@@ -216,7 +216,7 @@ final class AppModel {
         notices.back()
     }
 
-    /** The pane the app shows: what the Mac's programs said there has been seen. */
+    /** The pane the app shows: what the computer's programs said there has been seen. */
     func seen(_ pane: String) {
         latest[pane] = nil
         notices.cancel(pane: pane)
@@ -225,7 +225,7 @@ final class AppModel {
     /** Creates the key if needed; returns why it couldn't. */
     func createKey() -> String? { key.exists ? nil : newKey(PhoneKey.AUTH_SECONDS) }
 
-    /** Makes a new key, usable for [seconds] after an unlock, in place of the old; it needs authorizing on the Mac. */
+    /** Makes a new key, usable for [seconds] after an unlock, in place of the old; it needs authorizing on the computer. */
     func newKey(_ seconds: Int) -> String? {
         do {
             try key.generate(seconds: seconds)
@@ -237,7 +237,7 @@ final class AppModel {
         }
     }
 
-    /** The command that authorizes this phone's key on the Mac. */
+    /** The command that authorizes this phone's key on the computer. */
     func authorizeCommand() -> String {
         let name = UIDevice.current.name.replacingOccurrences(of: " ", with: "-").filter { $0.isLetter || $0.isNumber || $0 == "-" }
         return "~/go/bin/wallflower authorize '\(key.authorizedKey(comment: "wallflower@" + (name.isEmpty ? "iPhone" : name)))'"

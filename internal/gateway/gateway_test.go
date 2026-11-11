@@ -782,7 +782,7 @@ func TestMuxExit(t *testing.T) {
 	})
 }
 
-// Detached at the Mac, the client is attached to nothing, and told the
+// Detached at the computer, the client is attached to nothing, and told the
 // multiplexer let go of it, not that it exited: the session's still there.
 func TestDetachedAtTheMac(t *testing.T) {
 	c := tmuxBackend.connect(t, 60, 20)

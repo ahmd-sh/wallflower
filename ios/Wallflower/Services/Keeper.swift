@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 
 /**
- * Keeps the app running while it's away, so the connection to the Mac (and
+ * Keeps the app running while it's away, so the connection to the computer (and
  * with it notifications and the Live Activity) keeps up, as Android's
  * foreground service does: iOS suspends an app soon after it leaves the
  * screen otherwise. It plays silence, mixed with whatever else plays, which

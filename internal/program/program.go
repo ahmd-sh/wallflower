@@ -1,5 +1,5 @@
 // Package program is the programs wallflower knows, each a plugin in two
-// halves that go by one ID. This half, on the Mac, says which panes run the
+// halves that go by one ID. This half, on the computer, says which panes run the
 // program, and reads its mobile view if it has one. The client's half says
 // how to drive it: what's on its screen, its keys, what its notifications
 // mean.
@@ -13,7 +13,7 @@ import (
 	"github.com/ahmd-sh/wallflower/internal/mobileview"
 )
 
-// A Program is one plugin's Mac half, and its phone half if that's data
+// A Program is one plugin's computer's half, and its phone half if that's data
 // (a plugin of the user's: see Load).
 type Program struct {
 	ID       string            // how both halves know it

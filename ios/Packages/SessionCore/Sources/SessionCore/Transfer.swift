@@ -1,7 +1,7 @@
 import Foundation
 import Wire
 
-/** Files sent to the Mac, and pictures asked of it. */
+/** Files sent to the computer, and pictures asked of it. */
 @MainActor
 final class Transfer {
     weak var link: Link?
@@ -54,7 +54,7 @@ final class Transfer {
     }
 
     /**
-     * Sends [data] to the Mac as upload [id] and returns where the gateway
+     * Sends [data] to the computer as upload [id] and returns where the gateway
      * saved it. It goes a chunk at a time, each followed by a ping, with only
      * [AHEAD] chunks unanswered: whatever's typed meanwhile waits behind
      * those alone rather than behind the whole file in the network's

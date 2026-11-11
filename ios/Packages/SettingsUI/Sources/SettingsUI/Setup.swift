@@ -3,9 +3,9 @@ import SwiftUI
 import WallflowerDesign
 
 /**
- * Setting wallflower up: what it is, in a line, then the Mac to reach and
+ * Setting wallflower up: what it is, in a line, then the computer to reach and
  * this phone's key to let in there. With a way back ([onBack]) in place of
- * the welcome, it edits the Mac from settings.
+ * the welcome, it edits the computer from settings.
  */
 public struct SetupScreen: View {
     @Environment(\.palette) private var palette
@@ -63,7 +63,7 @@ public struct SetupScreen: View {
     }
 }
 
-/** The Mac (where, who), this phone's key, and connect, saying plainly what's missing. */
+/** The computer (where, who), this phone's key, and connect, saying plainly what's missing. */
 private struct SetupForm: View {
     @Environment(\.palette) private var palette
     let host: Host?

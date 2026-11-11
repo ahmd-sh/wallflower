@@ -58,9 +58,9 @@ public struct ConnectionDot: View {
 
 /**
  * The connection's way in, at the end of the tab bar: its dot says how it
- * is. Its menu names the Mac ([machine], at [address]) and the [session],
+ * is. Its menu names the computer ([machine], at [address]) and the [session],
  * says when it tries next and why the last try failed, and offers a retry
- * then, the sessions, the Mac's files, settings and disconnecting (iOS apps
+ * then, the sessions, the computer's files, settings and disconnecting (iOS apps
  * don't quit).
  */
 public struct ConnectionButton: View {
@@ -120,7 +120,7 @@ public struct ConnectionButton: View {
         .padding(.trailing, 6)
     }
 
-    /** Why the last try failed, if it did, and where the Mac is. */
+    /** Why the last try failed, if it did, and where the computer is. */
     private var details: String {
         var lines: [String] = []
         if case .disconnected(let reason, _, _, _) = status { lines.append("last try: \(reason)") }
@@ -190,8 +190,8 @@ public struct Reconnecting: View {
 }
 
 /**
- * What shows before there's anything of the Mac's to: the flower, swaying
- * while it tries to connect, the Mac ([machine], at [address]), and when it
+ * What shows before there's anything of the computer's to: the flower, swaying
+ * while it tries to connect, the computer ([machine], at [address]), and when it
  * tries next, with a retry now. While it waits for the user, the card
  * above says what to do, and only the flower stays.
  */

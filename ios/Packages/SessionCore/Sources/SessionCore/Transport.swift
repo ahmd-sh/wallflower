@@ -12,11 +12,11 @@ public enum Blocked: Error, Equatable, Sendable {
     case unknownHost(host: String, key: String)
     /** The host's key differs from the trusted one. */
     case hostKeyChanged(host: String, fingerprint: String)
-    /** The Mac doesn't accept this phone's key yet. */
+    /** The computer doesn't accept this phone's key yet. */
     case notAuthorized
     /** The gateway turned the connection down before it started, e.g. for a multiplexer it doesn't have. */
     case refused(String)
-    /** The Mac's wallflower speaks protocol [gateway], this app [app]: the older needs updating. */
+    /** The computer's wallflower speaks protocol [gateway], this app [app]: the older needs updating. */
     case outdated(gateway: Int, app: Int)
 
     public var message: String {
@@ -68,7 +68,7 @@ public protocol Transport: Sendable {
     func open(_ sink: ConnectionSink) async throws -> Connection
 }
 
-/** Plain TCP to `wallflower listen`, for development: the simulator reaches the Mac's loopback as its own. */
+/** Plain TCP to `wallflower listen`, for development: the simulator reaches the computer's loopback as its own. */
 public struct TCPTransport: Transport {
     public var host: String
     public var port: Int
@@ -280,7 +280,7 @@ private final class ExecHandler: ChannelDuplexHandler, @unchecked Sendable {
     }
 
     func channelActive(context: ChannelHandlerContext) {
-        // The Mac's authorized_keys forces `wallflower serve` for this key;
+        // The computer's authorized_keys forces `wallflower serve` for this key;
         // the command matters only for keys without that restriction.
         let exec = SSHChannelRequestEvent.ExecRequest(command: command, wantReply: true)
         context.triggerUserOutboundEvent(exec, promise: nil)

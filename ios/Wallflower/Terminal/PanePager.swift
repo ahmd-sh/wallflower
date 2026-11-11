@@ -74,7 +74,7 @@ final class Pager: Swipe {
         }
     }
 
-    /** The shown pane changing elsewhere (a card, the Mac) cuts straight to it. */
+    /** The shown pane changing elsewhere (a card, the computer) cuts straight to it. */
     func cut(to id: String) {
         settling += 1
         current = id

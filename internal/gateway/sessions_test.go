@@ -141,7 +141,7 @@ func TestDetach(t *testing.T) {
 
 		if b.name == "tmux" {
 			c.tmux("new-session", "-d", "-s", "born")
-			c.sessions("one started at the Mac, unasked", func(l []protocol.SessionInfo) bool { return slices.Equal(names(l), []string{"born", "t"}) })
+			c.sessions("one started at the computer, unasked", func(l []protocol.SessionInfo) bool { return slices.Equal(names(l), []string{"born", "t"}) })
 			c.send(protocol.KillSession{Mux: b.name, Session: s.Session})
 			c.sessions("the one it was in, ended", func(l []protocol.SessionInfo) bool { return slices.Equal(names(l), []string{"born"}) })
 			c.send(protocol.Switch{Mux: b.name, Session: "born"})

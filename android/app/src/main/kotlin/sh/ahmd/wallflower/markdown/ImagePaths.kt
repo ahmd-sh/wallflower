@@ -23,7 +23,7 @@ object ImagePaths {
     /** Whether [code] is a picture's path and nothing else (spaces and all, as code can quote one). */
     fun whole(code: String): Boolean = "://" !in code && !code.startsWith(' ') && alone.matches(code)
 
-    /** [path] as the Mac has it: as it is from / or ~, else from [cwd] (the home if there's none). */
+    /** [path] as the computer has it: as it is from / or ~, else from [cwd] (the home if there's none). */
     fun resolve(path: String, cwd: String): String {
         if (path.startsWith('/') || path.startsWith('~')) return path
         val parts = if (cwd.isEmpty()) mutableListOf("~") else cwd.split('/').filter { it.isNotEmpty() }.toMutableList()

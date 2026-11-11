@@ -1,4 +1,4 @@
-// Package userenv is the environment the user has in a terminal on the Mac,
+// Package userenv is the environment the user has in a terminal on the computer,
 // for what the gateway starts on their behalf: sshd starts the gateway in
 // the ssh connection's, with a bare PATH, no locale, and the connection's
 // own variables.
@@ -85,8 +85,8 @@ func tidy(env []string, locale func() string) []string {
 	return out
 }
 
-// locale is the Mac's language and region in UTF-8, as Terminal sets LANG
-// from them; en_US's if the Mac's has no such locale. Elsewhere a login
+// locale is, on a Mac, its language and region in UTF-8, as Terminal sets
+// LANG from them; en_US's if it has no such locale. Elsewhere a login
 // sets LANG itself, from the system's: without one, C.UTF-8, which every
 // libc has.
 func locale() string {

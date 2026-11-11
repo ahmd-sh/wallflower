@@ -102,12 +102,12 @@ import sh.ahmd.wallflower.ui.haptics
 import sh.ahmd.wallflower.ui.rememberLast
 import sh.ahmd.wallflower.ui.words
 
-/** What the viewer shows: a file on the Mac, or a picture in hand. */
+/** What the viewer shows: a file on the computer, or a picture in hand. */
 sealed interface Viewed {
     val name: String
 
     /**
-     * The file at [path] on the Mac (absolute, or from ~), fetched to show:
+     * The file at [path] on the computer (absolute, or from ~), fetched to show:
      * its [size] and [mtime], if a listing said, and a small picture of it to
      * show meanwhile ([placeholder]), if there's one.
      */
@@ -133,7 +133,7 @@ class Viewer {
     var pane: String? = null
         private set
 
-    /** The gateway shows the Mac's files, so paths can be opened. */
+    /** The gateway shows the computer's files, so paths can be opened. */
     var canFetch by mutableStateOf(false)
 
     fun open(viewed: Viewed, pane: String? = null) {
@@ -146,7 +146,7 @@ class Viewer {
     }
 }
 
-/** The app's one viewer, for pictures and the Mac's files alike. */
+/** The app's one viewer, for pictures and the computer's files alike. */
 val LocalViewer = staticCompositionLocalOf<Viewer?> { null }
 
 /**

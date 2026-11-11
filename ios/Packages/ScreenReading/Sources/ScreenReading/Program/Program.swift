@@ -1,7 +1,7 @@
 import Foundation
 
 /// The phone's half of a program's plugin: what wallflower can read off the
-/// program's screen, and how to drive it beyond typing. The Mac's half says
+/// program's screen, and how to drive it beyond typing. The computer's half says
 /// which panes run it, and names it by the same id (see `Programs`).
 public protocol Program: AnyObject, Sendable {
     /// The program's input line, if wallflower can see one on its screen.
@@ -65,7 +65,7 @@ public protocol Program: AnyObject, Sendable {
     /// What picking `option` of `prompt` does besides answering it, if wallflower needs to know.
     func picked(_ prompt: Prompt, option: Prompt.Option) -> Effect?
 
-    /// What answering `prompt` did besides, whoever answered it (at the Mac,
+    /// What answering `prompt` did besides, whoever answered it (at the computer,
     /// say), as the input `line` the program shows once it's gone tells; nil
     /// if nothing wallflower needs to know.
     func settled(_ prompt: Prompt, line: InputLine?) -> Effect?

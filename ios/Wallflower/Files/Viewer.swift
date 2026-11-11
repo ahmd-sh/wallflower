@@ -4,7 +4,7 @@ import SessionCore
 import SwiftUI
 import WallflowerDesign
 
-/** What the viewer shows: a file of the Mac's (its size and age, if a listing said), or a picture of a pane's mobile view. */
+/** What the viewer shows: a file of the computer's (its size and age, if a listing said), or a picture of a pane's mobile view. */
 enum Viewed: Hashable {
     case file(path: String, size: Int64? = nil, mtime: Int64? = nil)
     case picture(pane: String, id: String, mime: String)
@@ -30,7 +30,7 @@ struct Showing: Identifiable {
 }
 
 /**
- * One viewer for pictures and the Mac's files: it fetches what it shows,
+ * One viewer for pictures and the computer's files: it fetches what it shows,
  * saying how far along, then reads text and markdown itself (the start of a
  * big file), and has QuickLook show the rest (pictures to zoom, PDFs,
  * films). What it can't show it offers to share. Its path can go into the

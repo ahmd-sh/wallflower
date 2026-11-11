@@ -85,7 +85,7 @@ enum FileKind {
 }
 
 /**
- * Where the Mac's files land on the phone: a folder in the app's caches for
+ * Where the computer's files land on the phone: a folder in the app's caches for
  * each fetch, the file named as it is, so it's shared by its name. One had
  * already this run, the same size and age, is had again rather than fetched.
  */
@@ -107,7 +107,7 @@ enum Fetched {
         return dir.appendingPathComponent(name.isEmpty ? "file" : name)
     }
 
-    /** The file at [path] on the Mac as fetched this run, all of it or its start ([limit]), if its size and age say it's the same. */
+    /** The file at [path] on the computer as fetched this run, all of it or its start ([limit]), if its size and age say it's the same. */
     static func kept(_ path: String, size: Int64?, mtime: Int64?, limit: Int64? = nil) -> URL? {
         guard size != nil || mtime != nil, let url = kept[key(path, size, mtime, limit)], FileManager.default.fileExists(atPath: url.path) else { return nil }
         return url
@@ -127,7 +127,7 @@ enum Fetched {
 let readLimit: Int64 = 256 << 10
 
 /**
- * Shares the Mac's files through the share sheet: fetched whole first if
+ * Shares the computer's files through the share sheet: fetched whole first if
  * they aren't yet, saying how far along ([fetching]), then offered to other
  * apps ([shared]).
  */
@@ -157,7 +157,7 @@ final class Sharer {
         shared = Shared(url: url)
     }
 
-    /** Shares the file at [path] on the Mac, fetching it whole if this run hasn't. */
+    /** Shares the file at [path] on the computer, fetching it whole if this run hasn't. */
     func share(_ path: String, size: Int64?, mtime: Int64?, session: Session, haptics: Haptics) {
         if let url = Fetched.kept(path, size: size, mtime: mtime) { return share(url) }
         let name = (path as NSString).lastPathComponent
@@ -274,7 +274,7 @@ func folderName(_ path: String) -> String {
     return (path as NSString).lastPathComponent
 }
 
-/** Whether [path] is a user's home on the Mac (/Users/me), as near as the phone can tell. */
+/** Whether [path] is a user's home on the computer (/Users/me), as near as the phone can tell. */
 func isHome(_ path: String) -> Bool {
     let parts = path.split(separator: "/")
     return parts.count == 2 && (parts[0] == "Users" || parts[0] == "home") && path.hasPrefix("/")

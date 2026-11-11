@@ -81,7 +81,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableLongStateOf
 import sh.ahmd.wallflower.screen.Prompt
 
-/** Where the user is: the session's terminals, or the Mac's sessions while the phone's in none ([Terminal] either way), or a page over them. */
+/** Where the user is: the session's terminals, or the computer's sessions while the phone's in none ([Terminal] either way), or a page over them. */
 private sealed interface Screen {
     data object Terminal : Screen
     data object Settings : Screen
@@ -91,7 +91,7 @@ private sealed interface Screen {
     data class Profile(val ref: ProfileRef, val back: Screen) : Screen
     data class Shortcuts(val ref: ProfileRef, val back: Screen) : Screen
 
-    /** The Mac's files, from [start], for [pane]'s message if there's one. */
+    /** The computer's files, from [start], for [pane]'s message if there's one. */
     data class Files(val start: String, val pane: String?) : Screen
 }
 
@@ -257,11 +257,11 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
 /**
  * The session's terminals: tabs, the shown window's panes to swipe between
  * (each its terminal, or its mobile view), the composer, and the cards of
- * every pane. What's shown is the phone's own; the Mac follows. A terminal is
+ * every pane. What's shown is the phone's own; the computer follows. A terminal is
  * typed into straight from the keyboard, which a tap on it brings up; a
  * mobile view is written for in the composer's box. While the connection
  * to [host] is down, it says so, and how it's coming back. [onSessions]
- * leaves the session for the Mac's sessions.
+ * leaves the session for the computer's sessions.
  */
 @Composable
 private fun TerminalScreen(
@@ -407,7 +407,7 @@ private fun TerminalScreen(
         moding = null
     }
 
-    // What a prompt did shows in the line it leaves, a moment after it goes, whoever answered it: a rewind restored at the Mac, say.
+    // What a prompt did shows in the line it leaves, a moment after it goes, whoever answered it: a rewind restored at the computer, say.
     var asked by remember(pane?.id) { mutableStateOf<Prompt?>(null) }
     var gone by remember(pane?.id) { mutableLongStateOf(0L) }
     LaunchedEffect(screen.prompt, held) {

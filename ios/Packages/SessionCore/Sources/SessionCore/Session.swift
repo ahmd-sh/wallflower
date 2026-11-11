@@ -52,7 +52,7 @@ public final class KeptHidden: Hidden {
 public extension MuxWindow {
     func activePane() -> Pane? { panes.first { $0.active } }
 
-    /** The pane the phone shows for a window: one picked on the phone, until the Mac moves on. */
+    /** The pane the phone shows for a window: one picked on the phone, until the computer moves on. */
     func shownPane(_ chosen: [String: PaneChoice]) -> Pane? {
         let active = activePane()
         if let c = chosen[id], c.active == active?.id, let p = panes.first(where: { $0.id == c.pane }) { return p }
@@ -67,16 +67,16 @@ public extension MuxWindow {
 }
 
 /**
- * The phone's connection to the Mac's gateway, over one [Link] at a time,
+ * The phone's connection to the computer's gateway, over one [Link] at a time,
  * reconnecting until [stop], and the session it's in ([place]), in any of
- * the Mac's multiplexers, or none: then it's on the Mac's sessions
+ * the computer's multiplexers, or none: then it's on the computer's sessions
  * ([sessions]), from which it goes into one ([switchTo], [newSession]). It
  * leaves one only when the user does ([detach]), or the session goes: a
  * new connection, after a network change or with the app back, goes back
  * into the one it was in. Its state arrives pushed and is kept here, with
  * the panes' terminals and mobile views; presentation is local, and what
  * the user does goes out as intents. While the user is [away], it stays
- * connected for what the Mac's programs notify, and otherwise out of the way.
+ * connected for what the computer's programs notify, and otherwise out of the way.
  */
 @MainActor
 @Observable
@@ -113,18 +113,18 @@ public final class Session {
     public private(set) var starting: String?
     /** Why the phone's in no session, when it didn't choose that. */
     public private(set) var left: String?
-    /** The sessions in every multiplexer on the Mac, as last listed. */
+    /** The sessions in every multiplexer on the computer, as last listed. */
     public private(set) var sessions: SessionList?
-    /** The Mac's name, as the gateway last said. */
+    /** The computer's name, as the gateway last said. */
     public private(set) var machine: String? { didSet { if let m = machine, m != oldValue { onMachine?(m) } } }
     /** Where the gateway saves uploads: paths under it in what's sent are uploads. */
     public private(set) var uploadDir: String?
-    /** The gateway shows the Mac's files ([list], [fetch]), as it last said. */
+    /** The gateway shows the computer's files ([list], [fetch]), as it last said. */
     public private(set) var canFiles = false
     /** The terminal's size, in cells, as the gateway was last told it. */
     public private(set) var size: (cols: Int, rows: Int)
 
-    /** Desktop notifications the Mac's programs send, from any pane. */
+    /** Desktop notifications the computer's programs send, from any pane. */
     @ObservationIgnored public var onNotification: ((ProgramNotification) -> Void)?
     /** Text the gateway never confirmed comes back. */
     @ObservationIgnored public var onUndelivered: ((Undelivered) -> Void)?
@@ -221,7 +221,7 @@ public final class Session {
 
     /**
      * The user left the app ([on]) or came back. Away, the phone stays out
-     * of sizing the Mac's windows at once, and after [QUIET_AFTER] stops
+     * of sizing the computer's windows at once, and after [QUIET_AFTER] stops
      * its panes and mobile views streaming, keeping state and notifications
      * coming. Back, they stream again, and the phone takes the window it shows.
      */
@@ -285,7 +285,7 @@ public final class Session {
             viewing = w.id
             awaitingWindow = nil
         }
-        // What's shown is the phone's choice, and its pane the whole of the phone, though the Mac's layout came back while it was gone.
+        // What's shown is the phone's choice, and its pane the whole of the phone, though the computer's layout came back while it was gone.
         if !synced {
             synced = true
             if !away, let v = viewing { link.send(.select(window: v, pane: nil)) }
@@ -309,14 +309,14 @@ public final class Session {
         for w in m.windows { for p in w.panes.sorted(by: { $0.index < $1.index }) { panes.open(p.id, viewed: false) } }
     }
 
-    /** Shows a window now; the Mac follows in the background (it sizes the window for the phone). */
+    /** Shows a window now; the computer follows in the background (it sizes the window for the phone). */
     public func view(_ window: MuxWindow) {
         viewing = window.id
         if let p = window.activePane() { panes.open(p.id, viewed: true) }
         link.send(.select(window: window.id, pane: nil))
     }
 
-    /** Shows a pane of a window now, and has the Mac focus it in the background, zoomed so it gets the whole screen. */
+    /** Shows a pane of a window now, and has the computer focus it in the background, zoomed so it gets the whole screen. */
     public func show(_ window: MuxWindow, _ pane: Pane) {
         chosen[window.id] = PaneChoice(pane: pane.id, active: window.activePane()?.id)
         panes.open(pane.id, viewed: true)
@@ -334,7 +334,7 @@ public final class Session {
         link.send(.new)
     }
 
-    /** Opens a pane beside [pane], which the Mac focuses. */
+    /** Opens a pane beside [pane], which the computer focuses. */
     public func split(_ pane: Pane) { link.send(.split(pane: pane.id)) }
     public func kill(_ window: MuxWindow) { link.send(.kill(window: window.id, pane: nil)) }
     public func kill(_ pane: Pane) { link.send(.kill(window: nil, pane: pane.id)) }
@@ -519,18 +519,18 @@ public final class Session {
     /** A picture entry of [pane]'s mobile view, its bytes asked of the gateway; nil if they're gone. */
     public func picture(pane: String, id: String) async -> Data? { await transfer.picture(pane: pane, id: id) }
 
-    /** Sends [data] to the Mac as [name]; returns where it was saved. */
+    /** Sends [data] to the computer as [name]; returns where it was saved. */
     public func upload(id: String, name: String, data: Data, progress: @escaping (Int) -> Void) async throws -> String {
         try await transfer.upload(id: id, name: name, data: data, progress: progress)
     }
 
     // MARK: Files
 
-    /** A directory of the Mac's (absolute, or from ~), its entries by name; throws why it couldn't be read. */
+    /** A directory of the computer's (absolute, or from ~), its entries by name; throws why it couldn't be read. */
     public func list(_ path: String) async throws -> Listing { try await files.list(path) }
 
     /**
-     * A file of the Mac's, all of it or its first [limit] bytes, written to
+     * A file of the computer's, all of it or its first [limit] bytes, written to
      * [to] as it comes, with [progress] in bytes so far of how many; what the
      * gateway said of it. Cancelled, it stops coming.
      */

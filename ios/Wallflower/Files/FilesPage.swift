@@ -3,20 +3,20 @@ import SwiftUI
 import WallflowerDesign
 import Wire
 
-/** Where the files page opens: a directory of the Mac's (~ for the home), and the pane it's for, whose draft takes paths. */
+/** Where the files page opens: a directory of the computer's (~ for the home), and the pane it's for, whose draft takes paths. */
 struct FilesAt: Identifiable {
     let id = UUID()
     let start: String
     let pane: String?
 }
 
-/** A step into the Mac's files: a folder, or a file to view. */
+/** A step into the computer's files: a folder, or a file to view. */
 enum FilesRoute: Hashable {
     case folder(String)
     case file(String, FileEntry)
 }
 
-/** The Mac's directories as they're listed, kept while the page is open, and asked again when wanted. */
+/** The computer's directories as they're listed, kept while the page is open, and asked again when wanted. */
 @MainActor
 @Observable
 final class FilesModel {
@@ -54,7 +54,7 @@ final class FilesModel {
 }
 
 /**
- * The Mac's files, read-only, over everything: a folder at a time, as iOS
+ * The computer's files, read-only, over everything: a folder at a time, as iOS
  * navigates, each pushed onto the one above it, so back (or a swipe from the
  * edge) goes up, and the title's menu goes straight to any folder above.
  * Folders first, hidden entries only when asked for. A file opens in the

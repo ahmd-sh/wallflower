@@ -40,7 +40,7 @@ func each(t *testing.T, test func(t *testing.T, b backend)) {
 	}
 }
 
-// A desk is someone at the Mac, acting on the session with the
+// A desk is someone at the computer, acting on the session with the
 // multiplexer's own tools.
 type desk interface {
 	// run types a line into a pane, and Enter.

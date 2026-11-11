@@ -23,7 +23,7 @@ import WallflowerDesign
  * or stops: while the program's at work ([stoppable]), or just after
  * sending.
  *
- * + sends photos or files to the Mac; each shows above the box on its way,
+ * + sends photos or files to the computer; each shows above the box on its way,
  * then its path goes in, shown as its name. + also offers the program's
  * [commands], which start the draft.
  *

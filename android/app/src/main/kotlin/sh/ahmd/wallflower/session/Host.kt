@@ -48,5 +48,5 @@ data class Host(
     }
 }
 
-/** What to call the Mac: its name, once its gateway has said it. */
+/** What to call the computer: its name, once its gateway has said it. */
 val Host?.called: String get() = this?.machine ?: "your computer"

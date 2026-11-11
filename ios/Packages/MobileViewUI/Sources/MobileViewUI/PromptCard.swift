@@ -5,7 +5,7 @@ import WallflowerDesign
 /**
  * Choices the program's screen offers, to answer by touch: what it's about,
  * its questions as tabs, its options. Picking one sends [onKeys] the keys
- * that pick it on the screen, so the program, and the Mac, see the same
+ * that pick it on the screen, so the program, and the computer, see the same
  * answer as if typed, and [onPick] the option. The card goes when the screen
  * moves on.
  */

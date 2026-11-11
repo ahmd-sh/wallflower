@@ -8,9 +8,9 @@ import Wire
 /**
  * The tabs (the session's windows), with new tab first and the connection
  * last. It's local: it scrolls natively and a tap switches immediately, the
- * Mac learns afterwards. The highlight glides to the tab chosen. Holding a
+ * computer learns afterwards. The highlight glides to the tab chosen. Holding a
  * tab offers rename and close. The connection's dot opens its menu, which
- * says which Mac and session this is, and goes to the others.
+ * says which computer and session this is, and goes to the others.
  */
 struct TabBar: View {
     @Environment(\.palette) private var palette

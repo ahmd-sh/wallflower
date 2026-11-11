@@ -120,7 +120,7 @@ final class Seeker {
         }
     }
 
-    /** What a prompt did shows in the line it leaves, a moment after it goes, whoever answered it: a rewind restored at the Mac, say. */
+    /** What a prompt did shows in the line it leaves, a moment after it goes, whoever answered it: a rewind restored at the computer, say. */
     func settle(prompt p: Prompt?, held: String?, line: InputLine?, actions: PaneActions?) {
         let was = asked
         if p != nil {

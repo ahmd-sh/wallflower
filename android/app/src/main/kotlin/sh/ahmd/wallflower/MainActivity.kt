@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
 
     private val notifyPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
-    /** Once, while connected: notifications are how the Mac's programs reach the user while they're away. */
+    /** Once, while connected: notifications are how the computer's programs reach the user while they're away. */
     private fun askToNotify() {
         val prefs = getSharedPreferences("wallflower", MODE_PRIVATE)
         if (connection.session.value == null || prefs.getBoolean(ASKED_TO_NOTIFY, false)) return

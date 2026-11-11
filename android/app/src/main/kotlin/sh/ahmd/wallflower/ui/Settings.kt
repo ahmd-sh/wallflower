@@ -66,7 +66,7 @@ fun KeyBar.refFor(command: String?, program: String? = null): ProfileRef {
 }
 
 /**
- * Settings: the Mac, how wallflower looks, and the key bars each a page of
+ * Settings: the computer, how wallflower looks, and the key bars each a page of
  * their own, said in a line here; what's on or off is here as it is, and
  * what the phone knows of the gateway (its plugins, its versions) last.
  */

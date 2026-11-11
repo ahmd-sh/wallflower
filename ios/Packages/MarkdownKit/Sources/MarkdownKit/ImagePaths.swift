@@ -35,7 +35,7 @@ public enum ImagePaths {
         return alone.firstMatch(in: code, range: NSRange(location: 0, length: ns.length)) != nil
     }
 
-    /** [path] as the Mac has it: as it is from / or ~, else from [cwd] (the home if there's none). */
+    /** [path] as the computer has it: as it is from / or ~, else from [cwd] (the home if there's none). */
     public static func resolve(_ path: String, in cwd: String) -> String {
         if path.hasPrefix("/") || path.hasPrefix("~") { return path }
         var parts = cwd.isEmpty ? ["~"] : cwd.split(separator: "/", omittingEmptySubsequences: true).map(String.init)

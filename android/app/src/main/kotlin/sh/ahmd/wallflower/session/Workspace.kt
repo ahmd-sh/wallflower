@@ -20,7 +20,7 @@ data class PaneChoice(val pane: String, val active: String?)
 
 fun Window.activePane(): Pane? = panes.firstOrNull { it.active }
 
-/** The pane the phone shows for a window: one picked on the phone, until the Mac moves on. */
+/** The pane the phone shows for a window: one picked on the phone, until the computer moves on. */
 fun Window.shownPane(chosen: Map<String, PaneChoice>): Pane? {
     val active = activePane()
     val choice = chosen[id]?.takeIf { it.active == active?.id }
@@ -30,7 +30,7 @@ fun Window.shownPane(chosen: Map<String, PaneChoice>): Pane? {
 /**
  * The session as the phone has it: its state, pushed by the gateway,
  * and which window and panes the phone shows, which are the phone's own and
- * change the moment they're picked; the Mac is told in the background.
+ * change the moment they're picked; the computer is told in the background.
  */
 internal class Workspace(private val link: Link, private val terminals: Terminals) {
     private val _state = MutableStateFlow<State?>(null)
@@ -66,7 +66,7 @@ internal class Workspace(private val link: Link, private val terminals: Terminal
                 awaitingWindow = null
             }
         }
-        // What's shown is the phone's choice, and its pane the whole of the phone, though the Mac's layout came back while it was gone.
+        // What's shown is the phone's choice, and its pane the whole of the phone, though the computer's layout came back while it was gone.
         if (!synced) {
             synced = true
             if (!away) _viewing.value?.let { link.send(Select(window = it)) }
@@ -96,14 +96,14 @@ internal class Workspace(private val link: Link, private val terminals: Terminal
         for (w in m.windows) for (p in w.panes.sortedBy { it.index }) terminals.open(p.id, viewed = false)
     }
 
-    /** Shows a window now; the Mac follows in the background (it sizes the window for the phone). */
+    /** Shows a window now; the computer follows in the background (it sizes the window for the phone). */
     fun view(window: Window) {
         _viewing.value = window.id
         window.activePane()?.let { terminals.open(it.id, viewed = true) }
         link.send(Select(window = window.id))
     }
 
-    /** Shows a pane of a window now, and has the Mac focus it in the background, zoomed so it gets the whole screen. */
+    /** Shows a pane of a window now, and has the computer focus it in the background, zoomed so it gets the whole screen. */
     fun show(window: Window, pane: Pane) {
         _chosen.update { it + (window.id to PaneChoice(pane.id, window.activePane()?.id)) }
         terminals.open(pane.id, viewed = true)
@@ -121,7 +121,7 @@ internal class Workspace(private val link: Link, private val terminals: Terminal
         link.send(New)
     }
 
-    /** Opens a pane beside [pane], which the Mac focuses. */
+    /** Opens a pane beside [pane], which the computer focuses. */
     fun split(pane: String) = link.send(Split(pane))
 
     fun kill(window: Window) = link.send(Kill(window = window.id))

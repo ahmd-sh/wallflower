@@ -53,9 +53,9 @@ import sh.ahmd.wallflower.terminal.Terminal
 data class Place(val mux: String, val session: String)
 
 /**
- * The phone's connection to the Mac's gateway, over one [Link] at a time,
+ * The phone's connection to the computer's gateway, over one [Link] at a time,
  * reconnecting until [stop], and the session it's in ([place]), in any of
- * the Mac's multiplexers, or none: then it's on the Mac's sessions
+ * the computer's multiplexers, or none: then it's on the computer's sessions
  * ([sessions]), from which it goes into one ([switchTo], [newSession]). It
  * leaves one only when the user does ([detach]), or the session goes: a
  * new connection, after a network change or with the app back, goes back
@@ -63,7 +63,7 @@ data class Place(val mux: String, val session: String)
  * ([Workspace]), with the panes' terminals ([Terminals]) and mobile views
  * ([MobileViews]); presentation is local, and what the user does goes out as
  * intents ([Input], uploads). While the user is [away], it stays connected
- * for what the Mac's programs notify, and otherwise out of the way.
+ * for what the computer's programs notify, and otherwise out of the way.
  */
 class Session(
     transport: Transport,
@@ -98,7 +98,7 @@ class Session(
     val undelivered: SharedFlow<Undelivered> get() = input.undelivered
 
     private val _notifications = MutableSharedFlow<Notification>(extraBufferCapacity = 16)
-    /** Desktop notifications the Mac's programs send, from any pane. */
+    /** Desktop notifications the computer's programs send, from any pane. */
     val notifications: SharedFlow<Notification> = _notifications
 
     private val _mux = MutableStateFlow<Mux?>(null)
@@ -131,7 +131,7 @@ class Session(
     val left: StateFlow<String?> = _left.asStateFlow()
 
     private val _sessions = MutableStateFlow<SessionList?>(null)
-    /** The sessions in every multiplexer on the Mac, as last listed: pushed while the phone's in none, or asked for ([listSessions]). */
+    /** The sessions in every multiplexer on the computer, as last listed: pushed while the phone's in none, or asked for ([listSessions]). */
     val sessions: StateFlow<SessionList?> = _sessions.asStateFlow()
 
     /** Where the gateway has the phone: the session its last state was of, null while attached to nothing, unknown until it says. */
@@ -149,11 +149,11 @@ class Session(
     @Volatile private var placed = false
 
     private val _machine = MutableStateFlow<String?>(null)
-    /** The Mac's name, as the gateway last said. */
+    /** The computer's name, as the gateway last said. */
     val machine: StateFlow<String?> = _machine.asStateFlow()
 
     private val _canFiles = MutableStateFlow(false)
-    /** The gateway shows the Mac's files ([list], [fetch]), as it last said. */
+    /** The gateway shows the computer's files ([list], [fetch]), as it last said. */
     val canFiles: StateFlow<Boolean> = _canFiles.asStateFlow()
 
     private val _uploadDir = MutableStateFlow<String?>(null)
@@ -282,7 +282,7 @@ class Session(
 
     /**
      * The user left the app ([on]) or came back. Away, the phone stays out
-     * of sizing the Mac's windows at once, and after [QUIET_AFTER_MS] stops
+     * of sizing the computer's windows at once, and after [QUIET_AFTER_MS] stops
      * its panes and mobile views streaming, keeping state and notifications
      * coming. Back, they stream again, and the phone takes the window it shows.
      */
@@ -463,10 +463,10 @@ class Session(
     /** A picture entry of [pane]'s mobile view, its bytes asked of the gateway; null if they're gone. */
     suspend fun picture(pane: String, id: String): ByteArray? = transfer.picture(pane, id)
 
-    /** A directory on the Mac, its entries or why it couldn't be read; see [Files.list]. */
+    /** A directory on the computer, its entries or why it couldn't be read; see [Files.list]. */
     suspend fun list(path: String): Listing = files.list(path)
 
-    /** A file on the Mac, fetched into [to]; see [Files.fetch]. */
+    /** A file on the computer, fetched into [to]; see [Files.fetch]. */
     suspend fun fetch(path: String, to: File, limit: Long? = null, progress: (Long, Long) -> Unit = { _, _ -> }): FetchedFile =
         files.fetch(path, to, limit, progress)
 

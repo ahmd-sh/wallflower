@@ -129,7 +129,7 @@ internal class PaneActions(
     /** An option picked from a prompt the pane offered. */
     fun picked(prompt: Prompt, option: Prompt.Option, held: String? = null) = affect(program.picked(prompt, option), held)
 
-    /** A prompt the pane offered has gone, answered here or at the Mac, leaving its input [line] as it is. */
+    /** A prompt the pane offered has gone, answered here or at the computer, leaving its input [line] as it is. */
     fun settled(prompt: Prompt, line: InputLine?, held: String? = null) = affect(program.settled(prompt, line), held)
 
     /** What picking did; [held]: the message the user held to edit, if that's what it was for. */

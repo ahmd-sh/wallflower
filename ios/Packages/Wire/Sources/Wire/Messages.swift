@@ -295,7 +295,7 @@ public struct ServerHello: Sendable, Equatable, Decodable {
     public var v: Int
     /// Where uploads are saved: paths under it are uploads.
     public var uploads: String?
-    /// The machine's name, as its owner calls it (a Mac's Computer Name).
+    /// The machine's name, as its owner calls it (a Mac's Computer Name, Linux's pretty host name).
     public var machine: String?
     /// The phone halves of plugins the user gave the gateway, as data.
     public var programs: [ProgramData]
@@ -818,7 +818,7 @@ public struct Listing: Sendable, Equatable, Decodable {
     }
 }
 
-/// One of a directory's entries: its `kind` is what it is, or, for a symbolic link (`link`), what it leads to. `size` is a file's, in bytes; `mtime` when it last changed, in Unix milliseconds. `hidden` is a name that starts with a dot, or one the Mac hides (~/Library).
+/// One of a directory's entries: its `kind` is what it is, or, for a symbolic link (`link`), what it leads to. `size` is a file's, in bytes; `mtime` when it last changed, in Unix milliseconds. `hidden` is a name that starts with a dot, or one the computer hides (a Mac's ~/Library).
 public struct FileEntry: Sendable, Equatable, Hashable, Decodable {
     public var name: String
     public var kind: String

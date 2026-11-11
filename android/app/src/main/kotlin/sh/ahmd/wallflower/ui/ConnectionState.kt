@@ -90,7 +90,7 @@ internal fun ConnectionDot(status: Status, modifier: Modifier = Modifier) {
 
 /**
  * The connection's way in, at the end of the tab bar: its dot says how it
- * is. Its menu names the Mac ([machine], at [address]) and the [session],
+ * is. Its menu names the computer ([machine], at [address]) and the [session],
  * says when it tries next and why the last try failed, and offers a retry
  * then, the sessions (leaving this one, if [onSessions]), settings and
  * disconnecting.
@@ -177,8 +177,8 @@ internal fun Reconnecting(status: Status, machine: String, onRetry: () -> Unit) 
 }
 
 /**
- * What shows before there's anything of the Mac's to: the flower, swaying
- * while it tries to connect, the Mac ([machine], at [address]), and when it
+ * What shows before there's anything of the computer's to: the flower, swaying
+ * while it tries to connect, the computer ([machine], at [address]), and when it
  * tries next, with a retry now. While it waits for the user, the card
  * above says what to do, and only the flower stays.
  */

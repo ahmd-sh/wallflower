@@ -78,7 +78,7 @@ import sh.ahmd.wallflower.ui.haptics
  * ([stoppable]), or just after sending, since a stop can mean more to an
  * idle program (^C twice quits Claude Code).
  *
- * + sends photos or files to the Mac ([attachments]); each shows above the
+ * + sends photos or files to the computer ([attachments]); each shows above the
  * box on its way, then its path goes in at the cursor, shown as its name.
  * What the draft holds shows above it too, each with × to take it out.
  * + also offers the program's [commands], which start the draft; one it

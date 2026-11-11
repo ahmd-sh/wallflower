@@ -21,7 +21,7 @@ import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.ui.composer.Drafts
 
 /**
- * Files on their way to the Mac, each for a pane. Once the gateway says
+ * Files on their way to the computer, each for a pane. Once the gateway says
  * where it saved one, its path goes into that pane's draft at the cursor,
  * as a file dropped on a terminal does: from then on the draft is the
  * attachment, kept and sent like the rest of it. An image leaves a small
@@ -49,7 +49,7 @@ class Uploads(
         prefs.edit().putString(DIR, dir).apply()
     }
 
-    /** The preview kept for an uploaded image, by its path on the Mac, if there is one. */
+    /** The preview kept for an uploaded image, by its path on the computer, if there is one. */
     fun thumbnail(path: String): File? = File(thumbs, key(path)).takeIf { it.exists() }
 
     fun add(session: Session, pane: String, uris: List<Uri>) {
@@ -86,7 +86,7 @@ class Uploads(
         }
     }
 
-    /** Previews go when their uploads do, on the Mac. */
+    /** Previews go when their uploads do, on the computer. */
     private fun prune() {
         val old = System.currentTimeMillis() - KEPT_MS
         thumbs.listFiles()?.filter { it.lastModified() < old }?.forEach { it.delete() }

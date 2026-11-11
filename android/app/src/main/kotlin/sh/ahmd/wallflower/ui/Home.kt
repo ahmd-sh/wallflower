@@ -62,11 +62,11 @@ import sh.ahmd.wallflower.session.called
 private data class Listed(val mux: String, val info: SessionInfo)
 
 /**
- * The Mac, while the phone's in none of its sessions: how the connection
+ * The computer, while the phone's in none of its sessions: how the connection
  * is, and the sessions in every multiplexer it has, each saying whether it
  * runs and what can be done (the multiplexer it was last in first). A tap
  * goes into one; holding one offers rename and close; new starts one, and
- * the multiplexer with it where it can. The list keeps up with the Mac on
+ * the multiplexer with it where it can. The list keeps up with the computer on
  * its own. While the connection's down, it says how it's coming back, and
  * when it's waiting for the user, what to do.
  */

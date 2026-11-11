@@ -71,7 +71,7 @@ import sh.ahmd.wallflower.ui.wordSize
 import sh.ahmd.wallflower.ui.words
 
 /**
- * Files in the composer: [uploads] on their way to the Mac, which saves them
+ * Files in the composer: [uploads] on their way to the computer, which saves them
  * in [dir], and the draft's own, by their paths there, photos shown by their
  * [thumbnail]. [onAttach] sends picked files; [onDismiss] lets a failed one go.
  */
@@ -179,7 +179,7 @@ internal fun AttachButton(
 /**
  * A file in the draft: a photo as itself (its preview, found off the main
  * thread), anything else by its name; × takes it out. Tapped, it opens in
- * the viewer, fetched back from the Mac, where the gateway can.
+ * the viewer, fetched back from the computer, where the gateway can.
  */
 @Composable
 private fun Attached(path: String, thumbnail: (String) -> File?, onRemove: () -> Unit) {

@@ -122,7 +122,7 @@ private const val EVERY_MS = 80L
 
 private const val ASIDE_HOLD_MS = 400L
 
-/** The modes each program has been seen to go round, while the app runs: they're how it's set up on the Mac, the same in each of its panes. */
+/** The modes each program has been seen to go round, while the app runs: they're how it's set up on the computer, the same in each of its panes. */
 internal object Cycles {
     private val all = HashMap<Program, Cycle>()
 

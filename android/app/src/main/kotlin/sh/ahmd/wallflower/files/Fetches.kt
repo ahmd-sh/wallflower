@@ -9,7 +9,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Files fetched from the Mac, kept in the app's cache, each in a folder of
+ * Files fetched from the computer, kept in the app's cache, each in a folder of
  * its own under its own name, so a share names it right. One a listing
  * described (its size and when it changed) is fetched once while the app
  * runs; the rest, whenever they're shown. What's left from before goes

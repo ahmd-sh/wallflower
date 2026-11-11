@@ -36,7 +36,7 @@ public struct Host: Codable, Equatable, Sendable {
         return try? JSONDecoder().decode(Host.self, from: data)
     }
 
-    /** What to call the Mac: its name, once its gateway has said it. */
+    /** What to call the computer: its name, once its gateway has said it. */
     public var called: String { machine ?? "your computer" }
 }
 

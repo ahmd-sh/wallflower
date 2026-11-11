@@ -33,9 +33,9 @@ import sh.ahmd.wallflower.BuildConfig
 import sh.ahmd.wallflower.session.Host
 
 /**
- * Setting wallflower up: what it is, in a line, then the Mac to reach and
+ * Setting wallflower up: what it is, in a line, then the computer to reach and
  * this phone's key to let in there. With a way back ([onBack]) in place of
- * the welcome, it edits the Mac from settings.
+ * the welcome, it edits the computer from settings.
  */
 @Composable
 fun SetupScreen(
@@ -73,7 +73,7 @@ fun SetupScreen(
     }
 }
 
-/** The Mac (where, who, which multiplexer), this phone's key, and connect, saying plainly what's missing. */
+/** The computer (where, who, which multiplexer), this phone's key, and connect, saying plainly what's missing. */
 @Composable
 private fun SetupForm(
     host: Host?,

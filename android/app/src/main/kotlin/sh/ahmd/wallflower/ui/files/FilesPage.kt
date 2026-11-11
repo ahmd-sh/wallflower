@@ -97,7 +97,7 @@ private sealed interface Listed {
 }
 
 /**
- * The Mac's files, from [start] (a pane's directory, or ~): a folder's
+ * The computer's files, from [start] (a pane's directory, or ~): a folder's
  * folders, then its files, hidden ones only when asked ([hidden]). A folder
  * tapped goes in, and back comes out again; a step of the path along the
  * top goes there. A file tapped opens in the viewer. Held, an entry offers

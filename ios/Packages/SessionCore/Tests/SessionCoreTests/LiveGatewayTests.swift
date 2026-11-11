@@ -20,7 +20,7 @@ final class LiveGatewayTests: XCTestCase {
             guard let bytes = s.terminals[pane]?.screenBytes(), let screen = Screen.parse(bytes) else { return false }
             return (0..<screen.rows).contains { y in (0..<screen.cols).map { screen.text($0, y) }.joined().contains("wallflower-ios-84") }
         }
-        // A file to the Mac, in chunks with pings between, and where it went.
+        // A file to the computer, in chunks with pings between, and where it went.
         let data = Data((0..<200_000).map { UInt8($0 % 251) })
         var progress = 0
         let path = try await s.upload(id: "t1", name: "wallflower ios test.bin", data: data) { progress = $0 }
@@ -34,7 +34,7 @@ final class LiveGatewayTests: XCTestCase {
         s.stop()
     }
 
-    /** The Mac's files need no session: a directory listed, a file fetched whole, its start, one that can't be, and one cancelled. */
+    /** The computer's files need no session: a directory listed, a file fetched whole, its start, one that can't be, and one cancelled. */
     func testListsAndFetchesFiles() async throws {
         guard let port = ProcessInfo.processInfo.environment["WF_LISTEN"].flatMap(Int.init) else { throw XCTSkip("no gateway") }
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("wf-files-\(UUID().uuidString.prefix(8))")

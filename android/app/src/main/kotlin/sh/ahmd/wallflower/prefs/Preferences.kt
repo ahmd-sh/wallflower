@@ -41,7 +41,7 @@ class Preferences(private val prefs: SharedPreferences) {
     /** Whether a program working, or needing the user, shows in the status bar while connected (Android 16's Live Updates). */
     val statusBar = boolean(STATUS_BAR, false)
 
-    /** Whether the Mac's files show their hidden ones (dotfiles, ~/Library). */
+    /** Whether the computer's files show their hidden ones (dotfiles, ~/Library). */
     val hiddenFiles = boolean(HIDDEN_FILES, false)
 
     /** Panes whose program has a mobile view show it rather than the terminal: one switch, for every pane. */

@@ -29,7 +29,7 @@ enum Page: Equatable {
 }
 
 /**
- * Where the user is: setting up, the session's terminals, or the Mac's
+ * Where the user is: setting up, the session's terminals, or the computer's
  * sessions while the phone's in none, or a page over them, which slides in
  * from the side and goes back with a swipe from the edge, as iOS pages do.
  */
@@ -212,7 +212,7 @@ struct RootView: View {
     }
 }
 
-/** Left: the app's done with the Mac until it connects again. */
+/** Left: the app's done with the computer until it connects again. */
 private struct Disconnected: View {
     @Environment(\.palette) private var palette
     @Environment(\.look) private var look

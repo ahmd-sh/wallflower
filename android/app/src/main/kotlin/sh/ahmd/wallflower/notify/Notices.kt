@@ -22,7 +22,7 @@ import sh.ahmd.wallflower.session.called
 import sh.ahmd.wallflower.session.label
 
 /**
- * What wallflower puts in the phone's notifications: what the Mac's
+ * What wallflower puts in the phone's notifications: what the computer's
  * programs notify, the latest per pane, as their [Program] has it said; and
  * the connection, kept while the user is away or lost. Every one can be
  * swiped away; on the lock screen, what the programs said stays hidden.

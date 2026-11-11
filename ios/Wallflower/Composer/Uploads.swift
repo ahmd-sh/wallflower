@@ -4,7 +4,7 @@ import Observation
 import SessionCore
 import UIKit
 
-/** Something picked to send to the Mac: its name, and its bytes. */
+/** Something picked to send to the computer: its name, and its bytes. */
 struct Picked {
     let name: String
     let data: Data
@@ -12,7 +12,7 @@ struct Picked {
 }
 
 /**
- * Files on their way to the Mac, each for a pane. Once the gateway says
+ * Files on their way to the computer, each for a pane. Once the gateway says
  * where it saved one, its path goes into that pane's draft, as a file
  * dropped on a terminal does: from then on the draft is the attachment,
  * kept and sent like the rest of it. An image leaves a small preview behind,
@@ -64,7 +64,7 @@ final class Uploads {
         f(&items[i])
     }
 
-    /** The preview kept for an uploaded image, by its path on the Mac, if there is one. */
+    /** The preview kept for an uploaded image, by its path on the computer, if there is one. */
     func thumbnail(_ path: String) -> UIImage? {
         UIImage(contentsOfFile: thumbs.appendingPathComponent(key(path)).path)
     }

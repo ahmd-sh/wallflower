@@ -6,7 +6,7 @@ import sh.ahmd.wallflower.screen.Screen
 
 /**
  * The phone's half of a program's plugin: what wallflower can read off the
- * program's screen, and how to drive it beyond typing. The Mac's half says
+ * program's screen, and how to drive it beyond typing. The computer's half says
  * which panes run it, and names it by the same id (see [Programs]).
  */
 interface Program {
@@ -83,7 +83,7 @@ interface Program {
     fun picked(prompt: Prompt, option: Prompt.Option): Effect? = null
 
     /**
-     * What answering [prompt] did besides, whoever answered it (at the Mac,
+     * What answering [prompt] did besides, whoever answered it (at the computer,
      * say), as the input [line] the program shows once it's gone tells; null
      * if nothing wallflower needs to know.
      */

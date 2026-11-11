@@ -5,7 +5,7 @@ import UserNotifications
 import Wire
 
 /**
- * What wallflower puts in the phone's notifications: what the Mac's
+ * What wallflower puts in the phone's notifications: what the computer's
  * programs notify, the latest per pane, as their Program has it said; and
  * the connection, lost while the user is away. On the lock screen, what the
  * programs said stays hidden until the phone's unlocked.
@@ -20,7 +20,7 @@ final class Notices: NSObject, UNUserNotificationCenterDelegate {
         center.delegate = self
     }
 
-    /** Once, while connected: notifications are how the Mac's programs reach the user while they're away. */
+    /** Once, while connected: notifications are how the computer's programs reach the user while they're away. */
     func ask() {
         center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }

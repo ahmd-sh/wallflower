@@ -116,7 +116,7 @@ private struct Read: Sendable {
 
 private let asideHold: TimeInterval = 0.4
 
-/** The modes each program has been seen to go round, while the app runs: they're how it's set up on the Mac, the same in each of its panes. */
+/** The modes each program has been seen to go round, while the app runs: they're how it's set up on the computer, the same in each of its panes. */
 @MainActor
 enum Cycles {
     private static var all: [ObjectIdentifier: Cycle] = [:]

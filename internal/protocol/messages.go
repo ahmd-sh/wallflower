@@ -226,7 +226,7 @@ type ServerHello struct {
 	// their paths from others in what it sends.
 	Uploads string `json:"uploads,omitempty"`
 	// Machine is the name of the machine the gateway runs on, as its owner
-	// calls it (a Mac's Computer Name), for a client to say where it is.
+	// calls it (a Mac's Computer Name, Linux's pretty host name), for a client to say where it is.
 	Machine string `json:"machine,omitempty"`
 	// Programs are the phone halves of plugins the user gave the gateway,
 	// as data, for programs the client has no half of its own for.
@@ -436,7 +436,7 @@ type Listing struct {
 // FileEntry is one of a directory's entries: its Kind is what it is, or,
 // for a symbolic link (Link), what it leads to. Size is a file's, in bytes;
 // Mtime when it last changed, in Unix milliseconds. Hidden is a name that
-// starts with a dot, or one the Mac hides (~/Library).
+// starts with a dot, or one the computer hides (a Mac's ~/Library).
 type FileEntry struct {
 	Name   string `json:"name"`
 	Kind   string `json:"kind"` // KindDir, KindFile or KindOther

@@ -10,7 +10,7 @@ import sh.ahmd.wallflower.protocol.Picture
 import sh.ahmd.wallflower.protocol.Upload
 import sh.ahmd.wallflower.protocol.Uploaded
 
-/** Files sent to the Mac, and pictures asked of it. */
+/** Files sent to the computer, and pictures asked of it. */
 internal class Transfer(private val link: Link) {
     private val uploaded = ConcurrentHashMap<String, CompletableDeferred<Uploaded>>()
     private val pictures = ConcurrentHashMap<String, CompletableDeferred<ByteArray?>>()
@@ -42,7 +42,7 @@ internal class Transfer(private val link: Link) {
     }
 
     /**
-     * Sends [size] bytes from [input] to the Mac as upload [id] and returns
+     * Sends [size] bytes from [input] to the computer as upload [id] and returns
      * where the gateway saved it. It goes a chunk at a time, each followed by
      * a ping, with only [AHEAD] chunks unanswered: whatever's typed
      * meanwhile waits behind those alone rather than behind the whole file

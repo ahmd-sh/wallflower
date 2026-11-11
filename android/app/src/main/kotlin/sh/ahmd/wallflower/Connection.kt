@@ -28,8 +28,8 @@ import sh.ahmd.wallflower.session.Status
 import sh.ahmd.wallflower.session.TcpTransport
 
 /**
- * The session with the Mac, which outlives the app's screen: while the user
- * is away, [ConnectionService] keeps it, and what the Mac's programs notify
+ * The session with the computer, which outlives the app's screen: while the user
+ * is away, [ConnectionService] keeps it, and what the computer's programs notify
  * shows in the phone's notifications ([Notices]) as the pane's [Program]
  * has it said. It ends when the user disconnects.
  */
@@ -72,10 +72,10 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         connect(host)
     }
 
-    /** The session to go back into, kept past the app's life; with none, it opens on the Mac's sessions. */
+    /** The session to go back into, kept past the app's life; with none, it opens on the computer's sessions. */
     private fun remember(place: Place?) = update { it.copy(mux = place?.mux ?: it.mux, session = place?.session) }
 
-    /** What the Mac's called, kept so it's named before the next connection's hello. */
+    /** What the computer's called, kept so it's named before the next connection's hello. */
     private fun named(machine: String) = update { it.copy(machine = machine) }
 
     private fun update(change: (Host) -> Host) {
@@ -86,7 +86,7 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         _host.value = changed
     }
 
-    /** Connects to the configured Mac, unless already connected. */
+    /** Connects to the configured computer, unless already connected. */
     fun ensure() {
         if (_session.value == null) _host.value?.let(::connect)
     }
@@ -165,7 +165,7 @@ class Connection(private val context: Context, private val scope: CoroutineScope
         ConnectionService.start(context)
     }
 
-    /** The pane the app shows: what the Mac's programs said there has been seen. */
+    /** The pane the app shows: what the computer's programs said there has been seen. */
     fun seen(pane: String) {
         latest.remove(pane)
         notices.cancel(pane)

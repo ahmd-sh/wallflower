@@ -4,7 +4,7 @@ import SwiftUI
 public struct Viewing {
     /** A picture entry, by its id and its type. */
     public var picture: ((_ id: String, _ mime: String) -> Void)?
-    /** A file, by its path as a program wrote it; nil while the Mac's files can't be had. */
+    /** A file, by its path as a program wrote it; nil while the computer's files can't be had. */
     public var path: ((String) -> Void)?
 
     public init(picture: ((String, String) -> Void)? = nil, path: ((String) -> Void)? = nil) {

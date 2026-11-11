@@ -11,10 +11,10 @@ import Wire
 /**
  * The session's terminals: tabs, the shown window's panes to swipe between
  * (each its terminal, or its mobile view), and the composer. What's shown is
- * the phone's own; the Mac follows. A terminal is typed into straight from
+ * the phone's own; the computer follows. A terminal is typed into straight from
  * the keyboard, which a tap on it brings up; a mobile view is written for in
- * the composer's box. While the connection to the Mac is down, it says so,
- * and how it's coming back. [onSessions] leaves the session for the Mac's
+ * the composer's box. While the connection to the computer is down, it says so,
+ * and how it's coming back. [onSessions] leaves the session for the computer's
  * sessions.
  */
 struct TerminalScreen: View {

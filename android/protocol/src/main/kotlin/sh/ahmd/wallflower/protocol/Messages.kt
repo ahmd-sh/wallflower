@@ -198,7 +198,7 @@ data class ServerHello(
     val v: Int,
     /** Where uploads are saved: paths under it are uploads. */
     val uploads: String? = null,
-    /** The machine's name, as its owner calls it (a Mac's Computer Name). */
+    /** The machine's name, as its owner calls it (a Mac's Computer Name, Linux's pretty host name). */
     val machine: String? = null,
     /** The phone halves of plugins the user gave the gateway, as data. */
     val programs: List<ProgramData> = emptyList(),
@@ -409,7 +409,7 @@ data class Listing(
  * One of a directory's entries: its [kind] is what it is, or, for a symbolic
  * [link], what it leads to. [size] is a file's, in bytes; [mtime] when it
  * last changed, in Unix milliseconds. [hidden]: a name starting with a dot,
- * or one the Mac hides (~/Library).
+ * or one the computer hides (a Mac's ~/Library).
  */
 @Serializable
 data class FileEntry(
