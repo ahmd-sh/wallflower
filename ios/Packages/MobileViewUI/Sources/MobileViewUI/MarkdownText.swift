@@ -6,13 +6,16 @@ import WallflowerDesign
 /** Markdown, rendered in wallflower's fonts: words in the look's, code in mono. Held, its words select, to copy. */
 public struct MarkdownText: View {
     let text: String
+    let breaks: Bool
 
-    public init(_ text: String) {
+    /// `breaks`: a line break in a paragraph stays one, as chat replies mean it; a document's lines wrap.
+    public init(_ text: String, breaks: Bool = true) {
         self.text = text
+        self.breaks = breaks
     }
 
     public var body: some View {
-        Blocks(blocks: Markdown.parse(text))
+        Blocks(blocks: Markdown.parse(text, breaks: breaks))
     }
 }
 

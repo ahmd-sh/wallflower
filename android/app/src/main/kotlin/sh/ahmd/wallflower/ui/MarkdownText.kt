@@ -52,8 +52,8 @@ val LocalPicturePaths = staticCompositionLocalOf<((String) -> Unit)?> { null }
 
 /** Markdown, rendered in wallflower's fonts: words in [words], code in [Mono]; pictures' paths tap to open, where they can be ([LocalPicturePaths]). */
 @Composable
-fun MarkdownText(text: String, modifier: Modifier = Modifier) {
-    val blocks = remember(text) { Markdown.parse(text) }
+fun MarkdownText(text: String, modifier: Modifier = Modifier, breaks: Boolean = true) {
+    val blocks = remember(text, breaks) { Markdown.parse(text, breaks) }
     Blocks(blocks, modifier)
 }
 

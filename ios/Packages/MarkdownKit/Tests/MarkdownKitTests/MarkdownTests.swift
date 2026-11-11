@@ -99,4 +99,13 @@ final class MarkdownTests: XCTestCase {
         XCTAssertEqual(Markdown.inline("👋 **hi**\u{301} é"), [Span("👋 "), Span("hi", bold: true), Span("\u{301} é")])
         XCTAssertEqual(Markdown.parse("```\u{301}\ncode\n```"), [.code(language: "\u{301}", text: "code")])
     }
+
+    func testADocumentsLinesWrapWhereAChatReplysBreak() {
+        let text = "one line\nand more\n\n- an item\n  going on"
+        XCTAssertEqual(Markdown.parse(text).first, .paragraph("one line\nand more"))
+        XCTAssertEqual(Markdown.parse(text, breaks: false), [
+            .paragraph("one line and more"),
+            .list(ordered: false, start: 1, items: [[.paragraph("an item going on")]]),
+        ])
+    }
 }

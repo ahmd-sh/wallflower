@@ -108,4 +108,13 @@ class MarkdownTest {
         assertEquals(listOf(Span("*not italic*")), Markdown.inline("\\*not italic\\*"))
         assertEquals(listOf(Span("a "), Span("b", bold = true), Span(" `c")), Markdown.inline("a __b__ `c"))
     }
+
+    @Test
+    fun aDocumentsLinesWrapWhereAChatReplysBreak() {
+        val text = "one line\nand more\n\n- an item\n  going on"
+        assertEquals(Block.Paragraph("one line\nand more"), Markdown.parse(text)[0])
+        val doc = Markdown.parse(text, breaks = false)
+        assertEquals(Block.Paragraph("one line and more"), doc[0])
+        assertEquals(listOf(Block.Paragraph("an item going on")), (doc[1] as Block.ListBlock).items[0])
+    }
 }

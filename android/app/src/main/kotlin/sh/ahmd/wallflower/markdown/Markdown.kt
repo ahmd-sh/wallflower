@@ -4,7 +4,8 @@ package sh.ahmd.wallflower.markdown
  * The markdown chat CLIs write, parsed for rendering: headings, paragraphs,
  * fenced code, quotes, lists (nested), tables and rules, with bold, italic,
  * strikethrough, code and links inside. Not CommonMark: a line break in a
- * paragraph stays a line break, as chat replies mean it.
+ * paragraph stays a line break, as chat replies mean it, unless it's a
+ * document's, written to wrap ([breaks] false).
  */
 sealed interface Block {
     data class Heading(val level: Int, val text: String) : Block
@@ -26,18 +27,18 @@ data class Span(
 )
 
 object Markdown {
-    fun parse(text: String): List<Block> = blocks(text.replace("\r\n", "\n").split('\n'))
+    fun parse(text: String, breaks: Boolean = true): List<Block> = blocks(text.replace("\r\n", "\n").split('\n'), breaks)
 
     private val heading = Regex("""^(#{1,6})\s+(.*?)\s*#*\s*$""")
     private val rule = Regex("""^\s{0,3}([-*_])(\s*\1){2,}\s*$""")
     private val item = Regex("""^(\s*)([-*+]|(\d{1,9})[.)])(\s+|$)(.*)$""")
     private val tableSeparator = Regex("""^\s*\|?(\s*:?-+:?\s*\|)+\s*(:?-+:?\s*)?$""")
 
-    private fun blocks(lines: List<String>): List<Block> {
+    private fun blocks(lines: List<String>, breaks: Boolean): List<Block> {
         val out = mutableListOf<Block>()
         val paragraph = mutableListOf<String>()
         fun flush() {
-            if (paragraph.isNotEmpty()) out += Block.Paragraph(paragraph.joinToString("\n"))
+            if (paragraph.isNotEmpty()) out += Block.Paragraph(paragraph.joinToString(if (breaks) "\n" else " "))
             paragraph.clear()
         }
         var i = 0
@@ -74,12 +75,12 @@ object Markdown {
                         quoted += lines[i].trimStart().removePrefix(">").removePrefix(" ")
                         i++
                     }
-                    out += Block.Quote(blocks(quoted))
+                    out += Block.Quote(blocks(quoted, breaks))
                     continue
                 }
                 item.matches(line) -> {
                     flush()
-                    i = list(lines, i, out)
+                    i = list(lines, i, out, breaks)
                     continue
                 }
                 t.startsWith("|") && i + 1 < lines.size && tableSeparator.matches(lines[i + 1]) -> {
@@ -103,7 +104,7 @@ object Markdown {
     }
 
     /** Parses the list starting at [start] into [out]; returns the line after it. */
-    private fun list(lines: List<String>, start: Int, out: MutableList<Block>): Int {
+    private fun list(lines: List<String>, start: Int, out: MutableList<Block>, breaks: Boolean): Int {
         val first = item.find(lines[start])!!
         val indent = first.groupValues[1].length
         val ordered = first.groupValues[3].isNotEmpty()
@@ -128,7 +129,7 @@ object Markdown {
                 }
                 i++
             }
-            items += blocks(body)
+            items += blocks(body, breaks)
         }
         out += Block.ListBlock(ordered, first.groupValues[3].toIntOrNull() ?: 1, items)
         return i

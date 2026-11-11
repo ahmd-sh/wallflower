@@ -229,7 +229,7 @@ private struct Reader: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if markdown {
-                    MarkdownText(text)
+                    MarkdownText(text, breaks: false) // a document's lines wrap
                 } else {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(chunks.enumerated()), id: \.offset) { _, chunk in

@@ -39,7 +39,8 @@ public struct Span: Hashable, Sendable {
 }
 
 public enum Markdown {
-    public static func parse(_ text: String) -> [Block] {
+    /// `breaks`: a line break in a paragraph stays one, as chat replies mean it; a document's lines wrap.
+    public static func parse(_ text: String, breaks: Bool = true) -> [Block] {
         let units = Array(text.utf16)
         var lines: [String] = []
         var line: [UInt16] = []
@@ -53,7 +54,7 @@ public enum Markdown {
             }
         }
         lines.append(String(utf16: line))
-        return blocks(lines)
+        return blocks(lines, breaks: breaks)
     }
 
     private static let heading = pattern(#"^(#{1,6})\s+(.*?)\s*#*\s*$"#)
@@ -62,11 +63,11 @@ public enum Markdown {
     private static let tableSeparator = pattern(#"^\s*\|?(\s*:?-+:?\s*\|)+\s*(:?-+:?\s*)?$"#)
     private static let cellBar = pattern(#"(?<!\\)\|"#)
 
-    private static func blocks(_ lines: [String]) -> [Block] {
+    private static func blocks(_ lines: [String], breaks: Bool) -> [Block] {
         var out: [Block] = []
         var paragraph: [String] = []
         func flush() {
-            if !paragraph.isEmpty { out.append(.paragraph(paragraph.joined(separator: "\n"))) }
+            if !paragraph.isEmpty { out.append(.paragraph(paragraph.joined(separator: breaks ? "\n" : " "))) }
             paragraph.removeAll()
         }
         var i = 0
@@ -102,11 +103,11 @@ public enum Markdown {
                     quoted.append(q.utf16HasPrefix(" ") ? q.utf16Dropping(1) : q)
                     i += 1
                 }
-                out.append(.quote(blocks(quoted)))
+                out.append(.quote(blocks(quoted, breaks: breaks)))
                 continue
             } else if item.matchesWhole(line) {
                 flush()
-                i = list(lines, from: i, into: &out)
+                i = list(lines, from: i, into: &out, breaks: breaks)
                 continue
             } else if t.utf16HasPrefix("|") && i + 1 < lines.count && tableSeparator.matchesWhole(lines[i + 1]) {
                 flush()
@@ -130,7 +131,7 @@ public enum Markdown {
     }
 
     /// Parses the list starting at `start` into `out`; returns the line after it.
-    private static func list(_ lines: [String], from start: Int, into out: inout [Block]) -> Int {
+    private static func list(_ lines: [String], from start: Int, into out: inout [Block], breaks: Bool) -> Int {
         let first = item.find(lines[start])!
         let indent = first[1].utf16.count
         let ordered = !first[3].isEmpty
@@ -154,7 +155,7 @@ public enum Markdown {
                 }
                 i += 1
             }
-            items.append(blocks(body))
+            items.append(blocks(body, breaks: breaks))
         }
         out.append(.list(ordered: ordered, start: Int(first[3]) ?? 1, items: items))
         return i

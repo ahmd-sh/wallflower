@@ -513,7 +513,7 @@ private fun TextShown(text: String, markdown: Boolean, footer: String?) {
     val note = @Composable { f: String -> Text(f, color = Palette.dim, style = Type.caption, modifier = Modifier.padding(top = 16.dp)) }
     if (markdown) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
-            SelectionContainer { MarkdownText(text) }
+            SelectionContainer { MarkdownText(text, breaks = false) } // a document's lines wrap
             footer?.let { note(it) }
         }
         return

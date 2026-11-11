@@ -21,7 +21,7 @@ read when a connection starts.
 ```
 
 - `id`: lowercase letters, digits, `.`, `_` and `-`; not one wallflower
-  ships (`claude`, `zsh`, `shell`).
+  ships (`claude`, `codex`, `zsh`, `shell`).
 - `commands`: what the panes running it report as their command. Your
   plugins come before the built-in ones, so one can claim a shell's panes.
 - `client`, optional: the phone's half, as data, since the phone loads no
