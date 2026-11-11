@@ -256,7 +256,8 @@ struct TerminalScreen: View {
             typing: !mobile,
             onGridSize: { cols, rows in
                 session.start(cols: cols, rows: rows)
-                session.resize(cols: cols, rows: rows)
+                // iOS gives the view its new size as the keyboard starts to move, not frame by frame: tmux is told at once, and catches up while it slides.
+                session.resize(cols: cols, rows: rows, ahead: true)
             },
             onTap: nil,
             onTyped: { t in
