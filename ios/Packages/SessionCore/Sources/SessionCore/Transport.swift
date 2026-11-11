@@ -24,9 +24,9 @@ public enum Blocked: Error, Equatable, Sendable {
         case .keyLocked: return "unlock your key to connect"
         case .unknownHost(_, let key): return "new host key \(HostKeys.fingerprint(openSSH: key))"
         case .hostKeyChanged(_, let f): return "host key changed: \(f)"
-        case .notAuthorized: return "this phone's key isn't authorized on the Mac"
+        case .notAuthorized: return "this phone's key isn't authorized on the computer"
         case .refused(let r): return r
-        case .outdated(let g, let a): return "the Mac's wallflower speaks protocol \(g), this app \(a)"
+        case .outdated(let g, let a): return "the computer's wallflower speaks protocol \(g), this app \(a)"
         }
     }
 }
@@ -194,7 +194,7 @@ enum SSHFailure: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .wrongChannel: return "unexpected ssh channel"
-        case .execRefused: return "the Mac wouldn't run wallflower"
+        case .execRefused: return "the computer wouldn't run wallflower"
         }
     }
 }

@@ -433,7 +433,7 @@ public struct BlockedCard: View {
                 }
             case .unknownHost(let host, let key):
                 CardTitle("is this \(machine)?")
-                Paragraph("It's the first time this phone connects to \(host). Trust it if this matches the Mac's own key, which this shows on the Mac:")
+                Paragraph("It's the first time this phone connects to \(host). Trust it if this matches \(machine)'s own key, which this shows on it:")
                 Code("ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub")
                 Text(HostKeys.fingerprint(openSSH: key)).font(Fonts.mono(12)).foregroundColor(palette.aqua).textSelection(.enabled)
                 HStack(spacing: 8) {
@@ -442,14 +442,14 @@ public struct BlockedCard: View {
                 }
             case .hostKeyChanged(let host, let fingerprint):
                 CardTitle("\(machine)'s key changed", color: palette.red)
-                Paragraph("\(host) now shows a different key, \(fingerprint). If you didn't reinstall the Mac or change its keys, someone may be listening in: don't connect.")
+                Paragraph("\(host) now shows a different key, \(fingerprint). If you didn't reinstall \(machine) or change its keys, someone may be listening in: don't connect.")
                 HStack(spacing: 8) {
                     WordButton("forget old key") { onForget(host) }
                     WordButton("settings", action: onSetup)
                 }
             case .notAuthorized:
                 CardTitle("\(machine) doesn't know this phone yet")
-                Paragraph("Run this on the Mac to let it in (it can only run wallflower), then retry:")
+                Paragraph("Run this on \(machine) to let this phone in (it can only run wallflower), then retry:")
                 let command = authorizeCommand()
                 Code(command)
                 HStack(spacing: 8) {
@@ -461,7 +461,7 @@ public struct BlockedCard: View {
                 let macOlder = gateway < app
                 CardTitle(macOlder ? "update wallflower on \(machine)" : "update this app")
                 if macOlder {
-                    Paragraph("\(machine)'s wallflower speaks protocol \(gateway), this app \(app). Update it from wallflower's folder on the Mac, then retry:")
+                    Paragraph("\(machine)'s wallflower speaks protocol \(gateway), this app \(app). Update it from wallflower's folder there, then retry:")
                     Code("go install ./cmd/wallflower")
                 } else {
                     Paragraph("\(machine)'s wallflower speaks protocol \(gateway), this app \(app). Install this app's latest build, then retry.")

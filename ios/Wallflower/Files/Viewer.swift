@@ -139,7 +139,7 @@ struct FileViewer: View {
     private func load() async {
         switch viewed {
         case .picture(let pane, let id, _):
-            guard let data = await session.picture(pane: pane, id: id) else { return fail("the picture's gone from the Mac") }
+            guard let data = await session.picture(pane: pane, id: id) else { return fail("the picture's gone from the computer") }
             let url = Fetched.place(viewed.name)
             do {
                 try data.write(to: url)

@@ -1,14 +1,14 @@
 # wallflower architecture
 
 wallflower is a messenger between a phone and the terminal sessions on a
-Mac. The Mac's multiplexer keeps the sessions. A gateway on the Mac relays
-them, shaped just enough to build on. The phone presents them in a
+computer (macOS or Linux). Its multiplexer keeps the sessions. A gateway on
+it relays them, shaped just enough to build on. The phone presents them in a
 mobile-first way, and turns what the user does into intents the gateway
 carries out. Neither end is tied to one multiplexer or one program: those
 are plugged in.
 
 ```
-phone                                          Mac
+phone                                       computer
 core client ◀──── wallflower protocol ────▶ core gateway ◀──▶ multiplexer adapter ──▶ tmux, …
     │              (docs/protocol.md)            │
 program plugins, client half             program plugins, server half
@@ -25,7 +25,7 @@ by the phone over ssh). It speaks the protocol and relays the session:
 - notifications, read from every pane's output by the terminal standards
   for them (OSC 9, 777 and 99, and the bell), whatever the program
 - mobile views, read by the program plugins that have one
-- uploads, and the Mac's files, read-only, to browse and fetch
+- uploads, and the computer's files, read-only, to browse and fetch
 
 It knows no particular multiplexer or program. What it holds can be rebuilt
 from the multiplexer, so a connection can drop at any time.
@@ -69,7 +69,7 @@ bindings are one.
 
 The gateway's tests are the contract, and run against every adapter, each
 on a throwaway server of its own (`internal/tmuxtest`, `internal/rextest`).
-A test acts as the phone through the protocol, and as someone at the Mac
+A test acts as the phone through the protocol, and as someone at the computer
 through the multiplexer's own tools (a `desk`), so an adapter can't agree
 with itself and pass. Where multiplexers differ, the test says what both
 promise, and tests of what only one does run against it alone. Adding a
@@ -92,7 +92,7 @@ in a new window can be missed.
 The Android app (`android/`) keeps the protocol (`protocol`), the
 connection and the session's state (`app/.../session`), a terminal for
 every open pane (`terminal`), and the UI. Presentation is local: switching
-tabs, swiping panes, scrolling and drafting never wait on the Mac. Only
+tabs, swiping panes, scrolling and drafting never wait on the computer. Only
 intents go out.
 
 ## Program plugins
@@ -125,7 +125,7 @@ two halves, each optional:
 The halves go by one id. The gateway says which program each pane runs
 (`program` in `state`), and whether it has a view (`view`); the phone looks
 its half up by that id. Which panes run a program is decided only on the
-Mac. A key bar the user makes still follows panes by their command, or by
+computer. A key bar the user makes still follows panes by their command, or by
 a program's id.
 
 The core asks a plugin and does what it says. It never checks which
@@ -155,7 +155,7 @@ it reaches one only through its seam.
 
 ## Security
 
-The phone reaches the Mac over ssh, its key restricted to running
+The phone reaches the computer over ssh, its key restricted to running
 `wallflower serve` (`wallflower authorize`), usually over Tailscale. The
 boundary is the forced command. A multiplexer adapter or plugin sits
 behind it and doesn't change it. `wallflower devices` lists the phones

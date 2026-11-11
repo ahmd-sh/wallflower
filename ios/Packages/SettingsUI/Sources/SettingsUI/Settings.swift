@@ -77,7 +77,7 @@ public struct SettingsScreen: View {
             let builtin = Programs.builtin.map { $0.id }.joined(separator: ", ")
             let yours = Programs.suppliedIds.sorted().joined(separator: ", ")
             Paragraph("Built in: \(builtin). " + (yours.isEmpty ? "None of yours yet." : "Yours: \(yours)."))
-            Paragraph("Yours go on the Mac, a JSON file each in ~/.config/wallflower/plugins (docs/plugins.md in wallflower's source).")
+            Paragraph("Yours go on the computer, a JSON file each in ~/.config/wallflower/plugins (docs/plugins.md in wallflower's source).")
 
             Section("about")
             Paragraph((["wallflower \(appVersion) · protocol \(Wire.VERSION)"] + [gateway].compactMap { $0 }).joined(separator: "\n"))

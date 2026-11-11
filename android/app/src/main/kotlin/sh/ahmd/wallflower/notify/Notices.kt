@@ -33,11 +33,11 @@ class Notices(private val context: Context) {
     init {
         manager.createNotificationChannels(
             listOf(
-                NotificationChannel(MAC, "From your Mac", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "What programs on the Mac notify, as they would on its desktop"
+                NotificationChannel(MAC, "From your computer", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "What programs on the computer notify, as they would on its desktop"
                 },
                 NotificationChannel(CONNECTION, "Connection", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "Connected to the Mac while you're away, or lost"
+                    description = "Connected to the computer while you're away, or lost"
                 },
             ),
         )
@@ -51,11 +51,11 @@ class Notices(private val context: Context) {
         val hidden = Notification.Builder(context, MAC)
             .setSmallIcon(R.drawable.ic_wallflower)
             .setContentTitle(program ?: "wallflower")
-            .setContentText(where ?: "on your Mac")
+            .setContentText(where ?: "on your computer")
             .build()
         val notification = Notification.Builder(context, MAC)
             .setSmallIcon(R.drawable.ic_wallflower)
-            .setContentTitle(notice.title ?: program ?: "your Mac")
+            .setContentTitle(notice.title ?: program ?: "your computer")
             .setContentText(notice.body)
             .setStyle(Notification.BigTextStyle().bigText(notice.body))
             .setSubText(where)

@@ -203,7 +203,7 @@ private fun ViewerPage(viewed: Viewed, session: Session?, fetches: Fetches, onCl
         showing = try {
             when (viewed) {
                 is Viewed.Picture -> {
-                    val bytes = viewed.load() ?: throw IOException("the picture's gone from the Mac")
+                    val bytes = viewed.load() ?: throw IOException("the picture's gone from the computer")
                     whole = withContext(Dispatchers.IO) { fetches.place(viewed.name).also { it.parentFile?.mkdirs(); it.writeBytes(bytes) } }
                     size = bytes.size.toLong()
                     picture(ImageDecoder.createSource(ByteBuffer.wrap(bytes)), screen)

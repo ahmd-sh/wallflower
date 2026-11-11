@@ -311,7 +311,7 @@ fun BlockedCard(
             }
             is Blocked.UnknownHost -> {
                 Title("is this $machine?")
-                Body("It's the first time this phone connects to ${blocked.host}. Trust it if this matches the Mac's own key, which this shows on the Mac:")
+                Body("It's the first time this phone connects to ${blocked.host}. Trust it if this matches $machine's own key, which this shows on it:")
                 Code("ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub")
                 Text(blocked.fingerprint, color = Palette.aqua, fontFamily = Mono, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -321,7 +321,7 @@ fun BlockedCard(
             }
             is Blocked.HostKeyChanged -> {
                 Title("$machine's key changed", Palette.red)
-                Body("${blocked.host} now shows a different key, ${blocked.fingerprint}. If you didn't reinstall the Mac or change its keys, someone may be listening in: don't connect.")
+                Body("${blocked.host} now shows a different key, ${blocked.fingerprint}. If you didn't reinstall $machine or change its keys, someone may be listening in: don't connect.")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button("forget old key") { onForget(blocked) }
                     Button("settings", onClick = onSetup)
@@ -329,7 +329,7 @@ fun BlockedCard(
             }
             is Blocked.NotAuthorized -> {
                 Title("$machine doesn't know this phone yet")
-                Body("Run this on the Mac to let it in (it can only run wallflower), then retry:")
+                Body("Run this on $machine to let this phone in (it can only run wallflower), then retry:")
                 val command = authorizeCommand()
                 Code(command)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -342,7 +342,7 @@ fun BlockedCard(
                 val macOlder = blocked.gateway < blocked.app
                 Title(if (macOlder) "update wallflower on $machine" else "update this app")
                 if (macOlder) {
-                    Body("$machine's wallflower speaks protocol ${blocked.gateway}, this app ${blocked.app}. Update it from wallflower's folder on the Mac, then retry:")
+                    Body("$machine's wallflower speaks protocol ${blocked.gateway}, this app ${blocked.app}. Update it from wallflower's folder there, then retry:")
                     Code("go install ./cmd/wallflower")
                 } else {
                     Body("$machine's wallflower speaks protocol ${blocked.gateway}, this app ${blocked.app}. Install this app's latest build, then retry.")

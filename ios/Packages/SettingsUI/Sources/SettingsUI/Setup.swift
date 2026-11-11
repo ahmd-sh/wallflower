@@ -44,7 +44,7 @@ public struct SetupScreen: View {
                         Text("wallflower")
                             .font(look.words(look.size(mono: 24, sans: 30), weight: .bold))
                             .foregroundColor(palette.fg)
-                        Text("Your Mac's terminals, made for your phone.")
+                        Text("Your computer's terminals, made for your phone.")
                             .words(.body)
                             .foregroundColor(palette.grey)
                             .multilineTextAlignment(.center)
@@ -99,14 +99,14 @@ private struct SetupForm: View {
     }
 
     var body: some View {
-        Section("your Mac")
+        Section("your computer")
         Field("address", value: $address, hint: "100.x.y.z, or its tailnet name", keyboard: .URL)
-        Text("This phone's key only works over Tailscale, so it's the Mac's Tailscale address.")
+        Text("This phone's key only works over Tailscale, so it's the computer's Tailscale address.")
             .words(.caption)
             .foregroundColor(palette.dim)
             .fixedSize(horizontal: false, vertical: true)
         HStack(alignment: .top, spacing: 10) {
-            Field("username", value: $user, hint: "yours on the Mac")
+            Field("username", value: $user, hint: "yours on the computer")
                 .frame(maxWidth: .infinity)
             Field("port", value: Binding(get: { port }, set: { port = String($0.filter { $0.isASCII && $0.isNumber }.prefix(5)) }), keyboard: .numberPad)
                 .frame(width: 88)
@@ -119,7 +119,7 @@ private struct SetupForm: View {
         if hasKey, let fingerprint {
             Paragraph("Made and kept in this phone's secure hardware; \(Unlock.words) unlocks it.")
             Text(fingerprint).font(Fonts.mono(12)).foregroundColor(palette.aqua).textSelection(.enabled)
-            Text("Let it in: run this on the Mac. It can start wallflower there, and nothing else.")
+            Text("Let it in: run this on the computer. It can start wallflower there, and nothing else.")
                 .words(.label)
                 .foregroundColor(palette.fg)
                 .fixedSize(horizontal: false, vertical: true)
@@ -138,7 +138,7 @@ private struct SetupForm: View {
                     }
                 }
                 if let s = picked {
-                    Paragraph("The time is part of the key, so this makes a new one. Authorize it on the Mac before this connection ends (a pane here works): until then, only the Mac can let the phone back in.")
+                    Paragraph("The time is part of the key, so this makes a new one. Authorize it on the computer before this connection ends (a pane here works): until then, only the computer can let the phone back in.")
                     WordButton("make a new key, unlocked for \(unlockLabel(s))", primary: true) {
                         keyError = newKey(s)
                         picked = nil
@@ -146,7 +146,7 @@ private struct SetupForm: View {
                 }
             }
         } else {
-            Paragraph("wallflower signs in to the Mac with a key made and kept in this phone's secure hardware, unlocked by \(Unlock.words). It never leaves the phone.")
+            Paragraph("wallflower signs in to the computer with a key made and kept in this phone's secure hardware, unlocked by \(Unlock.words). It never leaves the phone.")
             WordButton("make the key", primary: true) { keyError = createKey() }
         }
         if let keyError {
@@ -175,8 +175,8 @@ private struct SetupForm: View {
     private var missing: String? {
         if !(1 ... 65535).contains(Int(port) ?? 0) { return "The port is a number up to 65535; ssh's is 22." }
         if dev { return nil }
-        if address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Fill in the Mac's address." }
-        if user.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Fill in your username on the Mac." }
+        if address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Fill in the computer's address." }
+        if user.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Fill in your username on the computer." }
         if !hasKey { return "Make this phone's key first." }
         return nil
     }

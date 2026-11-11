@@ -67,7 +67,7 @@ fun SetupScreen(
         Column(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Flower(sway = true, Modifier.size(128.dp))
             Text("wallflower", color = Palette.fg, fontFamily = words, fontSize = wordSize(24.sp, 30.sp), fontWeight = FontWeight.Bold)
-            Text("Your Mac's terminals, made for your phone.", color = Palette.grey, style = Type.body, textAlign = TextAlign.Center)
+            Text("Your computer's terminals, made for your phone.", color = Palette.grey, style = Type.body, textAlign = TextAlign.Center)
         }
         form()
     }
@@ -94,11 +94,11 @@ private fun SetupForm(
     var tried by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    Section("your Mac")
+    Section("your computer")
     Field("address", address, KeyboardType.Uri, hint = "100.x.y.z, or its tailnet name") { address = it }
-    Text("This phone's key only works over Tailscale, so it's the Mac's Tailscale address.", color = Palette.dim, style = Type.caption)
+    Text("This phone's key only works over Tailscale, so it's the computer's Tailscale address.", color = Palette.dim, style = Type.caption)
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Field("username", user, hint = "yours on the Mac", modifier = Modifier.weight(1f)) { user = it }
+        Field("username", user, hint = "yours on the computer", modifier = Modifier.weight(1f)) { user = it }
         Field("port", port, KeyboardType.Number, modifier = Modifier.width(88.dp)) { port = it.filter(Char::isDigit).take(5) }
     }
     if (BuildConfig.DEBUG) {
@@ -109,7 +109,7 @@ private fun SetupForm(
     if (hasKey && fingerprint != null) {
         Body("Made and kept in this phone's secure hardware; your fingerprint unlocks it.")
         Text(fingerprint, color = Palette.aqua, fontFamily = Mono, fontSize = 12.sp)
-        Text("Let it in: run this on the Mac. It can start wallflower there, and nothing else.", color = Palette.fg, style = Type.label)
+        Text("Let it in: run this on the computer. It can start wallflower there, and nothing else.", color = Palette.fg, style = Type.label)
         val command = authorizeCommand()
         Code(command)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -124,7 +124,7 @@ private fun SetupForm(
                 for (s in UNLOCKS) Chip(unlockLabel(s), (picked ?: unlockSeconds) == s) { picked = s.takeIf { it != unlockSeconds } }
             }
             picked?.let { s ->
-                Body("The time is part of the key, so this makes a new one. Authorize it on the Mac before this connection ends (a pane here works): until then, only the Mac can let the phone back in.")
+                Body("The time is part of the key, so this makes a new one. Authorize it on the computer before this connection ends (a pane here works): until then, only the computer can let the phone back in.")
                 Button("make a new key, unlocked for ${unlockLabel(s)}", primary = true) {
                     keyError = newKey(s)
                     picked = null
@@ -132,7 +132,7 @@ private fun SetupForm(
             }
         }
     } else {
-        Body("wallflower signs in to the Mac with a key made and kept in this phone's secure hardware, unlocked by your fingerprint. It never leaves the phone.")
+        Body("wallflower signs in to the computer with a key made and kept in this phone's secure hardware, unlocked by your fingerprint. It never leaves the phone.")
         Button("make the key", primary = true) { keyError = createKey() }
     }
     keyError?.let { Text(it, color = Palette.red, style = Type.label) }
@@ -157,8 +157,8 @@ private fun SetupForm(
 private fun missing(address: String, user: String, port: String, dev: Boolean, hasKey: Boolean): String? = when {
     port.toIntOrNull() !in 1..65535 -> "The port is a number up to 65535; ssh's is 22."
     dev -> null
-    address.isBlank() -> "Fill in the Mac's address."
-    user.isBlank() -> "Fill in your username on the Mac."
+    address.isBlank() -> "Fill in the computer's address."
+    user.isBlank() -> "Fill in your username on the computer."
     !hasKey -> "Make this phone's key first."
     else -> null
 }

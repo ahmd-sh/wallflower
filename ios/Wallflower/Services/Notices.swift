@@ -30,7 +30,7 @@ final class Notices: NSObject, UNUserNotificationCenterDelegate {
         let window = state?.windows.first { w in w.panes.contains { $0.id == pane } }
         let program = window?.panes.first { $0.id == pane }?.command
         let content = UNMutableNotificationContent()
-        content.title = notice.title ?? (program?.isEmpty == false ? program! : "your Mac")
+        content.title = notice.title ?? (program?.isEmpty == false ? program! : "your computer")
         content.body = notice.body
         if let w = window { content.subtitle = "\(w.index) \(w.label())" }
         content.sound = .default

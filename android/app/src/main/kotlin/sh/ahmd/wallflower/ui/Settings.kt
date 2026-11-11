@@ -89,7 +89,7 @@ fun SettingsScreen(
     val look by settings.look.flow.collectAsStateWithLifecycle()
     val scheme by settings.scheme.flow.collectAsStateWithLifecycle()
     Page("settings", onBack) {
-        if (host != null) PageRow(host.machine ?: "your Mac", if (host.dev) "development transport" else "${host.user}@${host.address}:${host.port}", onEditHost)
+        if (host != null) PageRow(host.machine ?: "your computer", if (host.dev) "development transport" else "${host.user}@${host.address}:${host.port}", onEditHost)
         PageRow("look", "${scheme.label} · ${if (look == Look.Terminal) "terminal" else "bricolage"} font", onLook)
         val focused = bar.refFor(program, programId)
         val now = (focused as? ProfileRef.At)?.let { bar.profiles[it.index].name } ?: bar.default.name
@@ -113,7 +113,7 @@ fun SettingsScreen(
         Section("plugins")
         val yours = Programs.suppliedIds()
         Body("Built in: ${Programs.builtin.keys.joinToString(", ")}. " + if (yours.isEmpty()) "None of yours yet." else "Yours: ${yours.sorted().joinToString(", ")}.")
-        Body("Yours go on the Mac, a JSON file each in ~/.config/wallflower/plugins (docs/plugins.md in wallflower's source).")
+        Body("Yours go on the computer, a JSON file each in ~/.config/wallflower/plugins (docs/plugins.md in wallflower's source).")
 
         Section("about")
         Body(listOfNotNull("wallflower ${BuildConfig.VERSION_NAME} · protocol ${PROTOCOL_VERSION}", gateway).joinToString("\n"))

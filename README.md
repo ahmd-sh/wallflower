@@ -1,8 +1,8 @@
 # wallflower
 
 A phone-first shell around your terminal. Your multiplexer stays the
-server (tmux or Rex); a small gateway on the Mac drives it and serves a lean,
-versioned protocol to clients (an Android app first) over SSH. How it fits
+server (tmux or Rex); a small gateway on the computer (macOS or Linux)
+drives it and serves a lean, versioned protocol to clients (an Android app first) over SSH. How it fits
 together, and where multiplexers and programs plug in:
 [docs/architecture.md](docs/architecture.md). Programs beyond the built-in
 ones (Claude Code, shells) can have plugins of your own:
@@ -30,7 +30,7 @@ bin/wallflower debug -- ssh mac "~/go/bin/wallflower serve"   # through ssh
 bin/wallflower watch -output=false                            # raw control-mode events
 ```
 
-Requires tmux 3.8 (JSON layouts, floating panes), or Rex (`serve -mux rex`,
+Requires tmux 3.8 (JSON layouts, floating panes), or on macOS Rex (`serve -mux rex`,
 which finds Rex.app's server, or `-rex` names a socket).
 
 ```sh

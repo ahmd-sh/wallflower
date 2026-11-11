@@ -37,9 +37,9 @@ public struct Host: Codable, Equatable, Sendable {
     }
 
     /** What to call the Mac: its name, once its gateway has said it. */
-    public var called: String { machine ?? "your Mac" }
+    public var called: String { machine ?? "your computer" }
 }
 
 public extension Optional where Wrapped == Host {
-    var called: String { self?.called ?? "your Mac" }
+    var called: String { self?.called ?? "your computer" }
 }

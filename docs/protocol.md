@@ -1,7 +1,7 @@
 # wallflower protocol, version 6
 
 The client runs `wallflower serve` over ssh and talks to it on stdin/stdout. One
-connection is one client, attached to a session in one of the Mac's
+connection is one client, attached to a session in one of the computer's
 multiplexers or to none; the gateway exits when the client disconnects, and
 has nothing to clean up beyond what the client changed for itself (tmux's
 zooms, Rex's terminals).
@@ -120,7 +120,7 @@ them at once takes it all as a paste, Enter and all.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `uploads`?, `machine`?, `programs`?, `can`? | first, before the client's attached to anything: the directory uploads are saved in; the machine's name, as its owner calls it (a Mac's Computer Name); the phone halves of the user's plugins, see below; what this gateway does beyond what every one of its version does: `files` (see Files) |
+| `hello` | `v`, `uploads`?, `machine`?, `programs`?, `can`? | first, before the client's attached to anything: the directory uploads are saved in; the machine's name, as its owner calls it (a Mac's Computer Name, Linux's pretty hostname); the phone halves of the user's plugins, see below; what this gateway does beyond what every one of its version does: `files` (see Files) |
 | `attached` | `mux` | the client is attached to a session in this multiplexer, see below; `state` follows |
 | `detached` | `reason`? | the client is attached to nothing, and why if it didn't ask to be; `sessions` follows |
 | `state` | `session`, `name`, `windows` | everything in the session, see below |
@@ -265,7 +265,7 @@ is away, and makes of a bell what the program would mean by it.
 
 ## Uploads
 
-A client sends a file to the Mac with `upload`, then its bytes in upload
+A client sends a file to the computer with `upload`, then its bytes in upload
 frames, in order, as many as it likes (they're interleaved with everything
 else, so a big file doesn't hold up typing). Once `size` bytes have arrived
 the gateway replies `uploaded` with the file's path, or with an `error` (too
@@ -281,7 +281,7 @@ pane's program find the file, and `submit` pastes it on its own.
 
 ## Files
 
-A gateway that `can` `files` (in `hello`) shows the client the Mac's files,
+A gateway that `can` `files` (in `hello`) shows the client the computer's files,
 read-only, anywhere the user can read: the phone already has a shell there.
 They aren't the session's, so a client attached to nothing can have them
 too.
@@ -301,7 +301,7 @@ is the home. A client starting at a pane's directory has it in the pane's
 | `link` | it's a symbolic link, to what `kind` says |
 | `size` | a file's, in bytes |
 | `mtime` | when it last changed, in Unix milliseconds |
-| `hidden` | a name that starts with a dot, or one the Mac hides (`~/Library`) |
+| `hidden` | a name that starts with a dot, or one macOS hides (`~/Library`) |
 
 After `fetch`, `file` says the file's `path` and how many of its bytes
 follow, `size`, then they come in file frames with the fetch's `id`, as
@@ -317,6 +317,6 @@ behind a little of a file at most, not all of it in the network's buffers.
 After `cancel`, no more of a fetch's frames are sent; those already on
 their way still come.
 
-macOS keeps some folders (`~/Desktop`, `~/Documents`, Mail's) from remote
-users unless Remote Login allows them full disk access; the `error` then
-says so.
+On macOS, some folders (`~/Desktop`, `~/Documents`, Mail's) are kept from
+remote users unless Remote Login allows them full disk access; the `error`
+then says so.

@@ -90,7 +90,7 @@ public final class PhoneKey: @unchecked Sendable {
 
     /** Face ID or the passcode; once it's given, the key signs for [unlockSeconds]. */
     @MainActor
-    public func unlock(reason: String = "Unlock your SSH key to connect to your Mac") async -> Bool {
+    public func unlock(reason: String = "Unlock your SSH key to connect to your computer") async -> Bool {
         guard hardware else { return true }
         let ctx = LAContext()
         do {
