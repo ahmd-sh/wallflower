@@ -13,7 +13,7 @@ import (
 func TestLoad(t *testing.T) {
 	dir := t.TempDir()
 	for name, body := range map[string]string{
-		"aider.json":   `{"id": "aider", "commands": ["aider"], "client": {"keys": {"name": "aider", "keys": ["Escape", "C-c"]}, "commands": [{"text": "/undo", "about": "undo the last change"}], "shortcuts": [{"keys": ["/undo", "Enter"]}, {"label": "quit", "keys": ["C-c", "C-c"]}], "newline": ["M-Enter"]}, "view": ["./reader", "--json"]}`,
+		"aider.json":   `{"id": "aider", "commands": ["aider"], "client": {"keys": {"name": "aider", "keys": ["Escape", "C-c"]}, "commands": [{"text": "/undo", "about": "undo the last change"}], "shortcuts": [{"keys": ["/undo", "Enter"]}, {"label": "nothing"}, {"label": "quit", "keys": ["C-c", "C-c"]}], "newline": ["M-Enter"]}, "view": ["./reader", "--json"]}`,
 		"claude.json":  `{"id": "claude", "commands": ["claude"]}`,
 		"broken.json":  `{"id": `,
 		"Upper.json":   `{"id": "Upper", "commands": ["x"]}`,

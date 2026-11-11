@@ -27,7 +27,11 @@ type parser struct {
 	context int
 }
 
-func newParser(name func(string) string) mobileview.Parser { return &parser{name: name} }
+// newParser reads a rollout of the thread m, which its first line says too
+// (a rollout read from near its end has no first line).
+func newParser(name func(string) string, m meta) mobileview.Parser {
+	return &parser{name: name, thread: m.id, cwd: m.cwd}
+}
 
 func (p *parser) Title() string {
 	if p.thread == "" {

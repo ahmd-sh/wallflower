@@ -123,6 +123,7 @@ func (s *Source) Read(ctx context.Context, pane mobileview.Pane, send func(mobil
 	if !ok || pane.Command != command {
 		return errNone
 	}
+	var current string // the rollout recording last said, which the parser reads from
 	recording := func() (mobileview.Recording, bool) {
 		s.mu.Lock()
 		p, ok := s.panes[pane.ID]
@@ -136,9 +137,12 @@ func (s *Source) Read(ctx context.Context, pane mobileview.Pane, send func(mobil
 			// which Tail announces as an empty conversation.
 			path = filepath.Join(s.dir, "sessions", "none")
 		}
+		current = path
 		return mobileview.Recording{Path: path}, true
 	}
-	return mobileview.Tail(ctx, recording, func() mobileview.Parser { return newParser(s.name) }, send)
+	// A long rollout is read from near its end, past its first line: the parser's told the thread.
+	parser := func() mobileview.Parser { return newParser(s.name, s.meta(current)) }
+	return mobileview.Tail(ctx, recording, parser, send)
 }
 
 // rollout is the rollout of the thread codex is on in a pane: the thread its
@@ -216,10 +220,32 @@ func (s *Source) unnamed(p mobileview.Pane) string {
 			break
 		}
 		if m.cwd == p.Path && m.originator != "codex_exec" && s.name(m.id) == "" {
+			if s.later(p, since, m.at) {
+				continue // another codex there started after this one, and before the thread: it's that one's
+			}
 			return files[i]
 		}
 	}
 	return ""
+}
+
+// later says whether a codex pane in p's directory other than p started
+// after since and before a thread started at, as far as it's known.
+func (s *Source) later(p mobileview.Pane, since, at time.Time) bool {
+	s.mu.Lock()
+	var others []mobileview.Pane
+	for _, o := range s.panes {
+		if o.ID != p.ID && o.Path == p.Path && o.TTY != "" {
+			others = append(others, o)
+		}
+	}
+	s.mu.Unlock()
+	for _, o := range others {
+		if t, ok := s.started(o.TTY); ok && t.After(since) && !t.After(at.Add(restart)) {
+			return true
+		}
+	}
+	return false
 }
 
 // path finds a thread's rollout, which lives under the day it started.
@@ -286,24 +312,33 @@ func (s *Source) name(id string) string {
 	return s.index.name(filepath.Join(s.dir, "session_index.jsonl"), id)
 }
 
-// started says when the codex on a terminal started, asking ps at most so
-// often.
+// started says when the codex on a terminal started, as far as ps last
+// said: asked again at most so often, and off the caller's goroutine (Find
+// runs on the gateway's loop), so the first ask says it doesn't know yet.
 type started struct {
 	at      time.Time
 	ok      bool
 	checked time.Time
+	asking  bool
 }
 
 func (s *Source) started(tty string) (time.Time, bool) {
 	s.mu.Lock()
-	st, ok := s.ttys[tty]
-	s.mu.Unlock()
-	if ok && time.Since(st.checked) < restart {
-		return st.at, st.ok
+	defer s.mu.Unlock()
+	st := s.ttys[tty]
+	if time.Since(st.checked) >= restart && !st.asking {
+		st.asking = true
+		s.ttys[tty] = st
+		go s.ask(tty)
 	}
-	st = started{checked: time.Now()}
-	out, err := exec.Command("ps", "-o", "lstart=,comm=", "-t", strings.TrimPrefix(tty, "/dev/")).Output()
-	if err == nil {
+	return st.at, st.ok
+}
+
+func (s *Source) ask(tty string) {
+	st := started{checked: time.Now()}
+	ps := exec.Command("ps", "-o", "lstart=,comm=", "-t", strings.TrimPrefix(tty, "/dev/"))
+	ps.Env = append(os.Environ(), "LC_ALL=C") // lstart's date is the locale's otherwise ("Wed 11 Nov …")
+	if out, err := ps.Output(); err == nil {
 		for _, line := range strings.Split(string(out), "\n") {
 			f := strings.Fields(line)
 			if len(f) < 6 || filepath.Base(strings.Join(f[5:], " ")) != command {
@@ -317,7 +352,6 @@ func (s *Source) started(tty string) (time.Time, bool) {
 	s.mu.Lock()
 	s.ttys[tty] = st
 	s.mu.Unlock()
-	return st.at, st.ok
 }
 
 // A turn is what a rollout says its thread is doing, read as it grows.
@@ -351,6 +385,12 @@ func (s *Source) doing(path string) (mobileview.Activity, int64) {
 	if st.Size() < t.size {
 		*t = turn{activity: mobileview.Idle}
 	}
+	if t.size == 0 && st.Size() > seedChunk {
+		// A long rollout's end says what its thread is doing: not all of it, read on the gateway's loop.
+		t.activity, t.since, t.partial = seed(f, st.Size())
+		t.size = st.Size()
+		return t.activity, t.since
+	}
 	buf := make([]byte, st.Size()-t.size)
 	n, _ := f.ReadAt(buf, t.size)
 	t.size += int64(n)
@@ -358,28 +398,75 @@ func (s *Source) doing(path string) (mobileview.Activity, int64) {
 	end := bytes.LastIndexByte(data, '\n')
 	t.partial = slices.Clone(data[end+1:])
 	for _, line := range bytes.Split(data[:end+1], []byte("\n")) {
-		if !bytes.Contains(line, []byte(`"event_msg"`)) || !slices.ContainsFunc(turnMarks, func(m []byte) bool { return bytes.Contains(line, m) }) {
-			continue
-		}
-		var r struct {
-			Timestamp string `json:"timestamp"`
-			Type      string `json:"type"`
-			Payload   struct {
-				Type string `json:"type"`
-			} `json:"payload"`
-		}
-		if json.Unmarshal(line, &r) != nil || r.Type != "event_msg" {
-			continue
-		}
-		at, _ := time.Parse(time.RFC3339Nano, r.Timestamp)
-		switch r.Payload.Type {
-		case "task_started":
-			t.activity, t.since = mobileview.Working, at.UnixMilli()
-		case "task_complete", "turn_aborted":
-			t.activity, t.since = mobileview.Idle, at.UnixMilli()
+		if a, at, ok := turnIn(line); ok {
+			t.activity, t.since = a, at
 		}
 	}
 	return t.activity, t.since
+}
+
+const (
+	seedChunk = 1 << 20  // how much of a rollout's end is read at a time, back to its last turn
+	seedMost  = 16 << 20 // how far back
+)
+
+// turnIn says whether a rollout's line starts or ends a turn, and when.
+func turnIn(line []byte) (mobileview.Activity, int64, bool) {
+	if !bytes.Contains(line, []byte(`"event_msg"`)) || !slices.ContainsFunc(turnMarks, func(m []byte) bool { return bytes.Contains(line, m) }) {
+		return "", 0, false
+	}
+	var r struct {
+		Timestamp string `json:"timestamp"`
+		Type      string `json:"type"`
+		Payload   struct {
+			Type string `json:"type"`
+		} `json:"payload"`
+	}
+	if json.Unmarshal(line, &r) != nil || r.Type != "event_msg" {
+		return "", 0, false
+	}
+	at, _ := time.Parse(time.RFC3339Nano, r.Timestamp)
+	switch r.Payload.Type {
+	case "task_started":
+		return mobileview.Working, at.UnixMilli(), true
+	case "task_complete", "turn_aborted":
+		return mobileview.Idle, at.UnixMilli(), true
+	}
+	return "", 0, false
+}
+
+// seed reads a rollout back from its end to the last line starting or
+// ending a turn, a chunk at a time, as far as seedMost; and what's after its
+// last whole line, not written yet.
+func seed(f *os.File, size int64) (activity mobileview.Activity, since int64, partial []byte) {
+	activity = mobileview.Idle
+	end := size
+	for end > 0 && size-end < seedMost {
+		start := max(end-seedChunk, 0)
+		buf := make([]byte, end-start)
+		n, _ := f.ReadAt(buf, start)
+		buf = buf[:n]
+		if end == size {
+			i := bytes.LastIndexByte(buf, '\n')
+			partial = slices.Clone(buf[i+1:])
+			buf = buf[:i+1]
+		}
+		cut := 0
+		if start > 0 {
+			cut = bytes.IndexByte(buf, '\n') + 1 // the first line starts in the chunk before
+			if cut == 0 {
+				return activity, since, partial // one line longer than a chunk: give up
+			}
+		}
+		lines := bytes.Split(buf[cut:], []byte("\n"))
+		for i := len(lines) - 1; i >= 0; i-- {
+			if a, at, ok := turnIn(lines[i]); ok {
+				return a, at, partial
+			}
+		}
+		end = start + int64(cut)
+	}
+	return activity, since, partial
 }
 
 // index is session_index.jsonl, a line each time a thread is named, read

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -99,6 +100,10 @@ func load(name, dir string) (Program, error) {
 		return Program{}, fmt.Errorf("id %q: lowercase letters, digits, . _ -", m.ID)
 	case len(m.Commands) == 0:
 		return Program{}, fmt.Errorf("no commands: which panes run it?")
+	}
+	if m.Client != nil {
+		// A shortcut that sends nothing is no shortcut; the phones need its keys.
+		m.Client.Shortcuts = slices.DeleteFunc(m.Client.Shortcuts, func(s Shortcut) bool { return len(s.Keys) == 0 })
 	}
 	p := Program{ID: m.ID, Commands: m.Commands, Client: m.Client}
 	if len(m.View) > 0 {

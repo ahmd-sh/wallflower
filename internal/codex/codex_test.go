@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func entries(t *testing.T) ([]mobileview.Entry, *parser) {
 			return "Ask a question"
 		}
 		return ""
-	}).(*parser)
+	}, meta{}).(*parser)
 	var out []mobileview.Entry
 	for _, line := range bytes.Split(b, []byte("\n")) {
 		out = append(out, p.Line(line)...)
@@ -70,7 +71,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestInterrupted(t *testing.T) {
-	p := newParser(func(string) string { return "" })
+	p := newParser(func(string) string { return "" }, meta{})
 	got := p.Line([]byte(`{"timestamp":"2026-11-11T14:25:31.826Z","type":"event_msg","payload":{"type":"turn_aborted","turn_id":"t1","reason":"interrupted"}}`))
 	if len(got) != 1 || got[0].Kind != mobileview.Note || got[0].Text != "Interrupted" {
 		t.Fatalf("got %+v", got)
@@ -202,5 +203,90 @@ func TestRead(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("read of a pane codex left didn't end")
+	}
+}
+
+// long writes a rollout of thread id in cwd, started at at, a turn started
+// near its start and then more than a chunk of a long command's output.
+func long(t *testing.T, path, id, cwd string, at time.Time) {
+	t.Helper()
+	var b strings.Builder
+	b.WriteString(`{"timestamp":"` + at.Format(time.RFC3339Nano) + `","type":"session_meta","payload":{"id":"` + id + `","timestamp":"` + at.Format(time.RFC3339Nano) + `","cwd":"` + cwd + `","originator":"codex-tui"}}` + "\n")
+	b.WriteString(`{"timestamp":"2026-11-11T14:30:00.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}` + "\n")
+	out := strings.Repeat("x", 64<<10)
+	for i := range 40 {
+		b.WriteString(`{"timestamp":"2026-11-11T14:30:01.000Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"CommandExecution","id":"c` + strconv.Itoa(i) + `","command":["cat","big"],"status":"completed","aggregated_output":"` + out + `","exit_code":0}}}` + "\n")
+	}
+	b.WriteString(`{"timestamp":"2026-11-11T14:31:00.000Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"AgentMessage","id":"a1","content":[{"type":"Text","text":"done"}],"phase":"final_answer"}}}`)
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestALongRolloutsTurnIsReadFromItsEnd(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "rollout.jsonl")
+	long(t, path, thread, "/p", time.Now())
+	s := New(dir)
+	a, since := s.doing(path)
+	if a != mobileview.Working || since != time.Date(2026, 11, 11, 14, 30, 0, 0, time.UTC).UnixMilli() {
+		t.Fatalf("doing %s since %d", a, since)
+	}
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	f.WriteString("\n" + `{"timestamp":"2026-11-11T14:32:00.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"t1"}}` + "\n")
+	f.Close()
+	if a, _ := s.doing(path); a != mobileview.Idle {
+		t.Errorf("after the turn ends: %s", a)
+	}
+}
+
+func TestALongRolloutKeepsItsThread(t *testing.T) {
+	mobileview.Poll = 20 * time.Millisecond
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sessions", "2026", "11", "11", "rollout-2026-11-11T10-47-00-"+thread+".jsonl")
+	long(t, path, thread, "/p", time.Now())
+	// Enough said after it that only the end is read.
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	for i := range mobileview.Recent + 50 {
+		f.WriteString("\n" + `{"timestamp":"2026-11-11T14:32:00.000Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"AgentMessage","id":"m` + strconv.Itoa(i) + `","content":[{"type":"Text","text":"more"}],"phase":"commentary"}}}`)
+	}
+	f.Close()
+	os.WriteFile(filepath.Join(dir, "session_index.jsonl"), []byte(`{"id":"`+thread+`","thread_name":"Read a big file","updated_at":"2026-11-11T14:16:54Z"}`+"\n"), 0o644)
+	s := New(dir)
+	pane := mobileview.Pane{ID: "%1", Command: "codex", Title: "Read a big file | p", Path: "/p"}
+	s.Find([]mobileview.Pane{pane})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	updates := make(chan mobileview.Update, 4)
+	go s.Read(ctx, pane, func(u mobileview.Update) { updates <- u })
+	select {
+	case u := <-updates:
+		if !u.More || u.Title != "Read a big file" {
+			t.Errorf("more %v, title %q: the thread's first line was past what was read", u.More, u.Title)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("nothing read")
+	}
+}
+
+func TestAThreadNotNamedYetIsTheCodexThatStartedLastBeforeIt(t *testing.T) {
+	dir := t.TempDir()
+	day := filepath.Join(dir, "sessions", "2026", "11", "11")
+	at := time.Date(2026, 11, 11, 10, 6, 0, 0, time.Local)
+	path := filepath.Join(day, "rollout-2026-11-11T10-06-00-"+thread+".jsonl")
+	long(t, path, thread, "/p", at)
+	s := New(dir)
+	a := mobileview.Pane{ID: "%1", Command: "codex", Title: "p", Path: "/p", TTY: "/dev/ttysA"}
+	b := mobileview.Pane{ID: "%2", Command: "codex", Title: "p", Path: "/p", TTY: "/dev/ttysB"}
+	now := time.Now().Add(time.Hour) // not asked again
+	s.ttys["/dev/ttysA"] = started{at: at.Add(-6 * time.Minute), ok: true, checked: now}
+	s.ttys["/dev/ttysB"] = started{at: at.Add(-time.Minute), ok: true, checked: now}
+	s.panes = map[string]mobileview.Pane{a.ID: a, b.ID: b}
+	if got := s.rollout(a); got != "" {
+		t.Errorf("the codex that started first has %s", got)
+	}
+	if got := s.rollout(b); got != path {
+		t.Errorf("the codex that started last has %q", got)
 	}
 }
