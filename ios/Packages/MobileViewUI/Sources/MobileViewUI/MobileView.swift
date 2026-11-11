@@ -606,8 +606,8 @@ private struct FooterView: View {
 }
 
 /**
- * The mode the program's in, marked and colored as it shows it; tapped or
- * held, the others it goes round, from the next on, to step to.
+ * The mode the program's in, colored as it shows it; tapped or held, its
+ * modes, the one it's in checked (iOS's menus mark it so), to step to another.
  */
 private struct ModeButton: View {
     let mode: Mode
@@ -617,13 +617,11 @@ private struct ModeButton: View {
 
     var body: some View {
         Menu {
-            Section("mode · shift+tab") {
-                ForEach(modes, id: \.name) { m in
-                    Button {
-                        if m.name != mode.name { onMode(m.name) }
-                    } label: {
-                        if m.name == mode.name { Label(said(m), systemImage: "checkmark") } else { Text(said(m)) }
-                    }
+            ForEach(modes, id: \.name) { m in
+                Button {
+                    if m.name != mode.name { onMode(m.name) }
+                } label: {
+                    if m.name == mode.name { Label(said(m), systemImage: "checkmark") } else { Text(said(m)) }
                 }
             }
         } label: {

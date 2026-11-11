@@ -48,19 +48,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.window.PopupProperties
 
-/** A menu's choice: what it says, in what color (unspecified, the words') and [font], what it's about beneath, and what it does. */
+/** A menu's choice: what it says, in what color (unspecified, the words') and [font], what it's about beneath, whether it's the [current] one, and what it does. */
 class MenuAction(
     val label: String,
     val color: Color = Color.Unspecified,
     val font: FontFamily? = null,
     val detail: String? = null,
+    val current: Boolean = false,
     val onClick: () -> Unit,
 )
 
 /**
  * A menu dropping from what opened it, rounded and compact, its choices
- * ruled apart beneath an optional [header]. Felt as it opens and shuts. A
- * choice is tapped, or slid onto from what opened it ([opens], [slides]).
+ * ruled apart beneath an optional [header], the current one lit. Felt as it
+ * opens and shuts. A choice is tapped, or slid onto from what opened it
+ * ([opens], [slides]).
  */
 @Composable
 internal fun PopupMenu(
@@ -101,7 +103,13 @@ internal fun PopupMenu(
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (menu.over == i) Palette.bg3 else Color.Transparent)
+                        .background(
+                            when {
+                                menu.over == i -> Palette.bg3
+                                action.current -> Palette.bg2
+                                else -> Color.Transparent
+                            },
+                        )
                         .choice(menu, i, pick)
                         .clickable(onClick = pick)
                         .padding(horizontal = 12.dp, vertical = 9.dp),

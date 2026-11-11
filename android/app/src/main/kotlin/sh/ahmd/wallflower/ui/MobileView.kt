@@ -540,8 +540,8 @@ private fun ContextButton(tokens: Int, onCompact: (() -> Unit)?) {
 }
 
 /**
- * The mode the program's in, marked and colored as it shows it; tapped or
- * held, the others it goes round, from the next on, to step to.
+ * The mode the program's in, colored as it shows it; tapped or held, its
+ * modes, the one it's in lit, to step to another.
  */
 @Composable
 private fun ModeButton(mode: Mode, modes: List<Mode>, onMode: (String) -> Unit) {
@@ -564,9 +564,8 @@ private fun ModeButton(mode: Mode, modes: List<Mode>, onMode: (String) -> Unit) 
         )
         PopupMenu(
             menu,
-            header = { Text("mode · shift+tab", color = Palette.dim, style = Type.caption) },
             actions = modes.map { m ->
-                MenuAction(said(m), modeColor(m.name), detail = "on".takeIf { m.name == mode.name }) {
+                MenuAction(said(m), modeColor(m.name), current = m.name == mode.name) {
                     menu.open = false
                     if (m.name != mode.name) onMode(m.name)
                 }
