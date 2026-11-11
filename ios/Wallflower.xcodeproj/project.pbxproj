@@ -1,0 +1,595 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		DD83627909754A482E466DDC /* WallflowerWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9694650F840AC4914A842D98 /* WallflowerWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BA49066BAAE84D0A0C499FFE /* TerminalCore in Frameworks */ = {isa = PBXBuildFile; productRef = 49290BD247E329D8E9F2EB8F /* TerminalCore */; };
+		3A519BFF774F2DB39E5CD54D /* Wire in Frameworks */ = {isa = PBXBuildFile; productRef = 76938E4A36C64C35FA4CE8D3 /* Wire */; };
+		A78C0EF0DFF0975FC08D9310 /* ReadModel in Frameworks */ = {isa = PBXBuildFile; productRef = 0C27F9BEEC5D237DC8DE356F /* ReadModel */; };
+		8F9E8FA861F611339BEBDEBC /* ScreenReading in Frameworks */ = {isa = PBXBuildFile; productRef = F8D82E9CC3CA84C29B6E0073 /* ScreenReading */; };
+		7A0AC2CFA0397745B95B6E98 /* MarkdownKit in Frameworks */ = {isa = PBXBuildFile; productRef = F61C115E5172E53542DE57D3 /* MarkdownKit */; };
+		E22DA627B6B13131454D7802 /* SessionCore in Frameworks */ = {isa = PBXBuildFile; productRef = A8DB49C4B4430DE16E430AF0 /* SessionCore */; };
+		F29674B45B5C60C5B5695A18 /* WallflowerDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 58C0552CB7FCD616F9EB9CAB /* WallflowerDesign */; };
+		6A94C154DA635D06555F015B /* MobileViewUI in Frameworks */ = {isa = PBXBuildFile; productRef = 6796ADD7EBFF8D93D60AB5FA /* MobileViewUI */; };
+		4EA2E3DBC48165D0D5F3F94A /* SettingsUI in Frameworks */ = {isa = PBXBuildFile; productRef = 77203CCA13492A1DDDD6E10F /* SettingsUI */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B3F5442CF85D0A2E06266A84 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DF2A519F926ADFD68ADBB831;
+			remoteInfo = WallflowerWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B34549B7770D0E28EDB81CAD /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				DD83627909754A482E466DDC /* WallflowerWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		4EE10481494F7874AA365F8D /* Wallflower.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Wallflower.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9694650F840AC4914A842D98 /* WallflowerWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WallflowerWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C089D0BB5A6E968F183AEECB /* TerminalCore */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = TerminalCore; path = Packages/TerminalCore; sourceTree = "<group>"; };
+		091854704CDC7B74DD643B30 /* Wire */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = Wire; path = Packages/Wire; sourceTree = "<group>"; };
+		6DC82B37761FEE24EA362418 /* ReadModel */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = ReadModel; path = Packages/ReadModel; sourceTree = "<group>"; };
+		0F928780ECA759C9BC5FC0ED /* ScreenReading */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = ScreenReading; path = Packages/ScreenReading; sourceTree = "<group>"; };
+		37EFB767522B154B5D00C631 /* MarkdownKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = MarkdownKit; path = Packages/MarkdownKit; sourceTree = "<group>"; };
+		5F5C5A79C0BBDDACFD7A55F0 /* SessionCore */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = SessionCore; path = Packages/SessionCore; sourceTree = "<group>"; };
+		9C79AA3563AF5A18AC831608 /* WallflowerDesign */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = WallflowerDesign; path = Packages/WallflowerDesign; sourceTree = "<group>"; };
+		411F77C2AFFBC24F178C153F /* MobileViewUI */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = MobileViewUI; path = Packages/MobileViewUI; sourceTree = "<group>"; };
+		0E25D47E21FC1352F403BF31 /* SettingsUI */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = SettingsUI; path = Packages/SettingsUI; sourceTree = "<group>"; };
+		33D5E311F21C104B7EECB180 /* Wallflower-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Wallflower-Info.plist"; sourceTree = "<group>"; };
+		923FD51ED69E0FDC21E693BD /* Widgets-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Widgets-Info.plist"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		42006AB264CF2AB66A8087C0 /* Wallflower */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Wallflower;
+			sourceTree = "<group>";
+		};
+		A5854DF06F00D92594FFFC33 /* WallflowerWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WallflowerWidgets;
+			sourceTree = "<group>";
+		};
+		3AC73B1B9BE32CC7AB22405E /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FFEADA95D75BCDA2C6FBEAE0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BA49066BAAE84D0A0C499FFE /* TerminalCore in Frameworks */,
+				3A519BFF774F2DB39E5CD54D /* Wire in Frameworks */,
+				A78C0EF0DFF0975FC08D9310 /* ReadModel in Frameworks */,
+				8F9E8FA861F611339BEBDEBC /* ScreenReading in Frameworks */,
+				7A0AC2CFA0397745B95B6E98 /* MarkdownKit in Frameworks */,
+				E22DA627B6B13131454D7802 /* SessionCore in Frameworks */,
+				F29674B45B5C60C5B5695A18 /* WallflowerDesign in Frameworks */,
+				6A94C154DA635D06555F015B /* MobileViewUI in Frameworks */,
+				4EA2E3DBC48165D0D5F3F94A /* SettingsUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		152D566F6B80540F5E1E6186 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2B731CEFC6751AAE0EC69B98 = {
+			isa = PBXGroup;
+			children = (
+				42006AB264CF2AB66A8087C0 /* Wallflower */,
+				A5854DF06F00D92594FFFC33 /* WallflowerWidgets */,
+				3AC73B1B9BE32CC7AB22405E /* Shared */,
+				89B104369EBC5E85E7E43C6B /* Config */,
+				342340C785F061FD17F695FB /* Packages */,
+				86024CAD1E83101D97359D73 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		86024CAD1E83101D97359D73 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4EE10481494F7874AA365F8D /* Wallflower.app */,
+				9694650F840AC4914A842D98 /* WallflowerWidgets.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		89B104369EBC5E85E7E43C6B /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				33D5E311F21C104B7EECB180 /* Wallflower-Info.plist */,
+				923FD51ED69E0FDC21E693BD /* Widgets-Info.plist */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		342340C785F061FD17F695FB /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				C089D0BB5A6E968F183AEECB /* TerminalCore */,
+				091854704CDC7B74DD643B30 /* Wire */,
+				6DC82B37761FEE24EA362418 /* ReadModel */,
+				0F928780ECA759C9BC5FC0ED /* ScreenReading */,
+				37EFB767522B154B5D00C631 /* MarkdownKit */,
+				5F5C5A79C0BBDDACFD7A55F0 /* SessionCore */,
+				9C79AA3563AF5A18AC831608 /* WallflowerDesign */,
+				411F77C2AFFBC24F178C153F /* MobileViewUI */,
+				0E25D47E21FC1352F403BF31 /* SettingsUI */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		F01C2E624E08A72BC055B46F /* Wallflower */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3E0F09E4429C652670235EDE /* Build configuration list for PBXNativeTarget "Wallflower" */;
+			buildPhases = (
+				F927BC1DF9D9402659F50E5D /* Sources */,
+				FFEADA95D75BCDA2C6FBEAE0 /* Frameworks */,
+				5B79E5318A231EABF0A6DD21 /* Resources */,
+				B34549B7770D0E28EDB81CAD /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				45C902724C965743E206AAA1 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				42006AB264CF2AB66A8087C0 /* Wallflower */,
+				3AC73B1B9BE32CC7AB22405E /* Shared */,
+			);
+			name = Wallflower;
+			packageProductDependencies = (
+				49290BD247E329D8E9F2EB8F /* TerminalCore */,
+				76938E4A36C64C35FA4CE8D3 /* Wire */,
+				0C27F9BEEC5D237DC8DE356F /* ReadModel */,
+				F8D82E9CC3CA84C29B6E0073 /* ScreenReading */,
+				F61C115E5172E53542DE57D3 /* MarkdownKit */,
+				A8DB49C4B4430DE16E430AF0 /* SessionCore */,
+				58C0552CB7FCD616F9EB9CAB /* WallflowerDesign */,
+				6796ADD7EBFF8D93D60AB5FA /* MobileViewUI */,
+				77203CCA13492A1DDDD6E10F /* SettingsUI */,
+			);
+			productName = Wallflower;
+			productReference = 4EE10481494F7874AA365F8D /* Wallflower.app */;
+			productType = "com.apple.product-type.application";
+		};
+		DF2A519F926ADFD68ADBB831 /* WallflowerWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 90BA38BE477AEB0360605D60 /* Build configuration list for PBXNativeTarget "WallflowerWidgets" */;
+			buildPhases = (
+				DCC1E0B4B07FA9CB83FF0878 /* Sources */,
+				152D566F6B80540F5E1E6186 /* Frameworks */,
+				42669941DFD9F2076690B30A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A5854DF06F00D92594FFFC33 /* WallflowerWidgets */,
+				3AC73B1B9BE32CC7AB22405E /* Shared */,
+			);
+			name = WallflowerWidgets;
+			packageProductDependencies = (
+			);
+			productName = WallflowerWidgets;
+			productReference = 9694650F840AC4914A842D98 /* WallflowerWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		46F86FAA6BBF9AC94A7E4595 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					F01C2E624E08A72BC055B46F = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					DF2A519F926ADFD68ADBB831 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+				};
+			};
+			buildConfigurationList = C845CFFFF10C1D3F84934AC3 /* Build configuration list for PBXProject "Wallflower" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 2B731CEFC6751AAE0EC69B98;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				42AD26B1AD00D870595D19FF /* XCLocalSwiftPackageReference "Packages/TerminalCore" */,
+				66AB32789AA06F6415FCB3FA /* XCLocalSwiftPackageReference "Packages/Wire" */,
+				7D0284F1BA2F57CF6C34B4CD /* XCLocalSwiftPackageReference "Packages/ReadModel" */,
+				4A686DE5B120C2D2351CEC8E /* XCLocalSwiftPackageReference "Packages/ScreenReading" */,
+				56FF21FEEF17F5E1C1DFD656 /* XCLocalSwiftPackageReference "Packages/MarkdownKit" */,
+				04B0A33D11E974806CF64548 /* XCLocalSwiftPackageReference "Packages/SessionCore" */,
+				E0618DEBDF0851F27919500A /* XCLocalSwiftPackageReference "Packages/WallflowerDesign" */,
+				489A014910FE27504C994735 /* XCLocalSwiftPackageReference "Packages/MobileViewUI" */,
+				309DC5D9E757A37EFF3C1F4B /* XCLocalSwiftPackageReference "Packages/SettingsUI" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 86024CAD1E83101D97359D73 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				F01C2E624E08A72BC055B46F /* Wallflower */,
+				DF2A519F926ADFD68ADBB831 /* WallflowerWidgets */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5B79E5318A231EABF0A6DD21 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		42669941DFD9F2076690B30A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		F927BC1DF9D9402659F50E5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DCC1E0B4B07FA9CB83FF0878 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		45C902724C965743E206AAA1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DF2A519F926ADFD68ADBB831 /* WallflowerWidgets */;
+			targetProxy = B3F5442CF85D0A2E06266A84 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		F3E469D9CF2672B87FCF79D5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		4FF944F08AACB37CF71EA40B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		F28A85BE60487DC1BDCF015E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Wallflower-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = wallflower;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send to your Mac.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Your SSH key lives in this phone's Secure Enclave; Face ID unlocks it.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "wallflower connects to your Mac's gateway.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.ahmd.wallflower;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A86756326B10413DEF26E20B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Wallflower-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = wallflower;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Take a photo to send to your Mac.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Your SSH key lives in this phone's Secure Enclave; Face ID unlocks it.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "wallflower connects to your Mac's gateway.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.ahmd.wallflower;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		78C9A8FDE81EF2963EF240D5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_DEBUG_DYLIB = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Widgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = wallflower;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.ahmd.wallflower.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3C49F9097FDD7AE50FF61C7D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_DEBUG_DYLIB = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Widgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = wallflower;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.ahmd.wallflower.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C845CFFFF10C1D3F84934AC3 /* Build configuration list for PBXProject "Wallflower" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F3E469D9CF2672B87FCF79D5 /* Debug */,
+				4FF944F08AACB37CF71EA40B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3E0F09E4429C652670235EDE /* Build configuration list for PBXNativeTarget "Wallflower" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F28A85BE60487DC1BDCF015E /* Debug */,
+				A86756326B10413DEF26E20B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		90BA38BE477AEB0360605D60 /* Build configuration list for PBXNativeTarget "WallflowerWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				78C9A8FDE81EF2963EF240D5 /* Debug */,
+				3C49F9097FDD7AE50FF61C7D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		42AD26B1AD00D870595D19FF /* XCLocalSwiftPackageReference "Packages/TerminalCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/TerminalCore;
+		};
+		66AB32789AA06F6415FCB3FA /* XCLocalSwiftPackageReference "Packages/Wire" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/Wire;
+		};
+		7D0284F1BA2F57CF6C34B4CD /* XCLocalSwiftPackageReference "Packages/ReadModel" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ReadModel;
+		};
+		4A686DE5B120C2D2351CEC8E /* XCLocalSwiftPackageReference "Packages/ScreenReading" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ScreenReading;
+		};
+		56FF21FEEF17F5E1C1DFD656 /* XCLocalSwiftPackageReference "Packages/MarkdownKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/MarkdownKit;
+		};
+		04B0A33D11E974806CF64548 /* XCLocalSwiftPackageReference "Packages/SessionCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SessionCore;
+		};
+		E0618DEBDF0851F27919500A /* XCLocalSwiftPackageReference "Packages/WallflowerDesign" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/WallflowerDesign;
+		};
+		489A014910FE27504C994735 /* XCLocalSwiftPackageReference "Packages/MobileViewUI" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/MobileViewUI;
+		};
+		309DC5D9E757A37EFF3C1F4B /* XCLocalSwiftPackageReference "Packages/SettingsUI" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SettingsUI;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		49290BD247E329D8E9F2EB8F /* TerminalCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 42AD26B1AD00D870595D19FF /* XCLocalSwiftPackageReference "Packages/TerminalCore" */;
+			productName = TerminalCore;
+		};
+		76938E4A36C64C35FA4CE8D3 /* Wire */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 66AB32789AA06F6415FCB3FA /* XCLocalSwiftPackageReference "Packages/Wire" */;
+			productName = Wire;
+		};
+		0C27F9BEEC5D237DC8DE356F /* ReadModel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7D0284F1BA2F57CF6C34B4CD /* XCLocalSwiftPackageReference "Packages/ReadModel" */;
+			productName = ReadModel;
+		};
+		F8D82E9CC3CA84C29B6E0073 /* ScreenReading */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4A686DE5B120C2D2351CEC8E /* XCLocalSwiftPackageReference "Packages/ScreenReading" */;
+			productName = ScreenReading;
+		};
+		F61C115E5172E53542DE57D3 /* MarkdownKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 56FF21FEEF17F5E1C1DFD656 /* XCLocalSwiftPackageReference "Packages/MarkdownKit" */;
+			productName = MarkdownKit;
+		};
+		A8DB49C4B4430DE16E430AF0 /* SessionCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04B0A33D11E974806CF64548 /* XCLocalSwiftPackageReference "Packages/SessionCore" */;
+			productName = SessionCore;
+		};
+		58C0552CB7FCD616F9EB9CAB /* WallflowerDesign */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E0618DEBDF0851F27919500A /* XCLocalSwiftPackageReference "Packages/WallflowerDesign" */;
+			productName = WallflowerDesign;
+		};
+		6796ADD7EBFF8D93D60AB5FA /* MobileViewUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 489A014910FE27504C994735 /* XCLocalSwiftPackageReference "Packages/MobileViewUI" */;
+			productName = MobileViewUI;
+		};
+		77203CCA13492A1DDDD6E10F /* SettingsUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 309DC5D9E757A37EFF3C1F4B /* XCLocalSwiftPackageReference "Packages/SettingsUI" */;
+			productName = SettingsUI;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+}

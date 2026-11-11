@@ -1,0 +1,17 @@
+[39m [1m[38;5;153mBash command[0m
+ [1mTip: auto mode handles these prompts for you — [0m
+ [1mchoose "switch to auto mode" below[0m
+ [38;5;246mCreate /tmp/wf-probe-1[39m [38;5;246mand confirm[39m [38;5;246mit exists[39m
+[38;5;239m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+[39m touch /tmp/wf-probe-1 && ls -l /tmp/wf-probe-1
+[38;5;239m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+[39m Do you want to proceed?
+ [38;5;153m❯[39m [38;5;246m1.[39m [38;5;153mYes[39m
+   [38;5;246m2.[39m Yes, and allow access to [1m/tmp[0m and [1mtouch[0m
+      [1m/tmp/wf-probe-1[0m commands
+   [38;5;246m3.[39m Yes, and switch to auto mode[38;5;246m ·[39m [38;5;246mauto[39m [38;5;246mmode[39m [38;5;246mhandles
+[39m      [38;5;246mthese[39m [38;5;246mprompts[39m [38;5;246mfor[39m [38;5;246myou
+[39m   [38;5;246m4.[39m No
+
+ [38;5;246mEsc[39m [38;5;246mto[39m [38;5;246mcancel[39m [38;5;246m·[39m [38;5;246mTab[39m [38;5;246mto[39m [38;5;246mamend[39m
+

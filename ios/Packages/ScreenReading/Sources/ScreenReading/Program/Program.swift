@@ -1,0 +1,272 @@
+import Foundation
+
+/// The phone's half of a program's plugin: what wallflower can read off the
+/// program's screen, and how to drive it beyond typing. The Mac's half says
+/// which panes run it, and names it by the same id (see `Programs`).
+public protocol Program: AnyObject, Sendable {
+    /// The program's input line, if wallflower can see one on its screen.
+    func line(_ screen: Screen) -> InputLine?
+
+    /// Choices the program offers on its screen, to answer by touch.
+    func prompt(_ screen: Screen) -> Prompt?
+
+    /// What the program says on its screen it's doing, in its own words, while it works; nil if it doesn't say.
+    func status(_ screen: Screen) -> String?
+
+    /// What the program's notification says on the phone: a desktop
+    /// notification (`title`, `body`), or its terminal's bell (no `body`),
+    /// given its `screen` as it came if the program `readsScreenToNotify`
+    /// (nil if it couldn't be read); nil: nothing. A bell says nothing
+    /// unless the program has it say something: shells and editors ring it
+    /// at a mistyped key.
+    func notice(title: String?, body: String?, screen: Screen?) -> Notice?
+
+    /// Whether `notice` needs the program's screen, which takes opening its pane a moment.
+    var readsScreenToNotify: Bool { get }
+
+    /// What empties a row of the input line; empty if nothing does, and the box adds to the line.
+    var clearKeys: [String] { get }
+
+    /// Keys that empty `line`, `keys` being what empties a row (the
+    /// program's, or the user's own): once per row it takes, and once more.
+    /// `unseen`: the program can't be seen, as under its mobile view.
+    func clear(_ line: InputLine, keys: [String], unseen: Bool) -> [String]
+
+    /// What starts a new line of what's being typed without sending it, if the program takes several; a shell runs the line.
+    var newlineKeys: [String]? { get }
+
+    /// Whether what's sent while it works waits for it to take later (queued), rather than going to what it's doing.
+    var queues: Bool { get }
+
+    /// What the program is sent to compact its conversation, if it can.
+    var compact: String? { get }
+
+    /// What takes the suggestion in the program's empty input line into the
+    /// line, whole, if it shows suggestions: cut short to fit the screen
+    /// ("…"), what the screen says isn't all of one.
+    var acceptSuggestion: [String]? { get }
+
+    /// Commands the composer's + offers for the program's panes, which start what's sent.
+    var commands: [Command] { get }
+
+    /// What brings a message the user sent back into the input line, to edit
+    /// and send again, if the program can: `latest` being their newest, which
+    /// the program is still on while `working`.
+    func recall(latest: Bool, working: Bool) -> Recall?
+
+    /// Walking `prompt`, opened by `recall`'s command, to the user's message
+    /// that `said`: where the list of their messages has its cursor, or
+    /// whether what picking one asks is about that message; nil if it's neither.
+    func walk(_ prompt: Prompt, said: String) -> Walk?
+
+    /// What picking `option` of `prompt` does besides answering it, if wallflower needs to know.
+    func picked(_ prompt: Prompt, option: Prompt.Option) -> Effect?
+
+    /// What answering `prompt` did besides, whoever answered it (at the Mac,
+    /// say), as the input `line` the program shows once it's gone tells; nil
+    /// if nothing wallflower needs to know.
+    func settled(_ prompt: Prompt, line: InputLine?) -> Effect?
+
+    /// What a tab shows for the program's window, from the terminal title it
+    /// sets (`title`), in place of a name the multiplexer gave the window
+    /// after the program's command; nil keeps that name.
+    func label(_ title: String) -> String?
+
+    /// The key bar its panes get until the user sets them one; programs with the same one share it.
+    var keyBar: KeyDefaults? { get }
+}
+
+extension Program {
+    public func prompt(_ screen: Screen) -> Prompt? { nil }
+
+    public func status(_ screen: Screen) -> String? { nil }
+
+    public func notice(title: String?, body: String?, screen: Screen?) -> Notice? { body.map { Notice(title: title, body: $0) } }
+
+    public var readsScreenToNotify: Bool { false }
+
+    public func clear(_ line: InputLine, keys: [String], unseen: Bool) -> [String] { clearingRows(line, keys: keys) }
+
+    /// `clear`, with the program's `clearKeys`.
+    public func clear(_ line: InputLine, unseen: Bool = false) -> [String] { clear(line, keys: clearKeys, unseen: unseen) }
+
+    /// `clear`, the program in view.
+    public func clear(_ line: InputLine, keys: [String]) -> [String] { clear(line, keys: keys, unseen: false) }
+
+    /// `keys` once per row `line` takes, and once more.
+    func clearingRows(_ line: InputLine, keys: [String]) -> [String] {
+        Array(repeating: keys, count: max(line.rows * 2 + 1, 0)).flatMap { $0 }
+    }
+
+    public var newlineKeys: [String]? { nil }
+
+    public var queues: Bool { false }
+
+    public var compact: String? { nil }
+
+    public var acceptSuggestion: [String]? { nil }
+
+    public var commands: [Command] { [] }
+
+    public func recall(latest: Bool, working: Bool) -> Recall? { nil }
+
+    public func walk(_ prompt: Prompt, said: String) -> Walk? { nil }
+
+    public func picked(_ prompt: Prompt, option: Prompt.Option) -> Effect? { nil }
+
+    public func settled(_ prompt: Prompt, line: InputLine?) -> Effect? { nil }
+
+    public func label(_ title: String) -> String? { nil }
+
+    public var keyBar: KeyDefaults? { nil }
+}
+
+/// A key bar a program ships: its `name`, its `keys` by wallflower's names
+/// (`arrows`: the arrows around enter, in one key), and what the send button
+/// presses when there's nothing to send (`stop`).
+public struct KeyDefaults: Hashable, Sendable {
+    public var name: String
+    public var keys: [String]
+    public var stop: [String]
+
+    public init(name: String, keys: [String], stop: [String] = ["C-c"]) {
+        self.name = name
+        self.keys = keys
+        self.stop = stop
+    }
+}
+
+/// A command a program takes, as the + offers it: its `text`, and what it's `about`.
+public struct Command: Hashable, Sendable {
+    public var text: String
+    public var about: String
+
+    public init(text: String, about: String) {
+        self.text = text
+        self.about = about
+    }
+}
+
+/// What brings back a message the user sent: `keys`, or a `command` sent as if typed.
+public enum Recall: Hashable, Sendable {
+    case keys([String])
+
+    case command(String)
+}
+
+/// A prompt on the way to one of the user's messages, from the list of them, oldest first.
+public enum Walk: Hashable, Sendable {
+    case listed(Listed)
+
+    case picked(Picked)
+
+    /// The list: its cursor on the message with `back` of theirs newer than
+    /// it (-1 below the newest), going `last` back at most. The keys that
+    /// move the cursor `up` a message (back), or `down`, and that `pick` the
+    /// one under it.
+    public struct Listed: Hashable, Sendable {
+        public var back: Int
+        public var last: Int
+        public var up: [String]
+        public var down: [String]
+        public var pick: [String]
+
+        public init(back: Int, last: Int, up: [String], down: [String], pick: [String]) {
+            self.back = back
+            self.last = last
+            self.up = up
+            self.down = down
+            self.pick = pick
+        }
+    }
+
+    /// What picking one asks: whether it's `on` the message walked to, and the keys `back` to the list, its cursor where it was.
+    public struct Picked: Hashable, Sendable {
+        public var on: Bool
+        public var back: [String]
+
+        public init(on: Bool, back: [String]) {
+            self.on = on
+            self.back = back
+        }
+    }
+}
+
+/// A notification as the phone shows it.
+public struct Notice: Hashable, Sendable {
+    public var title: String?
+    public var body: String
+
+    public init(title: String?, body: String) {
+        self.title = title
+        self.body = body
+    }
+}
+
+/// Something picking an option did that the program won't record until later.
+public enum Effect: Sendable {
+    /// Its conversation went back to before the latest of the user's messages that `said` matches.
+    case rewound(said: @Sendable (String) -> Bool)
+}
+
+/// A program the phone has no half of its own for, as a plugin the user gave
+/// the gateway describes it, in data, since the phone loads no code: its key
+/// bar, commands, and the keys that start a new line and empty one. It reads
+/// a line only from prompt marks (OSC 133), if it makes them.
+public final class Supplied: Program {
+    public let keyBar: KeyDefaults?
+    public let commands: [Command]
+    public let newlineKeys: [String]?
+    public let clearKeys: [String]
+    private let shell: Shell
+
+    public init(keyBar: KeyDefaults?, commands: [Command], newlineKeys: [String]?, clearKeys: [String]) {
+        self.keyBar = keyBar
+        self.commands = commands
+        self.newlineKeys = newlineKeys
+        self.clearKeys = clearKeys
+        self.shell = Shell(clearKeys: clearKeys, keyBar: keyBar)
+    }
+
+    public func line(_ screen: Screen) -> InputLine? { shell.line(screen) }
+}
+
+/// The programs wallflower ships, and those the gateway's plugins describe, by the id the gateway names a pane's program by.
+public enum Programs {
+    private static let shells = KeyDefaults(name: "shell", keys: ["Tab", "arrows", "C-r", "C-c", "C-d", "Escape"])
+    private static let other = Shell()
+
+    public static let builtin: [(id: String, program: any Program)] = [
+        ("claude", Claude.shared),
+        ("zsh", Shell(clearKeys: ["C-x", "C-u"], keyBar: shells)), // kill-buffer, as the dotfiles' zshrc binds it
+        ("shell", Shell(keyBar: shells)),
+    ]
+
+    private static let builtinById = Dictionary(uniqueKeysWithValues: builtin.map { ($0.id, $0.program) })
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var current: [String: any Program] = [:]
+
+    private static var table: [String: any Program] { lock.withLock { current } }
+
+    /// The programs the gateway's plugins describe, by id, in place of those before.
+    public static func supply(_ programs: [String: any Program]) {
+        let byId = Dictionary(programs.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: { _, last in last })
+        lock.withLock { current = byId }
+    }
+
+    /// The ids of the programs the gateway's plugins describe.
+    public static var suppliedIds: Set<String> { Set(table.keys).subtracting(builtinById.keys) }
+
+    /// A program a plugin of the user's describes, by its id; nil if it's one wallflower ships, or none is.
+    public static func supplied(_ id: String?) -> (any Program)? {
+        guard let id = id?.lowercased(), builtinById[id] == nil else { return nil }
+        return table[id]
+    }
+
+    /// A pane's program, by its id; one nothing describes (or none) is a plain terminal's.
+    public static func of(_ id: String?) -> any Program {
+        guard let id = id?.lowercased() else { return other }
+        return builtinById[id] ?? table[id] ?? other
+    }
+}
