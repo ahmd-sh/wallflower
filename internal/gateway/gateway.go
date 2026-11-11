@@ -7,7 +7,7 @@
 // One loop owns all of it: the client's messages (dispatch.go) drive the
 // multiplexer (input.go), and its events become the client's pane streams
 // (panes.go) and session state (state.go), with mobile views
-// (mobileview.go) and uploads alongside.
+// (mobileview.go), uploads and the user's files (files.go) alongside.
 package gateway
 
 import (
@@ -63,6 +63,7 @@ type gateway struct {
 	gen      int // readers started
 
 	uploads uploads
+	files   *files
 
 	listed []byte                  // the sessions as last sent
 	asking map[string]chan listing // multiplexers that took too long to list their sessions, until they do
@@ -88,6 +89,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 	if g.opts.Machine == "" {
 		g.opts.Machine = MachineName()
 	}
+	g.files = newFiles(ctx, g.out)
 	defer g.uploads.close()
 	defer g.out.close(2 * time.Second)
 
@@ -103,6 +105,7 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, opts Options) error
 		Uploads:  g.uploads.dir,
 		Machine:  g.opts.Machine,
 		Programs: clients(g.programs),
+		Can:      []string{protocol.CanFiles},
 	})
 	defer func() {
 		if g.mux != nil {

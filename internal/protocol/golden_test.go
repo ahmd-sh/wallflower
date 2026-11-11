@@ -51,6 +51,11 @@ func goldenClient(t *testing.T) []byte {
 		RenameSession{Mux: "tmux", Session: "$2", Name: "play"},
 		KillSession{Mux: "tmux", Session: "$2"},
 		Detach{},
+		List{ID: "l1", Path: "~/dev ✓"},
+		List{ID: "l2", Path: ""},
+		Fetch{ID: "f1", Path: "/Users/me/shot.png"},
+		Fetch{ID: "f2", Path: "~/log.txt", Limit: 65536},
+		Cancel{ID: "f1"},
 	} {
 		b = mustJSON(t, b, m)
 	}
@@ -61,7 +66,7 @@ func goldenClient(t *testing.T) []byte {
 func goldenServer(t *testing.T) []byte {
 	var b []byte
 	context := 17967
-	b = mustJSON(t, b, ServerHello{V: Version, Uploads: "/Users/me/Library/Caches/wallflower/uploads", Machine: "vishingstar"})
+	b = mustJSON(t, b, ServerHello{V: Version, Uploads: "/Users/me/Library/Caches/wallflower/uploads", Machine: "vishingstar", Can: []string{CanFiles}})
 	b = mustJSON(t, b, Attached{Mux: Mux{Name: "tmux", Version: "3.8", Can: []string{CanBindings}}})
 	b = mustJSON(t, b, State{Session: "$1", Name: "o", Windows: []Window{{
 		ID: "@1", Index: 1, Name: "base", Active: true,
@@ -103,6 +108,16 @@ func goldenServer(t *testing.T) []byte {
 		{Name: "tmux", Running: true, Sessions: []SessionInfo{{ID: "$1", Name: "o", Windows: 3}, {ID: "$2", Name: "work ✓", Windows: 1}}, Can: []string{CanNew, CanRename, CanKill}},
 		{Name: "zellij", Sessions: []SessionInfo{}, Can: []string{CanNew}, Error: "zellij: permission denied"},
 	}})
+	b = mustJSON(t, b, Listing{ID: "l1", Path: "/Users/me/dev ✓", More: true, Entries: []FileEntry{
+		{Name: ".git", Kind: KindDir, Mtime: 1792209270006, Hidden: true},
+		{Name: "latest", Kind: KindDir, Link: true, Mtime: 1792209270007},
+		{Name: "notes ✓.md", Kind: KindFile, Size: 1234, Mtime: 1792209270008},
+		{Name: "wf.sock", Kind: KindOther},
+	}})
+	b = mustJSON(t, b, Listing{ID: "l2", Path: "/Users/me/Library/Mail", Error: "operation not permitted"})
+	b = mustJSON(t, b, File{ID: "f1", Path: "/Users/me/shot.png", Size: 3})
+	b = AppendFile(b, "f1", []byte{0x89, 'P', 'N'})
+	b = mustJSON(t, b, File{ID: "f2", Path: "/Users/me/log.txt", Error: "permission denied"})
 	return mustJSON(t, b, Bye{Reason: "tmux exited"})
 }
 

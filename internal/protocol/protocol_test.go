@@ -22,6 +22,7 @@ func TestRoundTrip(t *testing.T) {
 	buf, _ = AppendJSON(buf, Bye{})
 	buf = AppendData(buf, "%1", nil)
 	buf = AppendUpload(buf, "u1", []byte{0, 0xff, 'j'})
+	buf = AppendFile(buf, "f1", []byte("%PDF"))
 
 	r := NewReader(bytes.NewReader(buf))
 	want := []any{
@@ -31,6 +32,7 @@ func TestRoundTrip(t *testing.T) {
 		nil, // Bye: server message, checked below
 		Frame{Type: FrameData, ID: "%1", Data: []byte{}},
 		Frame{Type: FrameUpload, ID: "u1", Data: []byte{0, 0xff, 'j'}},
+		Frame{Type: FrameFile, ID: "f1", Data: []byte("%PDF")},
 	}
 	for i, w := range want {
 		f, err := r.Next()

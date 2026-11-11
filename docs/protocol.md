@@ -22,6 +22,7 @@ uint8   type
 | 2 | pane data: `uint8 n`, `n` bytes of pane id, then raw bytes |
 | 3 | upload data: `uint8 n`, `n` bytes of upload id, then the upload's next bytes |
 | 4 | a picture: `uint8 n`, `n` bytes of entry id, then the picture's bytes (none if it's gone) |
+| 5 | file data: `uint8 n`, `n` bytes of fetch id, then the fetched file's next bytes |
 
 Pane data from the gateway is output for an open pane. Pane data from the
 client is typed into the pane, byte for byte (a mouse wheel's, say);
@@ -90,6 +91,9 @@ client never has to resync on its own.
 | `read` | `pane`, `on` | start or stop the pane's mobile view arriving as `entries`; for panes with `view` |
 | `picture` | `pane`, `id` | a picture entry's bytes, which come in a picture frame |
 | `upload` | `id`, `name`, `size` | send a file: `size` bytes follow in upload frames with this `id`, see below |
+| `list` | `id`, `path` | a directory's entries, which come in `listing`, if the gateway `can` `files`; see Files |
+| `fetch` | `id`, `path`, `limit`? | a file's bytes: `file` says how many, then they come in file frames with this `id`; `limit` sends no more than that many, from the start |
+| `cancel` | `id` | stop a fetch partway |
 | `ping` | `id` | |
 | `away` | `on` | the user has left the client for now (or is back): see Sizing |
 | `sessions` | | list the sessions in every multiplexer the gateway has; they come in `sessions` |
@@ -115,7 +119,7 @@ them at once takes it all as a paste, Enter and all.
 
 | t | fields | |
 |---|--------|---|
-| `hello` | `v`, `uploads`?, `machine`?, `programs`? | first, before the client's attached to anything: the directory uploads are saved in; the machine's name, as its owner calls it (a Mac's Computer Name); the phone halves of the user's plugins, see below |
+| `hello` | `v`, `uploads`?, `machine`?, `programs`?, `can`? | first, before the client's attached to anything: the directory uploads are saved in; the machine's name, as its owner calls it (a Mac's Computer Name); the phone halves of the user's plugins, see below; what this gateway does beyond what every one of its version does: `files` (see Files) |
 | `attached` | `mux` | the client is attached to a session in this multiplexer, see below; `state` follows |
 | `detached` | `reason`? | the client is attached to nothing, and why if it didn't ask to be; `sessions` follows |
 | `state` | `session`, `name`, `windows` | everything in the session, see below |
@@ -127,6 +131,8 @@ them at once takes it all as a paste, Enter and all.
 | `bye` | `reason` | the gateway is exiting: the client's `hello` couldn't be taken |
 | `notification` | `pane`, `title`?, `body` | a desktop notification a program sent, see below |
 | `sessions` | `muxes` | each multiplexer's sessions, see below; sent when asked, after a session is started, renamed or ended, and whenever they change while the client is attached to nothing |
+| `listing` | `id`, `path`, `entries`?, `more`?, `error`? | a directory's entries, as `list` asked, see Files |
+| `file` | `id`, `path`, `size`, `error`? | `size` bytes of the file `fetch` asked for follow in file frames, or `error` says why none do; see Files |
 
 `mux` in `attached` is the multiplexer the session is in: its `name`
 (`tmux`), its `version`, and `can`, what it can do beyond what every one
@@ -271,3 +277,41 @@ quoting, and made unique there. They're removed after two weeks.
 
 The path is the client's to use: in what it submits to a pane, it lets the
 pane's program find the file, and `submit` pastes it on its own.
+
+## Files
+
+A gateway that `can` `files` (in `hello`) shows the client the Mac's files,
+read-only, anywhere the user can read: the phone already has a shell there.
+They aren't the session's, so a client attached to nothing can have them
+too.
+
+A path is absolute, or starts with `~` for the user's home; an empty one
+is the home. A client starting at a pane's directory has it in the pane's
+`path`, and resolves a path relative to it itself.
+
+`listing` has the directory's `path`, absolute and clean, and its
+`entries` by name, up to 5000 (`more` says there are others); or an
+`error` saying why it couldn't be read (`permission denied`). An entry is:
+
+| field | |
+|-------|---|
+| `name` | |
+| `kind` | `dir`, `file`, or `other` (a device, a socket, a link to nothing) |
+| `link` | it's a symbolic link, to what `kind` says |
+| `size` | a file's, in bytes |
+| `mtime` | when it last changed, in Unix milliseconds |
+| `hidden` | a name that starts with a dot, or one the Mac hides (`~/Library`) |
+
+After `fetch`, `file` says the file's `path` and how many of its bytes
+follow, `size`, then they come in file frames with the fetch's `id`, as
+many as it takes. A file over 256 MiB, or one that isn't a regular file,
+is refused with an `error`, unless a `limit` asks for its start only. One
+that can't be read to the end (it shrank as it went) has a second `file`
+with an `error` in place of the rest. Fetches' frames take turns, a chunk
+each, behind the panes' output, so a picture asked for during a big
+download isn't kept waiting for it, nor is typing. After `cancel`, no more
+of a fetch's frames are sent; those already on their way still come.
+
+macOS keeps some folders (`~/Desktop`, `~/Documents`, Mail's) from remote
+users unless Remote Login allows them full disk access; the `error` then
+says so.

@@ -19,6 +19,7 @@ const (
 	FrameData    byte = 2 // a pane's bytes: output from the gateway, typed by the client
 	FrameUpload  byte = 3 // the next of an upload's bytes
 	FramePicture byte = 4 // a picture entry's bytes, asked for with Picture
+	FrameFile    byte = 5 // the next of a fetched file's bytes
 )
 
 // MaxFrame bounds a frame's length field, so a corrupt stream can't make a
@@ -30,7 +31,7 @@ var ErrTooBig = errors.New("protocol: message too big for a frame")
 
 type Frame struct {
 	Type byte
-	ID   string // FrameData: the pane; FrameUpload: the upload; FramePicture: the entry
+	ID   string // FrameData: the pane; FrameUpload: the upload; FramePicture: the entry; FrameFile: the fetch
 	Data []byte // FrameJSON: the JSON object; otherwise the bytes
 }
 
@@ -68,7 +69,7 @@ func (r *Reader) next() (f Frame, known bool, err error) {
 	switch f.Type {
 	case FrameJSON:
 		f.Data = buf
-	case FrameData, FrameUpload, FramePicture:
+	case FrameData, FrameUpload, FramePicture, FrameFile:
 		if len(buf) < 1 || int(buf[0]) > len(buf)-1 {
 			return Frame{}, false, errors.New("protocol: truncated id")
 		}
@@ -101,6 +102,11 @@ func AppendUpload(dst []byte, upload string, data []byte) []byte {
 // they're gone.
 func AppendPicture(dst []byte, entry string, data []byte) []byte {
 	return appendBytes(dst, FramePicture, entry, data)
+}
+
+// AppendFile appends a file frame: the next of a fetched file's bytes.
+func AppendFile(dst []byte, fetch string, data []byte) []byte {
+	return appendBytes(dst, FrameFile, fetch, data)
 }
 
 func appendBytes(dst []byte, typ byte, id string, data []byte) []byte {

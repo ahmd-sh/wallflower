@@ -99,6 +99,15 @@ func (g *gateway) handle(f protocol.Frame) error {
 	case *protocol.Picture:
 		g.picture(m.Pane, m.ID)
 		return nil
+	case *protocol.List:
+		g.files.list(m)
+		return nil
+	case *protocol.Fetch:
+		g.files.fetch(m)
+		return nil
+	case *protocol.Cancel:
+		g.files.cancel(m)
+		return nil
 	case *protocol.Ping:
 		g.send(protocol.Pong{ID: m.ID})
 		return nil
