@@ -10,7 +10,8 @@ object ImagePaths {
     private const val EXTENSIONS = "png|jpe?g|gif|webp|heic|heif|bmp|avif"
 
     private val inText = Regex(
-        """(?U)(?<![\w./~@+%:\\-])(?:~/|\.{1,2}/|/)?(?:[\w.@+%-]+/)*[\w@+%-][\w.@+%-]*\.(?:$EXTENSIONS)(?!\.?[\w/-])""",
+        // Letters and digits of any script, spelled out: Android's regex takes no (?U).
+        """(?<![\p{L}\p{N}_./~@+%:\\-])(?:~/|\.{1,2}/|/)?(?:[\p{L}\p{N}_.@+%-]+/)*[\p{L}\p{N}_@+%-][\p{L}\p{N}_.@+%-]*\.(?:$EXTENSIONS)(?![.]?[\p{L}\p{N}_/-])""",
         RegexOption.IGNORE_CASE,
     )
 

@@ -116,6 +116,8 @@ public struct MobileView: View {
         if asking != nil { return .asking }
         switch activity {
         case .working: return .working
+        // Claude says it waits while its /btw answer is up, which asks nothing: the card says what's there.
+        case .waiting where aside != nil: return nil
         // The program says it's waiting a moment after its screen moved on (answered), so for that long it's working.
         case .waiting: return unread ? .waiting : .working
         default: return nil
@@ -124,13 +126,24 @@ public struct MobileView: View {
 
     public var body: some View {
         let items = ReadModel.items(reading.shown)
-        let phase: Phase = !reading.loaded ? .reading : items.isEmpty ? .empty : .shown
         let status = self.status
+        // Nothing said yet, a conversation can still have something at its foot: an answer aside, a menu, what's queued.
+        let phase: Phase = !reading.loaded ? .reading
+            : items.isEmpty && aside == nil && status == nil && reading.queued.isEmpty ? .empty : .shown
         ZStack(alignment: .topLeading) {
             Group {
                 switch phase {
                 case .reading: Hint(text: "reading…")
-                case .empty: Empty(problem: reading.problem)
+                case .empty:
+                    // The mode can be picked before the first message.
+                    ZStack(alignment: .bottomTrailing) {
+                        Empty(problem: reading.problem)
+                        if let mode {
+                            FooterView(footer: Footer(mode: mode, modes: modes, onMode: onMode, context: nil))
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                        }
+                    }
                 case .shown:
                     Conversation(
                         items: items,
@@ -627,9 +640,9 @@ private struct ModeButton: View {
     }
 }
 
-/** A mode as the program shows it, its mark drawn as text (⏸ is an emoji too). */
+/** A mode by its name, in its color: its mark (⏵⏵, ⏸) is an emoji in some fonts and missing in others. */
 private func said(_ mode: Mode) -> String {
-    (mode.mark.unicodeScalars.map { "\($0)\u{FE0E}" }.joined() + " " + mode.name).trimmingCharacters(in: .whitespaces)
+    mode.name
 }
 
 /** A mode's color, as Claude colors its own (unknown ones grey). */

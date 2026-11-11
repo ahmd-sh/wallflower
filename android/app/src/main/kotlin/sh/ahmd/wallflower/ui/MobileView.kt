@@ -199,6 +199,8 @@ fun MobileView(
             seeking -> Status.Seeking
             asking != null -> Status.Asking
             activity == Activity.Working -> Status.Working
+            // Claude says it waits while its /btw answer is up, which asks nothing: the card says what's there.
+            activity == Activity.Waiting && aside != null -> null
             activity == Activity.Waiting -> if (unread) Status.Waiting else Status.Working
             else -> null
         }
@@ -228,22 +230,38 @@ fun MobileView(
             }
         }
 
+        // The mode, and how full the context is: beside the last reply's copy; with no copy to go beside, on their own.
+        val footer: (@Composable () -> Unit)? = if (reading.context > 0 || mode != null) {
+            {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    mode?.let { ModeButton(it, modes, onMode) }
+                    if (reading.context > 0) ContextButton(reading.context, onCompact)
+                }
+            }
+        } else {
+            null
+        }
+        // Nothing said yet, a conversation can still have something at its foot: an answer aside, a menu, what's queued.
         val phase = when {
             !reading.loaded -> Phase.Reading
-            items.isEmpty() -> Phase.Empty
+            items.isEmpty() && aside == null && status == null && reading.queued.isEmpty() -> Phase.Empty
             else -> Phase.Shown
         }
         Crossfade(phase, animationSpec = Motion.effect(), label = "mobile view") { p ->
             when (p) {
                 Phase.Reading -> Hint("reading…")
-                Phase.Empty -> Empty(reading.problem)
+                // The mode can be picked before the first message.
+                Phase.Empty -> Box(Modifier.fillMaxSize()) {
+                    Empty(reading.problem)
+                    footer?.let { Box(Modifier.align(Alignment.BottomEnd).padding(horizontal = 16.dp, vertical = 12.dp)) { it() } }
+                }
                 Phase.Shown -> Box(Modifier.fillMaxSize()) {
                     LazyColumn(
                         Modifier.fillMaxSize(),
                         state = list,
                         reverseLayout = true,
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 48.dp, bottom = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Bottom), // a short conversation sits at the foot, by the composer
                     ) {
                         // What's aside of the program's line takes its place, at the foot.
                         if (aside != null) {
@@ -259,18 +277,7 @@ fun MobileView(
                                 }
                             }
                         }
-                        // The mode, and how full the context is, go beside the last reply's copy; with no copy to go beside, on their own.
                         val newest = items.lastOrNull()
-                        val footer: (@Composable () -> Unit)? = if (reading.context > 0 || mode != null) {
-                            {
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    mode?.let { ModeButton(it, modes, onMode) }
-                                    if (reading.context > 0) ContextButton(reading.context, onCompact)
-                                }
-                            }
-                        } else {
-                            null
-                        }
                         val besideCopy = newest?.copies(ongoing = status != null) == true
                         if (footer != null && !besideCopy) {
                             item(key = "context") {
@@ -568,9 +575,8 @@ private fun ModeButton(mode: Mode, modes: List<Mode>, onMode: (String) -> Unit) 
     }
 }
 
-/** A mode as the program shows it, its mark drawn as text (⏸ is an emoji too). */
-private fun said(mode: Mode) =
-    (mode.mark.map { "$it\uFE0E" }.joinToString("") + " " + mode.name).trim()
+/** A mode by its name, in its color: its mark (⏵⏵, ⏸) is an emoji in some fonts and missing in others. */
+private fun said(mode: Mode) = mode.name
 
 /** A mode's color, as Claude colors its own (unknown ones grey). */
 @Composable
