@@ -152,8 +152,12 @@ public struct SSHTransport: Transport {
         } catch {
             throw error
         }
+        // The handshake (keys, auth, the channel) gets as long as the connect did; a network that goes away meanwhile doesn't leave it waiting.
+        let timeout = parent.eventLoop.scheduleTask(in: .seconds(10)) { parent.close(promise: nil) }
+        defer { timeout.cancel() }
         do {
-            let child: Channel = try await parent.eventLoop.flatSubmit {
+            let child: Channel = try await withTaskCancellationHandler {
+                try await parent.eventLoop.flatSubmit {
                 let promise = parent.eventLoop.makePromise(of: Channel.self)
                 do {
                     let ssh = try parent.pipeline.syncOperations.handler(type: NIOSSHHandler.self)
@@ -167,7 +171,10 @@ public struct SSHTransport: Transport {
                     promise.fail(error)
                 }
                 return promise.futureResult
-            }.get()
+                }.get()
+            } onCancel: {
+                parent.close(promise: nil) // stopped while connecting
+            }
             let conn = Connection(channel: child) { NIOAny(SSHChannelData(type: .channel, data: .byteBuffer($0))) }
             conn.sshParent = parent
             return conn

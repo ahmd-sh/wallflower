@@ -114,6 +114,11 @@ struct PanePager<Page: View>: View {
                 slots.append((next, 1))
             }
         }
+        // What a settled swipe shows goes to the latest window as it is now, not as it was when the neighbours last changed.
+        let _ = {
+            pager.neighbours = (previous, next)
+            pager.onShow = onShow
+        }()
         return GeometryReader { geo in
             ZStack {
                 ForEach(slots, id: \.0.id) { pane, slot in
@@ -133,10 +138,6 @@ struct PanePager<Page: View>: View {
         .onChange(of: shown.id) { _, id in if id != pager.current { pager.cut(to: id) } }
         .onChange(of: pager.offset) { _, _ in report(i) }
         .onChange(of: i) { _, now in report(now) }
-        .task(id: "\(previous?.id ?? "")|\(next?.id ?? "")") {
-            pager.neighbours = (previous, next)
-            pager.onShow = onShow
-        }
     }
 
     private func report(_ i: Int) {

@@ -111,6 +111,7 @@ final class Link {
 
     /** Until [retry], or [seconds] pass if given. */
     private func pause(_ seconds: Double?) async {
+        if Task.isCancelled { return }
         if retryAsked {
             retryAsked = false
             return
@@ -144,6 +145,7 @@ final class Link {
             do {
                 reason = try await connect(l)
             } catch let b as Blocked {
+                if Task.isCancelled { break }
                 status = .needsUser(b)
                 await pause(nil)
                 continue
@@ -332,7 +334,8 @@ final class Live {
     private(set) var ended = false
     private var endError: Error?
     private var endWaiters: [CheckedContinuation<Error?, Never>] = []
-    private var onEnd: [() -> Void] = []
+    private var onEnd: [Int: () -> Void] = [:]
+    private var ends = 0
 
     init(link: Link, fast: FastPath) {
         sink = Sink(fast: fast)
@@ -345,10 +348,15 @@ final class Live {
         return await withCheckedContinuation { endWaiters.append($0) }
     }
 
-    /** [action] runs when it ends, or now if it has. */
-    func whenEnded(_ action: @escaping () -> Void) {
-        if ended { action() } else { onEnd.append(action) }
+    /** [action] runs when it ends, or now if it has; [forget] the id it returns once it no longer matters. */
+    @discardableResult
+    func whenEnded(_ action: @escaping () -> Void) -> Int {
+        ends += 1
+        if ended { action() } else { onEnd[ends] = action }
+        return ends
     }
+
+    func forget(_ id: Int) { onEnd[id] = nil }
 
     func end(_ error: Error?) {
         guard !ended else { return }
@@ -361,8 +369,8 @@ final class Live {
     func finish() {
         for (_, a) in arrivals { a(false) }
         arrivals = [:]
-        let actions = onEnd
-        onEnd = []
+        let actions = onEnd.values
+        onEnd = [:]
         for a in actions { a() }
     }
 }

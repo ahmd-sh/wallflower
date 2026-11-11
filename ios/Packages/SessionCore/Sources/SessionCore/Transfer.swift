@@ -36,8 +36,13 @@ final class Transfer {
                 c.resume(returning: d)
             }
             let first = pictures[id] == nil
-            pictures[id, default: []].append(finish)
-            live.whenEnded { [weak self] in
+            var watch = 0
+            let settle: (Data?) -> Void = { d in
+                live.forget(watch)
+                finish(d)
+            }
+            pictures[id, default: []].append(settle)
+            watch = live.whenEnded { [weak self] in
                 self?.pictures[id] = nil
                 finish(nil)
             }
@@ -60,8 +65,11 @@ final class Transfer {
         guard let link, let live = link.current() else { throw TransferError("not connected") }
         let reply = Reply<Uploaded>()
         uploaded[id] = { reply.give($0) }
-        live.whenEnded { reply.fail(TransferError("the connection dropped")) }
-        defer { uploaded[id] = nil }
+        let watch = live.whenEnded { reply.fail(TransferError("the connection dropped")) }
+        defer {
+            uploaded[id] = nil
+            live.forget(watch)
+        }
         guard link.send(.upload(id: id, name: name, size: Int64(data.count)), on: live) else { throw TransferError("the connection dropped") }
         var sent = 0
         var ahead: [(Int, Reply<Bool>)] = []

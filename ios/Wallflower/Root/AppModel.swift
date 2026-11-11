@@ -139,17 +139,23 @@ final class AppModel {
                     lastStatus = status
                 }
                 self.keeper.keep = self.away && self.settings.keepConnected && self.session != nil
-                await withCheckedContinuation { c in
-                    withObservationTracking {
-                        _ = s.state
-                        _ = s.status
-                        _ = s.uploadDir
-                        _ = self.settings.liveActivity
-                        _ = self.settings.keepConnected
-                        _ = self.away
-                    } onChange: {
-                        c.resume()
+                let next = Once()
+                await withTaskCancellationHandler {
+                    await withCheckedContinuation { c in
+                        next.wait(c)
+                        withObservationTracking {
+                            _ = s.state
+                            _ = s.status
+                            _ = s.uploadDir
+                            _ = self.settings.liveActivity
+                            _ = self.settings.keepConnected
+                            _ = self.away
+                        } onChange: {
+                            next.go()
+                        }
                     }
+                } onCancel: {
+                    next.go() // a session left behind isn't kept waiting for a change it'll never see
                 }
             }
         }
@@ -235,5 +241,31 @@ final class AppModel {
         Task {
             if await key.unlock() { session?.retry() }
         }
+    }
+}
+
+/** A wait that goes once, whichever comes first: the change it waits for, or its task being cancelled. */
+private final class Once: @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiting: CheckedContinuation<Void, Never>?
+    private var gone = false
+
+    func wait(_ c: CheckedContinuation<Void, Never>) {
+        let now = lock.withLock { () -> Bool in
+            if gone { return true }
+            waiting = c
+            return false
+        }
+        if now { c.resume() }
+    }
+
+    func go() {
+        let c = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            guard !gone else { return nil }
+            gone = true
+            defer { waiting = nil }
+            return waiting
+        }
+        c?.resume()
     }
 }

@@ -117,6 +117,7 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
     deinit {
         terminal?.removeListener(self)
         link?.invalidate()
+        momentum?.invalidate()
     }
 
     override func didMoveToWindow() {
@@ -128,6 +129,8 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
             terminal?.removeListener(self)
             link?.invalidate()
             link = nil
+            frameRequested = false
+            stopMomentum()
         }
     }
 
@@ -284,8 +287,10 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         let s = fitScale()
         let t = CATransform3DScale(CATransform3DMakeTranslation(0, -shift(), 0), s, s, 1)
         content.transform = t
-        overlay.transform = t
-        overlay.frame = CGRect(x: 0, y: 0, width: max(bounds.width / s, 1), height: max(CGFloat(gridRows) * metrics.cellHeight, bounds.height))
+        // The overlay is the grid's size in its own points, placed and scaled as the rows are: set through bounds and position, as a frame under a transform isn't.
+        overlay.transform = CATransform3DIdentity
+        overlay.bounds = CGRect(x: 0, y: 0, width: max(CGFloat(cols) * metrics.cellWidth, 1), height: max(CGFloat(gridRows) * metrics.cellHeight, 1))
+        overlay.position = .zero
         overlay.transform = t
         CATransaction.commit()
     }

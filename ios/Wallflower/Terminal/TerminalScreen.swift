@@ -154,10 +154,13 @@ struct TerminalScreen: View {
             typed = false
             seeker.reset()
         }
-        .onChange(of: screen.prompt) { _, p in seeker.prompt(p, actions: actions) }
+        .onChange(of: screen.prompt) { _, p in
+            seeker.prompt(p, actions: actions)
+            seeker.settle(prompt: p, held: screen.line?.text, line: screen.line, actions: actions)
+        }
         .onChange(of: seeker.seeking) { _, _ in seeker.prompt(screen.prompt, actions: actions) }
-        .onChange(of: "\(screen.prompt.map { _ in "p" } ?? "")|\(screen.line?.text ?? "~")") { _, _ in
-            seeker.settle(prompt: screen.prompt, held: screen.line?.text, line: screen.line, actions: actions)
+        .onChange(of: screen.line?.text) { _, held in
+            seeker.settle(prompt: screen.prompt, held: held, line: screen.line, actions: actions)
         }
         .onChange(of: mobileViews) { _, v in session.read(v) }
         .onChange(of: window == nil) { _, gone in if gone { overview = false } }

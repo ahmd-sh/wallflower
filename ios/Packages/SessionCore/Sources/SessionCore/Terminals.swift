@@ -99,12 +99,14 @@ final class Terminals: @unchecked Sendable {
         let owner = NSObject()
         t.addListener(owner) { last.at = Date() }
         defer { t.removeListener(owner) }
-        let settleStart = Date()
-        if opening { last.at = Date() }
-        while Date().timeIntervalSince(settleStart) < Self.PEEK_SETTLE_MAX {
-            try? await Task.sleep(for: .milliseconds(50))
-            if let at = last.at, Date().timeIntervalSince(at) > Self.PEEK_QUIET { break }
-            if last.at == nil && !opening { break }
+        let settling = Date()
+        // Opened for this, its repaint comes first; then, either way, until it's been quiet a moment.
+        while opening && last.at == nil && Date().timeIntervalSince(settling) < Self.PEEK_SETTLE_MAX {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        while Date().timeIntervalSince(settling) < Self.PEEK_SETTLE_MAX {
+            if Date().timeIntervalSince(last.at ?? settling) > Self.PEEK_QUIET { break }
+            try? await Task.sleep(for: .milliseconds(25))
         }
         return t.screenBytes()
     }

@@ -98,6 +98,7 @@ public final class PhoneKey: @unchecked Sendable {
         } catch {
             return false
         }
+        ctx.interactionNotAllowed = true // signing with it never asks again: past its time, it fails, and the app asks
         lock.withLock {
             context = ctx
             unlockedAt = Date()
@@ -112,8 +113,17 @@ public final class PhoneKey: @unchecked Sendable {
             return (try? P256.Signing.PrivateKey(rawRepresentation: data)).map { NIOSSHPrivateKey(p256Key: $0) }
         }
         if needsAuth { return nil }
-        guard let ctx = lock.withLock({ context }) else { return nil }
-        return (try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: data, authenticationContext: ctx)).map { NIOSSHPrivateKey(secureEnclaveP256Key: $0) }
+        guard let ctx = lock.withLock({ context }),
+              let key = try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: data, authenticationContext: ctx) else { return nil }
+        // The unlock can stop counting before its time (the phone locked, a new face enrolled): found out here, it's locked, rather than failing in the handshake.
+        guard (try? key.signature(for: Data("wallflower".utf8))) != nil else {
+            lock.withLock {
+                context = nil
+                unlockedAt = nil
+            }
+            return nil
+        }
+        return NIOSSHPrivateKey(secureEnclaveP256Key: key)
     }
 
     private func publicPoint() -> Data? {
