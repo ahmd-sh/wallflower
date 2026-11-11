@@ -204,11 +204,12 @@ type ServerHello struct {
 // (Keys), the commands the composer offers, and the keys that start a new
 // line (Newline) and empty one (Clear).
 type Program struct {
-	ID       string    `json:"id"`
-	Keys     *KeyBar   `json:"keys,omitempty"`
-	Commands []Command `json:"commands,omitempty"`
-	Newline  []string  `json:"newline,omitempty"`
-	Clear    []string  `json:"clear,omitempty"`
+	ID        string     `json:"id"`
+	Keys      *KeyBar    `json:"keys,omitempty"`
+	Commands  []Command  `json:"commands,omitempty"`
+	Shortcuts []Shortcut `json:"shortcuts,omitempty"`
+	Newline   []string   `json:"newline,omitempty"`
+	Clear     []string   `json:"clear,omitempty"`
 }
 
 // KeyBar is a key bar by key names, and what the send button presses to
@@ -223,6 +224,13 @@ type KeyBar struct {
 type Command struct {
 	Text  string `json:"text"`
 	About string `json:"about,omitempty"`
+}
+
+// Shortcut is what the key bar offers to send: keys by name, text typed as
+// it is, and a label if not the keys.
+type Shortcut struct {
+	Keys  []string `json:"keys"`
+	Label string   `json:"label,omitempty"`
 }
 
 // Attached says the client is attached to a session in Mux; its state

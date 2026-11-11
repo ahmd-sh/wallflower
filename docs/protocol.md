@@ -159,7 +159,7 @@ When a window is zoomed, only its active pane is visible.
 gateway (`docs/plugins.md`), as data, for programs the client has no half of
 its own for: each `id` (as `program` names it in `state`), and optionally
 `keys` (`name`, `keys` by key name, `stop`), `commands` (`text`, `about`?),
-`newline` and `clear` (key names).
+`shortcuts` (`keys` by key name, `label`?), `newline` and `clear` (key names).
 
 ## Mobile views
 

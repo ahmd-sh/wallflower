@@ -122,6 +122,9 @@ func clients(programs []program.Program) []protocol.Program {
 		for _, cmd := range c.Commands {
 			pp.Commands = append(pp.Commands, protocol.Command{Text: cmd.Text, About: cmd.About})
 		}
+		for _, s := range c.Shortcuts {
+			pp.Shortcuts = append(pp.Shortcuts, protocol.Shortcut{Keys: s.Keys, Label: s.Label})
+		}
 		out = append(out, pp)
 	}
 	return out
