@@ -275,3 +275,24 @@ func TestLayout(t *testing.T) {
 		t.Fatalf("after kills: %+v", s)
 	}
 }
+
+func TestCloseDetaches(t *testing.T) {
+	c, run, block := client(t, 60, 20)
+	c.Snapshot()
+	c.Type(block, []byte("echo hi\r"))
+	output(t, c, block, "hi")
+	clients := func() string { return run("api", "call", "-s", c.session, "session.list_clients", "{}") }
+	if got := clients(); !strings.Contains(got, c.client) {
+		t.Fatalf("attached, but not among %s", got)
+	}
+	c.Close()
+	if got := clients(); strings.Contains(got, c.client) {
+		t.Errorf("closed, but still among %s", got)
+	}
+	var size struct {
+		Owner *string `json:"owner"`
+	}
+	if err := json.Unmarshal([]byte(run("block", "call", "-s", c.session, "-b", block, "size")), &size); err != nil || size.Owner != nil {
+		t.Errorf("closed, its terminal owned by %v (%v)", size.Owner, err)
+	}
+}

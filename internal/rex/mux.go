@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ahmd-sh/wallflower/internal/mux"
 	"github.com/ahmd-sh/wallflower/internal/proc"
@@ -169,10 +170,19 @@ func (t *attached) Err() error {
 	return t.err
 }
 
-// Close ends the client: the terminals it owned pass on, and their streams
-// end.
+// Close ends the client: it leaves the session, the terminals it owned
+// passing on, and their streams end.
 func (t *attached) Close() error {
 	t.end(nil)
+	left := make(chan struct{})
+	go func() {
+		t.c.call("session.detach", map[string]string{"session_id": t.session}, nil)
+		close(left)
+	}()
+	select {
+	case <-left:
+	case <-time.After(time.Second): // the connection's going anyway
+	}
 	select {
 	case <-t.closed:
 	default:
