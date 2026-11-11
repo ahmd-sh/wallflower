@@ -111,7 +111,7 @@ sealed interface Viewed {
      * its [size] and [mtime], if a listing said, and a small picture of it to
      * show meanwhile ([placeholder]), if there's one.
      */
-    data class OnMac(val path: String, val size: Long? = null, val mtime: Long? = null, val placeholder: File? = null) : Viewed {
+    data class OnComputer(val path: String, val size: Long? = null, val mtime: Long? = null, val placeholder: File? = null) : Viewed {
         override val name: String get() = path.trimEnd('/').substringAfterLast('/')
     }
 
@@ -190,9 +190,9 @@ private fun ViewerPage(viewed: Viewed, session: Session?, fetches: Fetches, onCl
     val haptics = haptics()
     val scope = rememberCoroutineScope()
     val screen = LocalWindowInfo.current.containerSize
-    val onMac = viewed as? Viewed.OnMac
-    var showing by remember { mutableStateOf<Showing>(Showing.Coming(0, onMac?.size)) }
-    var size by remember { mutableStateOf(onMac?.size) }
+    val onComputer = viewed as? Viewed.OnComputer
+    var showing by remember { mutableStateOf<Showing>(Showing.Coming(0, onComputer?.size)) }
+    var size by remember { mutableStateOf(onComputer?.size) }
     var whole by remember { mutableStateOf<File?>(null) } // the whole file, here, to share
     var sharing by remember { mutableStateOf<Showing.Coming?>(null) }
     var shareJob by remember { mutableStateOf<Job?>(null) }
@@ -208,7 +208,7 @@ private fun ViewerPage(viewed: Viewed, session: Session?, fetches: Fetches, onCl
                     size = bytes.size.toLong()
                     picture(ImageDecoder.createSource(ByteBuffer.wrap(bytes)), screen)
                 }
-                is Viewed.OnMac -> {
+                is Viewed.OnComputer -> {
                     val kind = kindOf(viewed.name)
                     if (kind == Kind.Other) {
                         Showing.Other()
@@ -249,7 +249,7 @@ private fun ViewerPage(viewed: Viewed, session: Session?, fetches: Fetches, onCl
     fun share() {
         haptics.tick()
         whole?.let { return Fetches.share(context, it) }
-        val path = onMac?.path ?: return
+        val path = onComputer?.path ?: return
         if (shareJob?.isActive == true || session == null) return
         unshared = null
         shareJob = scope.launch {
@@ -259,7 +259,7 @@ private fun ViewerPage(viewed: Viewed, session: Session?, fetches: Fetches, onCl
                 val got = session.fetch(path, f) { got, of -> sharing = Showing.Coming(got, of) }
                 size = got.size
                 whole = f
-                fetches.keep(path, onMac.size, onMac.mtime, f)
+                fetches.keep(path, onComputer.size, onComputer.mtime, f)
                 Fetches.share(context, f)
             } catch (e: CancellationException) {
                 throw e
@@ -299,8 +299,8 @@ private fun ViewerPage(viewed: Viewed, session: Session?, fetches: Fetches, onCl
                 label = "viewer",
             ) { s ->
                 when (s) {
-                    is Showing.Coming -> Coming(s, onMac?.placeholder)
-                    is Showing.Failed -> Failed(s.why) { showing = Showing.Coming(0, onMac?.size); attempt++ }
+                    is Showing.Coming -> Coming(s, onComputer?.placeholder)
+                    is Showing.Failed -> Failed(s.why) { showing = Showing.Coming(0, onComputer?.size); attempt++ }
                     is Showing.Picture -> Zoomable(s.bitmap)
                     is Showing.Pdf -> PdfPages(s.file)
                     is Showing.Text -> TextShown(s.text, s.markdown, s.cut?.let { "the first ${sizeOf(TEXT_CAP)} of it; share sends it whole" })
@@ -325,17 +325,17 @@ private fun ViewerPage(viewed: Viewed, session: Session?, fetches: Fetches, onCl
                 Action("stop") { shareJob?.cancel() }
             } else {
                 unshared?.let { Text(it, color = Palette.red, style = Type.label, maxLines = 1, modifier = Modifier.padding(horizontal = 4.dp)) }
-                if (viewed is Viewed.Picture || onMac != null && session != null) Action("share", ::share)
-                if (onMac != null && onAdd != null) {
+                if (viewed is Viewed.Picture || onComputer != null && session != null) Action("share", ::share)
+                if (onComputer != null && onAdd != null) {
                     Action("add to message") {
                         haptics.confirm()
-                        onAdd(onMac.path)
+                        onAdd(onComputer.path)
                     }
                 }
-                if (onMac != null) {
+                if (onComputer != null) {
                     Action("copy path") {
                         haptics.tick()
-                        copy(context, onMac.path)
+                        copy(context, onComputer.path)
                     }
                 }
             }

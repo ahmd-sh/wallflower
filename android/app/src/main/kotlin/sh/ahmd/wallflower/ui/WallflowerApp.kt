@@ -140,8 +140,8 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
             screen = Screen.Terminal
         }
     }
-    val mac = host
-    if (mac == null || current == null) {
+    val computer = host
+    if (computer == null || current == null) {
         setup(null)
         return
     }
@@ -163,7 +163,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     if (home) {
                         LaunchedEffect(Unit) { program = null; programId = null }
                         HomeScreen(
-                            current, mac, model, unlock,
+                            current, computer, model, unlock,
                             onSettings = { screen = Screen.Settings },
                             onExit = onExit,
                             onFiles = if (canFiles) ({ screen = Screen.Files("~", null) }) else null,
@@ -171,7 +171,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     } else {
                         TerminalScreen(
                             current,
-                            mac,
+                            computer,
                             model,
                             unlock,
                             onProgram = { command, id -> program = command; programId = id },
@@ -211,7 +211,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     settings = model.settings,
                     program = program,
                     programId = programId,
-                    gateway = mux?.let { m -> "${m.name} ${m.version}" + (mac.machine?.let { " on $it" } ?: "") },
+                    gateway = mux?.let { m -> "${m.name} ${m.version}" + (computer.machine?.let { " on $it" } ?: "") },
                     onBack = { screen = Screen.Terminal },
                     onEditHost = { screen = Screen.Setup },
                     onLook = { screen = Screen.Look },

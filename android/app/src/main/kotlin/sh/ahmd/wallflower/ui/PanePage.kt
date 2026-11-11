@@ -93,7 +93,7 @@ internal fun PanePage(
     val pane = actions.pane
     val can = viewer?.canFetch == true
     val paths: ((String) -> Unit)? = remember(viewer, can, pane.path, pane.id) { // the same while they are, as a new one would redraw the whole conversation
-        if (can && viewer != null) { path: String -> viewer.open(Viewed.OnMac(ImagePaths.resolve(path, pane.path)), pane.id) } else null
+        if (can && viewer != null) { path: String -> viewer.open(Viewed.OnComputer(ImagePaths.resolve(path, pane.path)), pane.id) } else null
     }
     AnimatedVisibility(reading != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
         val compact = actions.compact

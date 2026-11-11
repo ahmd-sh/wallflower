@@ -190,7 +190,7 @@ private fun Attached(path: String, thumbnail: (String) -> File?, onRemove: () ->
     val haptics = haptics()
     val open = Modifier.clickable(enabled = viewer != null) {
         haptics.tick()
-        viewer?.open(Viewed.OnMac(path, placeholder = thumbnail(path)))
+        viewer?.open(Viewed.OnComputer(path, placeholder = thumbnail(path)))
     }
     Tile(image, path.substringAfterLast('/'), open) { Remove(Modifier.align(Alignment.TopEnd), onRemove) }
 }

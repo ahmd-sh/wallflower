@@ -35,7 +35,7 @@ public struct SetupScreen: View {
     public var body: some View {
         let form = SetupForm(host: host, hasKey: hasKey, fingerprint: fingerprint, authorizeCommand: authorizeCommand, createKey: createKey, unlockSeconds: unlockSeconds, newKey: newKey, onConnect: onConnect)
         if let onBack {
-            Page("mac", onBack: onBack) { form }
+            Page("computer", onBack: onBack) { form }
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {

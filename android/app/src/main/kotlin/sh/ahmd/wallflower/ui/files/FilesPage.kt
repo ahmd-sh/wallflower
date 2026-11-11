@@ -240,7 +240,7 @@ internal fun FilesPage(
                                 haptics.reject()
                             } else {
                                 haptics.tick()
-                                viewer?.open(Viewed.OnMac(full, e.size, e.mtime), pane)
+                                viewer?.open(Viewed.OnComputer(full, e.size, e.mtime), pane)
                             }
                         },
                         onShare = ::share,

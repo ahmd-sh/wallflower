@@ -51,7 +51,7 @@ fun SetupScreen(
 ) {
     val form = @Composable { SetupForm(host, hasKey, fingerprint, authorizeCommand, createKey, unlockSeconds, newKey, onConnect) }
     if (onBack != null) {
-        Page("mac", onBack, form)
+        Page("computer", onBack, form)
         return
     }
     Column(

@@ -48,10 +48,10 @@ final class Notices: NSObject, UNUserNotificationCenterDelegate {
 
     /** The connection to [host] was lost, and can't come back without the user: [why]. */
     func lost(_ host: Host?, _ why: Blocked) {
-        let mac = host.called
+        let computer = host.called
         let content = UNMutableNotificationContent()
-        content.title = "Lost the connection to \(mac)"
-        content.body = Self.what(why, mac)
+        content.title = "Lost the connection to \(computer)"
+        content.body = Self.what(why, computer)
         center.add(UNNotificationRequest(identifier: "lost", content: content, trigger: nil))
     }
 
@@ -65,13 +65,13 @@ final class Notices: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /** What the user does about [blocked], in a line. */
-    private static func what(_ blocked: Blocked, _ mac: String) -> String {
+    private static func what(_ blocked: Blocked, _ computer: String) -> String {
         switch blocked {
         case .keyLocked: return "Tap to unlock and reconnect."
-        case .unknownHost: return "Tap to confirm it's really \(mac)."
+        case .unknownHost: return "Tap to confirm it's really \(computer)."
         case .hostKeyChanged: return "Its identity changed. Tap to check before reconnecting."
         case .notAuthorized: return "It doesn't let this phone in any more. Tap to see what to do."
-        case .outdated(let g, let a): return g < a ? "Update wallflower on \(mac) to reconnect." : "Update this app to reconnect."
+        case .outdated(let g, let a): return g < a ? "Update wallflower on \(computer) to reconnect." : "Update this app to reconnect."
         case .refused: return "Tap to see why."
         }
     }

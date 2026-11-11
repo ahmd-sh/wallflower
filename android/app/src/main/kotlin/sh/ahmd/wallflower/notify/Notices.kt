@@ -76,7 +76,7 @@ class Notices(private val context: Context) {
      * the phone has Live Updates.
      */
     fun connected(host: Host?, status: Status?, atWork: AtWork? = null): Notification {
-        val mac = host.called
+        val computer = host.called
         val builder = Notification.Builder(context, CONNECTION)
             .setSmallIcon(R.drawable.ic_wallflower)
             .setContentIntent(open(null))
@@ -87,7 +87,7 @@ class Notices(private val context: Context) {
             val doing = if (work.waiting) "needs your input" else "working"
             builder
                 .setContentTitle(work.about)
-                .setContentText("$doing · on $mac")
+                .setContentText("$doing · on $computer")
                 .setContentIntent(open(work.pane))
                 .setOngoing(true)
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
@@ -104,21 +104,21 @@ class Notices(private val context: Context) {
             return builder.build()
         }
         when (status) {
-            is Status.Connected -> builder.setContentTitle("Connected to $mac")
-            is Status.Disconnected -> builder.setContentTitle("Reconnecting to $mac…")
-            is Status.NeedsUser -> builder.setContentTitle("Lost the connection to $mac").setContentText(what(status.blocked, mac))
-            else -> builder.setContentTitle("Connecting to $mac…")
+            is Status.Connected -> builder.setContentTitle("Connected to $computer")
+            is Status.Disconnected -> builder.setContentTitle("Reconnecting to $computer…")
+            is Status.NeedsUser -> builder.setContentTitle("Lost the connection to $computer").setContentText(what(status.blocked, computer))
+            else -> builder.setContentTitle("Connecting to $computer…")
         }
         return builder.build()
     }
 
     /** The connection to [host] was lost, and can't come back without the user: [why]. */
     fun lost(host: Host?, why: Blocked) {
-        val mac = host.called
+        val computer = host.called
         val notification = Notification.Builder(context, CONNECTION)
             .setSmallIcon(R.drawable.ic_wallflower)
-            .setContentTitle("Lost the connection to $mac")
-            .setContentText(what(why, mac))
+            .setContentTitle("Lost the connection to $computer")
+            .setContentText(what(why, computer))
             .setContentIntent(open(null))
             .setAutoCancel(true)
             .build()
@@ -129,12 +129,12 @@ class Notices(private val context: Context) {
     fun back() = manager.cancel(LOST)
 
     /** What the user does about [blocked], in a line. */
-    private fun what(blocked: Blocked, mac: String) = when (blocked) {
+    private fun what(blocked: Blocked, computer: String) = when (blocked) {
         is Blocked.KeyLocked -> "Tap to unlock and reconnect."
-        is Blocked.UnknownHost -> "Tap to confirm it's really $mac."
+        is Blocked.UnknownHost -> "Tap to confirm it's really $computer."
         is Blocked.HostKeyChanged -> "Its identity changed. Tap to check before reconnecting."
         is Blocked.NotAuthorized -> "It doesn't let this phone in any more. Tap to see what to do."
-        is Blocked.Outdated -> if (blocked.gateway < blocked.app) "Update wallflower on $mac to reconnect." else "Update this app to reconnect."
+        is Blocked.Outdated -> if (blocked.gateway < blocked.app) "Update wallflower on $computer to reconnect." else "Update this app to reconnect."
         is Blocked.Refused -> "Tap to see why."
     }
 

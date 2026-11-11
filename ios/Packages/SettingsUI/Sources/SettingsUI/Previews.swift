@@ -4,12 +4,12 @@ import WallflowerDesign
 import Wire
 
 private let defaults = UserDefaults(suiteName: "wallflower.preview")!
-private let mac = Host(address: "100.101.102.103", user: "me", machine: "studio")
+private let computer = Host(address: "100.101.102.103", user: "me", machine: "studio")
 private let command = "~/go/bin/wallflower authorize 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBA== wallflower@iPhone'"
 
 #Preview("settings") {
     let _ = Fonts.register()
-    SettingsScreen(host: mac, store: KeyBarStore(defaults: defaults), settings: Preferences(defaults: defaults), program: "claude", programId: "claude", gateway: "gateway 0.9 · tmux 3.5a", onBack: {}, onEditHost: {}, onLook: {}, onKeyBars: {})
+    SettingsScreen(host: computer, store: KeyBarStore(defaults: defaults), settings: Preferences(defaults: defaults), program: "claude", programId: "claude", gateway: "gateway 0.9 · tmux 3.5a", onBack: {}, onEditHost: {}, onLook: {}, onKeyBars: {})
 }
 
 #Preview("look") {
@@ -42,9 +42,9 @@ private let command = "~/go/bin/wallflower authorize 'ecdsa-sha2-nistp256 AAAAE2
     SetupScreen(host: nil, hasKey: false, fingerprint: nil, authorizeCommand: { command }, createKey: { nil }, unlockSeconds: nil, newKey: { _ in nil }, onBack: nil, onConnect: { _ in })
 }
 
-#Preview("mac") {
+#Preview("computer") {
     let _ = Fonts.register()
-    SetupScreen(host: mac, hasKey: true, fingerprint: "SHA256:q3MrS9fZ0v4nWbGQ1yQ7c2eHk8p0tLxR5uJm6aDdV1E", authorizeCommand: { command }, createKey: { nil }, unlockSeconds: 300, newKey: { _ in nil }, onBack: {}, onConnect: { _ in })
+    SetupScreen(host: computer, hasKey: true, fingerprint: "SHA256:q3MrS9fZ0v4nWbGQ1yQ7c2eHk8p0tLxR5uJm6aDdV1E", authorizeCommand: { command }, createKey: { nil }, unlockSeconds: 300, newKey: { _ in nil }, onBack: {}, onConnect: { _ in })
 }
 
 #Preview("blocked") {
