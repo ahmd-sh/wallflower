@@ -57,6 +57,10 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.jsch)
     implementation(libs.bouncycastle) // Ed25519 host keys, X25519 and chacha20-poly1305 for JSch
+    implementation(libs.code.scanner)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit4)
+    constraints {
+        implementation(libs.androidx.fragment) // Play services' is too old for the activity result APIs
+    }
 }

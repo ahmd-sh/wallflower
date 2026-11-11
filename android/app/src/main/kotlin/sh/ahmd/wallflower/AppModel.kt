@@ -17,6 +17,8 @@ import sh.ahmd.wallflower.ui.files.Viewer
 import sh.ahmd.wallflower.prefs.Preferences
 import sh.ahmd.wallflower.session.HardwareKey
 import sh.ahmd.wallflower.session.Host
+import sh.ahmd.wallflower.session.HostKeys
+import sh.ahmd.wallflower.session.Pairing
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.ui.composer.Drafts
 
@@ -77,6 +79,18 @@ class AppModel(app: Application) : AndroidViewModel(app) {
         null
     } catch (e: IllegalStateException) {
         "Set a screen lock first: the key is guarded by your fingerprint or PIN. (${e.message})"
+    }
+
+    /**
+     * Pairs with the computer [pairing]'s code is from, making this phone's
+     * key first if there's none, and pins its host key; returns why it
+     * couldn't. Connecting is the caller's, with [Pairing.host].
+     */
+    suspend fun pair(pairing: Pairing): String? {
+        createKey()?.let { return it }
+        pairing.claim(key.authorizedKey(comment))?.let { return it }
+        hostKeys.trust(HostKeys.name(pairing.address, pairing.port), pairing.hostKey)
+        return null
     }
 
     /** The command that authorizes this phone's key on the computer. */
