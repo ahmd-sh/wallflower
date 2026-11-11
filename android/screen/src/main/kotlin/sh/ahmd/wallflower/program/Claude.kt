@@ -165,9 +165,9 @@ object Claude : Program {
      * /btw's answer: under a rule of ▔, the questions asked aside so far, a
      * row each (/btw …), the one answered below in bold; a blank row, then
      * the answer, indented past them (✽ Answering… while it comes), wrapped
-     * eight columns short of the screen's edge, and moved three rows at a
-     * time by the arrows when it's taller than its room; a blank row, and
-     * grey hints, which say Esc closes it.
+     * eight columns short of the screen's edge; a blank row, and grey hints,
+     * which say Esc closes it. Taller than the screen has room for, it takes
+     * all but the top seven rows, and the arrows move it three rows at a time.
      */
     private fun answer(s: Screen): Aside.Answer? {
         val top = answered(s) ?: return null
@@ -185,6 +185,7 @@ object Claude : Program {
             question = btw.matchEntire(row(s, shown, 0))!!.groupValues[1].trim(),
             rows = if (answering) null else rows,
             width = s.cols - 8,
+            taller = top <= ABOVE_TALLEST,
             leave = listOf("Escape"),
             up = listOf("Up"),
             down = listOf("Down"),
@@ -197,6 +198,9 @@ object Claude : Program {
         (s.rows - 1 downTo 0).firstOrNull { y -> s.text(0, y) == "▔" && (0 until s.cols).count { s.text(it, y) == "▔" } >= s.cols / 2 }
 
     private val btw = Regex("^ {4}/btw(?: (.*))?$")
+
+    /** How many of the screen's rows an answer aside leaves above it at most, to the conversation. */
+    private const val ABOVE_TALLEST = 7
 
     /** Where an answer aside's rows start. */
     private const val ANSWER_INDENT = 6

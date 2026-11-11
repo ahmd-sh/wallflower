@@ -44,6 +44,7 @@ class AsideTest {
         assertEquals(listOf("Four"), answer.rows)
         assertEquals(listOf("Escape"), answer.leave)
         assertEquals(46, answer.width)
+        assertEquals(false, answer.taller)
         assertNull(Claude.line(s))
         assertNull(Claude.prompt(s))
     }
@@ -89,6 +90,8 @@ class AsideTest {
     fun aLongAnswerShowsAsMuchAsItsRoom() {
         val answer = Claude.aside(captured("claude-btw-long.ansi", 54)) as Aside.Answer
         assertEquals((1..25).map { "$it" }, answer.rows)
+        assertEquals(true, answer.taller)
+        assertEquals(false, (Claude.aside(captured("claude-btw-markdown.ansi", 54)) as Aside.Answer).taller) // all there
         assertEquals("1\n2\n3", answer.text(answer.rows!!.take(3)))
     }
 
@@ -96,7 +99,11 @@ class AsideTest {
     fun scrolledThroughItsAnswerAddsUp() {
         val whole = (Claude.aside(captured("claude-btw-markdown.ansi", 54)) as Aside.Answer).rows!!
         var kept = emptyList<String>()
-        for (i in 0..3) kept = (Claude.aside(captured("claude-btw-scroll-$i.ansi", 54)) as Aside.Answer).over(kept)
+        for (i in 0..3) {
+            val shown = Claude.aside(captured("claude-btw-scroll-$i.ansi", 54)) as Aside.Answer
+            assertTrue(shown.taller)
+            kept = shown.over(kept)
+        }
         assertEquals(whole, kept)
         // Scrolled back up, it's still all there.
         assertEquals(whole, (Claude.aside(captured("claude-btw-scroll-0.ansi", 54)) as Aside.Answer).over(kept))
@@ -104,7 +111,7 @@ class AsideTest {
 
     @Test
     fun rowsThatDontMeetWhatWasReadStandAlone() {
-        fun answer(vararg rows: String) = Aside.Answer("q", rows.toList(), 46, listOf("Escape"), listOf("Up"), listOf("Down"), 3)
+        fun answer(vararg rows: String) = Aside.Answer("q", rows.toList(), 46, false, listOf("Escape"), listOf("Up"), listOf("Down"), 3)
         assertEquals(listOf("a", "b", "c"), answer("a", "b", "c").over(listOf("a"))) // more of it written
         assertEquals(listOf("x", "", "y"), answer("x", "", "y").over(listOf("a", ""))) // a blank alike isn't meeting
         assertEquals(listOf("z"), answer("z").over(listOf("a", "b")))

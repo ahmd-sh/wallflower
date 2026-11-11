@@ -155,12 +155,13 @@ sealed interface Aside {
      * An answer to a question asked aside, as with Claude's /btw: the
      * [question], and the [rows] of its answer that show (null while it's
      * being answered), wrapped at [width] and scrolled [step] rows at a time
-     * by [up] and [down] when there are more than its room.
+     * by [up] and [down] when it's [taller] than its room.
      */
     data class Answer(
         val question: String,
         val rows: List<String>?,
         val width: Int,
+        val taller: Boolean,
         override val leave: List<String>,
         val up: List<String>,
         val down: List<String>,

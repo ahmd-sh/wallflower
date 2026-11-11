@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import sh.ahmd.wallflower.program.Aside
+import sh.ahmd.wallflower.program.Mode
 import sh.ahmd.wallflower.program.Recall
 import sh.ahmd.wallflower.read.Entry
 import sh.ahmd.wallflower.read.Reading
@@ -26,7 +28,9 @@ import sh.ahmd.wallflower.terminal.TerminalView
  * it do. With no pane ([actions] null), an empty terminal that measures the
  * grid until there are panes. [current]: the page on screen, which gets the
  * [prompt] the pane's screen offers, and what its program says it's doing
- * ([status]), can compact (with its [line]), and animates; its terminal view goes to [onView]. A tap on the terminal
+ * ([status]), what it shows [aside] of its line (with what's been read of an
+ * [answer]), and its [mode] (with those it goes round), which picked goes to
+ * [onMode]; it can compact (with its [line]), and animates; its terminal view goes to [onView]. A tap on the terminal
  * goes to [onTap]. While a message asked back is looked for ([seeking]), what it's looked for in isn't asked. A message asked back to edit goes to the program, and
  * [onRecalled] once it's on its way, [listed] if it's to be found in what the program lists. Keys from the prompt's card go to
  * [onPrompt] too. The conversation's title shows unless
@@ -44,6 +48,10 @@ internal fun PanePage(
     prompt: Prompt?,
     line: () -> InputLine?,
     status: String? = null,
+    aside: Aside? = null,
+    answer: List<String> = emptyList(),
+    mode: Pair<Mode, List<Mode>>? = null,
+    onMode: (String) -> Unit = {},
     nudged: Long = 0,
     seeking: Boolean = false,
     onGridSize: (cols: Int, rows: Int, ahead: Boolean) -> Unit,
@@ -82,6 +90,11 @@ internal fun PanePage(
             swipe = swipe,
             prompt = if (current) prompt else null,
             doing = if (current) status else null,
+            aside = if (current) aside else null,
+            answer = answer,
+            mode = mode?.first?.takeIf { current },
+            modes = mode?.second.orEmpty(),
+            onMode = onMode,
             nudged = if (current) nudged else 0,
             seeking = current && seeking,
             onKeys = { keys ->
