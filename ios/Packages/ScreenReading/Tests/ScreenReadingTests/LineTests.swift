@@ -170,13 +170,13 @@ final class ProgramTests: XCTestCase {
 
     func testTheCommandPicksTheProgram() {
         XCTAssertIdentical(Claude.shared, Programs.of("claude"))
-        XCTAssertEqual(["C-x", "C-u"], Programs.of("ZSH").clearKeys)
+        XCTAssertEqual(["C-x", "C-k"], Programs.of("ZSH").clearKeys)
         XCTAssertEqual([], Programs.of("bash").clearKeys)
         XCTAssertEqual([], Programs.of("hntui").clearKeys)
     }
 
     func testALineIsClearedARowAtATimeAndOnceMore() {
-        XCTAssertEqual(repeated(5, ["C-x", "C-u"]), Programs.of("zsh").clear(line, unseen: true))
+        XCTAssertEqual(repeated(5, ["C-x", "C-k"]), Programs.of("zsh").clear(line, unseen: true))
         XCTAssertEqual(repeated(5, ["Escape", "S"]), Programs.of("zsh").clear(line, keys: ["Escape", "S"]))
     }
 

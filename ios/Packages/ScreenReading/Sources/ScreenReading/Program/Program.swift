@@ -238,7 +238,7 @@ public enum Programs {
 
     public static let builtin: [(id: String, program: any Program)] = [
         ("claude", Claude.shared),
-        ("zsh", Shell(clearKeys: ["C-x", "C-u"], keyBar: shells)), // kill-buffer, as the dotfiles' zshrc binds it
+        ("zsh", Shell(clearKeys: ["C-x", "C-k"], keyBar: shells)), // kill-buffer, as zsh binds it for emacs mode
         ("shell", Shell(keyBar: shells)),
     ]
 

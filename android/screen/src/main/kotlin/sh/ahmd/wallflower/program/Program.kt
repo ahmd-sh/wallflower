@@ -157,7 +157,7 @@ object Programs {
 
     val builtin: Map<String, Program> = linkedMapOf(
         "claude" to Claude,
-        "zsh" to Shell(listOf("C-x", "C-u"), shells), // kill-buffer, as the dotfiles' zshrc binds it
+        "zsh" to Shell(listOf("C-x", "C-k"), shells), // kill-buffer, as zsh binds it for emacs mode
         "shell" to Shell(keyBar = shells),
     )
 

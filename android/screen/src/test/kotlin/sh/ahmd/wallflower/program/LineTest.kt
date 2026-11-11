@@ -195,14 +195,14 @@ class ProgramTest {
     @Test
     fun theCommandPicksTheProgram() {
         assertEquals(Claude, Programs.of("claude"))
-        assertEquals(listOf("C-x", "C-u"), Programs.of("ZSH").clearKeys)
+        assertEquals(listOf("C-x", "C-k"), Programs.of("ZSH").clearKeys)
         assertEquals(emptyList<String>(), Programs.of("bash").clearKeys)
         assertEquals(emptyList<String>(), Programs.of("hntui").clearKeys)
     }
 
     @Test
     fun aLineIsClearedARowAtATimeAndOnceMore() {
-        assertEquals(List(5) { listOf("C-x", "C-u") }.flatten(), Programs.of("zsh").clear(line, unseen = true))
+        assertEquals(List(5) { listOf("C-x", "C-k") }.flatten(), Programs.of("zsh").clear(line, unseen = true))
         assertEquals(List(5) { listOf("Escape", "S") }.flatten(), Programs.of("zsh").clear(line, listOf("Escape", "S")))
     }
 
