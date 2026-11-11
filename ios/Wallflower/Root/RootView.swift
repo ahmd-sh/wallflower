@@ -193,6 +193,7 @@ struct RootView: View {
         if let s = r.arg("scheme"), let scheme = Scheme(rawValue: s) { model.settings.scheme = scheme }
         if let l = r.arg("lookas"), let look = Look(rawValue: l) { model.settings.look = look }
         if r.arg("sessions") != nil { model.session?.detach() }
+        if let f = r.arg("files") { model.files = FilesAt(start: f.isEmpty ? "~" : f, pane: nil) }
     }
 
     private var palette: Colors { model.settings.scheme.colors(dark: scheme == .dark) }
