@@ -78,6 +78,7 @@ internal fun HomeScreen(
     unlock: (onDone: (Boolean) -> Unit) -> Unit,
     onSettings: () -> Unit,
     onExit: () -> Unit,
+    onFiles: (() -> Unit)? = null,
 ) {
     val status by session.status.collectAsStateWithLifecycle()
     val list by session.sessions.collectAsStateWithLifecycle()
@@ -149,7 +150,7 @@ internal fun HomeScreen(
                 Text(machine, color = Palette.fg, fontFamily = words, fontSize = wordSize(16.sp, 22.sp), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(statusLine(status, null), color = statusColor(status), style = Type.label)
             }
-            ConnectionButton(status, machine, address, null, session::retry, null, onSettings, onExit)
+            ConnectionButton(status, machine, address, null, session::retry, null, onSettings, onExit, onFiles)
         }
         val lastBlocked = rememberLast(blocked)
         AnimatedVisibility(blocked != null, enter = fadeIn(Motion.effect()) + expandVertically(Motion.spatial()), exit = fadeOut(Motion.effect()) + shrinkVertically(Motion.spatial())) {

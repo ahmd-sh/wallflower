@@ -12,13 +12,15 @@ import kotlinx.coroutines.selects.select
 import sh.ahmd.wallflower.protocol.Cancel
 import sh.ahmd.wallflower.protocol.Fetch
 import sh.ahmd.wallflower.protocol.FetchedFile
+import sh.ahmd.wallflower.protocol.Got
 import sh.ahmd.wallflower.protocol.ListDir
 import sh.ahmd.wallflower.protocol.Listing
 
 /**
  * The Mac's files, read-only, as the gateway shows them: directories listed,
- * and files fetched, written to the phone as their frames come. What the
- * gateway sends of a fetch arrives on the link's thread, in order.
+ * and files fetched, written to the phone as their frames come, each said
+ * to have arrived ([Got]) so the gateway sends the next. What the gateway
+ * sends of a fetch arrives on the link's thread, in order.
  */
 internal class Files(private val link: Link) {
     private val ids = AtomicInteger()
@@ -73,6 +75,7 @@ internal class Files(private val link: Link) {
             }
             f.got += length
         }
+        link.send(Got(id, f.got))
         f.progress(f.got, size)
         if (f.got >= size) f.finish()
     }

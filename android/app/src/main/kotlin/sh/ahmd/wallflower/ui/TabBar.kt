@@ -70,6 +70,7 @@ internal fun TabBar(
     onSessions: () -> Unit,
     onSettings: () -> Unit,
     onExit: () -> Unit,
+    onFiles: (() -> Unit)? = null,
 ) {
     val haptics = haptics()
     val list = rememberLazyListState()
@@ -162,7 +163,7 @@ internal fun TabBar(
                 }
             }
         }
-        ConnectionButton(status, machine, address, session, onRetry, onSessions, onSettings, onExit)
+        ConnectionButton(status, machine, address, session, onRetry, onSessions, onSettings, onExit, onFiles)
     }
 }
 

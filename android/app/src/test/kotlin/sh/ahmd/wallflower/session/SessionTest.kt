@@ -33,6 +33,7 @@ import sh.ahmd.wallflower.protocol.FRAME_FILE
 import sh.ahmd.wallflower.protocol.Fetch
 import sh.ahmd.wallflower.protocol.FetchedFile
 import sh.ahmd.wallflower.protocol.FileEntry
+import sh.ahmd.wallflower.protocol.Got
 import sh.ahmd.wallflower.protocol.ListDir
 import sh.ahmd.wallflower.protocol.Listing
 import sh.ahmd.wallflower.protocol.FRAME_JSON
@@ -428,7 +429,9 @@ class SessionTest {
         assertEquals(Fetch(fetch.id, "~/notes.txt"), fetch)
         g.send(FetchedFile(fetch.id, "/Users/me/notes.txt", 6))
         g.sendFile(fetch.id, "abc".encodeToByteArray())
+        assertEquals(Got(fetch.id, 3), g.message<Got>())
         g.sendFile(fetch.id, "def".encodeToByteArray())
+        assertEquals(Got(fetch.id, 6), g.message<Got>())
         assertEquals("/Users/me/notes.txt", eventually { fetched.await() }.path)
         assertEquals("abcdef", to.readText())
         assertEquals(listOf(0L to 6L, 3L to 6L, 6L to 6L), synchronized(heard) { heard.toList() })

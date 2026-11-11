@@ -75,7 +75,10 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import android.webkit.MimeTypeMap
 import androidx.compose.ui.platform.LocalContext
+import sh.ahmd.wallflower.ui.files.LocalViewer
+import sh.ahmd.wallflower.ui.files.Viewed
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.SpanStyle
@@ -492,8 +495,11 @@ private fun count(n: Int) = when {
     else -> "%.1fM".format(n / 1e6)
 }
 
+/** A picture, as big as it fits; tapped, it opens in the viewer, at its full size. */
 @Composable
 private fun Picture(e: Entry.Picture, fetch: suspend (String) -> ByteArray?) {
+    val viewer = LocalViewer.current
+    val haptics = haptics()
     val width = LocalWindowInfo.current.containerSize.width
     val height = with(LocalDensity.current) { PICTURE_HEIGHT.roundToPx() }
     val bitmap by produceState(Pictures.kept(e.id), e.id) {
@@ -506,7 +512,15 @@ private fun Picture(e: Entry.Picture, fetch: suspend (String) -> ByteArray?) {
                 it,
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.heightIn(max = PICTURE_HEIGHT).graphicsLayer { alpha = shown }.clip(RoundedCornerShape(12.dp)),
+                modifier = Modifier
+                    .heightIn(max = PICTURE_HEIGHT)
+                    .graphicsLayer { alpha = shown }
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(enabled = viewer != null) {
+                        haptics.tick()
+                        val ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(e.mime) ?: "png"
+                        viewer?.open(Viewed.Picture("picture.$ext") { fetch(e.id) })
+                    },
             )
         }
     }

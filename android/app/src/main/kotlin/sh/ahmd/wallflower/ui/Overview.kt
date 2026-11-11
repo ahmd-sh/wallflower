@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -103,7 +104,8 @@ internal fun rememberOverview(): Overview {
 /**
  * Every pane of a window as a card with its live contents, in the session's order,
  * then one to open a new pane. A card is headed by an icon for what the pane
- * runs and the directory it's in. Tap a card to show it, × to close it. Cards
+ * runs and the directory it's in. Tap a card to show it, × to close it;
+ * held, it offers the pane's files ([onFiles]) and closing it. Cards
  * fill as many columns as the screen is wide. They come in with [progress]
  * as the [zoomed] pane shrinks into its card, which says where it is in
  * [cards].
@@ -119,6 +121,7 @@ internal fun PaneOverview(
     onPick: (Pane) -> Unit,
     onNew: () -> Unit,
     onClose: (Pane) -> Unit,
+    onFiles: ((Pane) -> Unit)? = null,
 ) {
     val panes = window.panes.sortedBy { it.index }
     val names = headerNames(panes)
@@ -143,6 +146,7 @@ internal fun PaneOverview(
                 cards = cards,
                 onClick = { onPick(p) },
                 onClose = { onClose(p) },
+                onFiles = onFiles?.let { { it(p) } },
                 modifier = Modifier.animateItem(placementSpec = Motion.spatial()),
             )
         }
@@ -172,10 +176,18 @@ private fun PaneCard(
     cards: MutableMap<String, Rect>,
     onClick: () -> Unit,
     onClose: () -> Unit,
+    onFiles: (() -> Unit)?,
     modifier: Modifier,
 ) {
     val shape = RoundedCornerShape(CARD_CORNER)
     val theme = Palette.terminal
+    val menu = rememberOpener()
+    @Composable
+    fun Modifier.held() = slides(menu).combinedClickable(
+        hapticFeedbackEnabled = false, // the menu's opening is felt, as the setting allows
+        onClick = onClick,
+        onLongClick = { menu.open = true },
+    )
     DisposableEffect(pane.id) { onDispose { cards.remove(pane.id) } }
     Column(
         modifier
@@ -183,8 +195,15 @@ private fun PaneCard(
             .clip(shape)
             .background(Palette.bg1)
             .border(2.dp, if (shown) Palette.orange else Palette.bg1, shape)
-            .clickable(onClick = onClick),
+            .held(),
     ) {
+        PopupMenu(
+            menu,
+            actions = listOfNotNull(
+                onFiles?.let { MenuAction("files here") { menu.open = false; it() } },
+                MenuAction("close", Palette.red) { menu.open = false; onClose() },
+            ),
+        )
         Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             GlyphIcon(glyphOf(pane.program, pane.command), if (shown) Palette.orange else Palette.grey, size = 14.dp)
             // The directory's own name, then, dimmer, what tells it from another of the same name, cut from its start if it must be.
@@ -218,7 +237,7 @@ private fun PaneCard(
                     v.theme = theme
                 },
             )
-            Box(Modifier.matchParentSize().clickable(onClick = onClick)) // the card takes the tap, not the terminal
+            Box(Modifier.matchParentSize().held()) // the card takes the tap, not the terminal
         }
     }
 }

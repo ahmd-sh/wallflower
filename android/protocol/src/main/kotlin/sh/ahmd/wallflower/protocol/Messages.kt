@@ -140,6 +140,11 @@ data class ListDir(val id: String, val path: String) : ClientMessage
 @SerialName("fetch")
 data class Fetch(val id: String, val path: String, val limit: Long? = null) : ClientMessage
 
+/** How many of fetch [id]'s bytes have arrived, said as they do: the gateway sends only so far ahead of it. */
+@Serializable
+@SerialName("got")
+data class Got(val id: String, val size: Long) : ClientMessage
+
 /** Stops a fetch partway; frames already on their way still come. */
 @Serializable
 @SerialName("cancel")

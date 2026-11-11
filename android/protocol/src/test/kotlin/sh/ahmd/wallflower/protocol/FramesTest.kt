@@ -57,6 +57,7 @@ class FramesTest {
             ListDir("l2", ""),
             Fetch("f1", "/Users/me/shot.png"),
             Fetch("f2", "~/log.txt", limit = 65536),
+            Got("f1", 65536),
             Cancel("f1"),
         ).forEach(w::send)
         w.sendData("%1", "\u001b[<64;10;5M".encodeToByteArray())

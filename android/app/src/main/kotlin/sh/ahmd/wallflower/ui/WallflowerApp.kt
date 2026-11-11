@@ -70,6 +70,10 @@ import sh.ahmd.wallflower.ui.composer.Attachments
 import sh.ahmd.wallflower.ui.composer.Composer
 import sh.ahmd.wallflower.ui.composer.Recalled
 import sh.ahmd.wallflower.ui.composer.Typing
+import sh.ahmd.wallflower.ui.files.FilesPage
+import sh.ahmd.wallflower.ui.files.ViewerHost
+import sh.ahmd.wallflower.files.forMessage
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableLongStateOf
 import sh.ahmd.wallflower.screen.Prompt
 
@@ -81,19 +85,21 @@ private sealed interface Screen {
     data object Look : Screen
     data object KeyBars : Screen
     data class Profile(val ref: ProfileRef, val back: Screen) : Screen
+    /** The Mac's files, from [start], for [pane]'s message if there's one. */
+    data class Files(val start: String, val pane: String?) : Screen
 }
 
 /** How many pages in: a page further in slides in over the one before. */
 private val Screen.depth: Int
     get() = when (this) {
         Screen.Terminal -> 0
-        Screen.Settings -> 1
+        Screen.Settings, is Screen.Files -> 1
         Screen.Setup, Screen.Look, Screen.KeyBars -> 2
         is Screen.Profile -> back.depth + 1
     }
 
 private fun Screen.previous(): Screen = when (this) {
-    Screen.Terminal, Screen.Settings -> Screen.Terminal
+    Screen.Terminal, Screen.Settings, is Screen.Files -> Screen.Terminal
     Screen.Setup, Screen.Look, Screen.KeyBars -> Screen.Settings
     is Screen.Profile -> back
 }
@@ -132,14 +138,28 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
         return
     }
     val place by current.place.collectAsStateWithLifecycle()
-    // Pages draw over the terminal, which keeps its place underneath.
+    val canFiles by current.canFiles.collectAsStateWithLifecycle()
+    val viewer = model.viewer
+    SideEffect { viewer.canFetch = canFiles }
+    // A file's path, put in a pane's message from the files or the viewer: back to the pane, to go on writing.
+    val add = { pane: String, path: String ->
+        model.drafts.insert(pane, forMessage(path))
+        viewer.close()
+        screen = Screen.Terminal
+    }
+    // Pages draw over the terminal, which keeps its place underneath; the viewer over them.
     Box(Modifier.fillMaxSize()) {
         FloatingHost {
             key(current) {
                 Crossfade(place == null, animationSpec = Motion.effect(), label = "home") { home ->
                     if (home) {
                         LaunchedEffect(Unit) { program = null; programId = null }
-                        HomeScreen(current, mac, model, unlock, onSettings = { screen = Screen.Settings }, onExit = onExit)
+                        HomeScreen(
+                            current, mac, model, unlock,
+                            onSettings = { screen = Screen.Settings },
+                            onExit = onExit,
+                            onFiles = if (canFiles) ({ screen = Screen.Files("~", null) }) else null,
+                        )
                     } else {
                         TerminalScreen(
                             current,
@@ -151,6 +171,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                             onSettings = { screen = Screen.Settings },
                             onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
                             onExit = onExit,
+                            onFiles = if (canFiles) ({ start, pane -> screen = Screen.Files(start, pane) }) else null,
                         )
                     }
                 }
@@ -201,8 +222,18 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                     onBack = { screen = s.back },
                     onOpen = { screen = s.copy(ref = it) },
                 )
+                is Screen.Files -> FilesPage(
+                    session = current,
+                    start = s.start,
+                    pane = s.pane,
+                    hidden = model.settings.hiddenFiles,
+                    fetches = model.fetches,
+                    onAdd = s.pane?.let { pane -> { path -> add(pane, path) } },
+                    onClose = { screen = Screen.Terminal },
+                )
             }
         }
+        ViewerHost(viewer, current, model.fetches, onAdd = add)
     }
 }
 
@@ -226,6 +257,7 @@ private fun TerminalScreen(
     onSettings: () -> Unit,
     onEditKeys: () -> Unit,
     onExit: () -> Unit,
+    onFiles: ((start: String, pane: String?) -> Unit)?,
 ) {
     val status by session.status.collectAsStateWithLifecycle()
     val place by session.place.collectAsStateWithLifecycle()
@@ -377,6 +409,7 @@ private fun TerminalScreen(
             onSessions = onSessions,
             onSettings = onSettings,
             onExit = onExit,
+            onFiles = onFiles?.let { files -> { files(pane?.path?.ifEmpty { null } ?: "~", pane?.id) } },
         )
 
         // Down a moment, as across a network change, it isn't worth saying; down longer, what was shown dims beneath how it's coming back.
@@ -629,6 +662,13 @@ private fun TerminalScreen(
                                 overview.hide(into = pane?.id)
                             },
                             onClose = { p -> closing.close(window, p) },
+                            onFiles = onFiles?.let { files ->
+                                { p ->
+                                    session.show(window, p)
+                                    overview.hide(into = p.id)
+                                    files(p.path.ifEmpty { "~" }, p.id)
+                                }
+                            },
                         )
                     }
                 },

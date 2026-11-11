@@ -37,10 +37,20 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.staticCompositionLocalOf
 import sh.ahmd.wallflower.markdown.Block
+import sh.ahmd.wallflower.markdown.ImagePaths
 import sh.ahmd.wallflower.markdown.Markdown
 
-/** Markdown, rendered in wallflower's fonts: words in [words], code in [Mono]. */
+/**
+ * What opens a picture's path that's mentioned in markdown ([ImagePaths]),
+ * as it's written; none where paths can't be opened.
+ */
+val LocalPicturePaths = staticCompositionLocalOf<((String) -> Unit)?> { null }
+
+/** Markdown, rendered in wallflower's fonts: words in [words], code in [Mono]; pictures' paths tap to open, where they can be ([LocalPicturePaths]). */
 @Composable
 fun MarkdownText(text: String, modifier: Modifier = Modifier) {
     val blocks = remember(text) { Markdown.parse(text) }
@@ -128,10 +138,17 @@ private fun bodyStyle() = TextStyle(
 private fun inline(text: String): AnnotatedString {
     val font = words
     val colors = Palette
-    return remember(text, font, colors) { styled(text, font, colors) }
+    val paths = LocalPicturePaths.current
+    val opening by rememberUpdatedState(paths)
+    return remember(text, font, colors, paths != null) { styled(text, font, colors, if (paths != null) { p -> opening?.invoke(p) } else null) }
 }
 
-private fun styled(text: String, words: FontFamily, colors: Colors): AnnotatedString = buildAnnotatedString {
+private fun styled(text: String, words: FontFamily, colors: Colors, open: ((String) -> Unit)? = null): AnnotatedString = buildAnnotatedString {
+    // A picture's path, to tap: underlined, in aqua unless it's code.
+    fun picture(path: String, code: Boolean, piece: () -> Unit) {
+        val look = SpanStyle(color = if (code) Color.Unspecified else colors.aqua, textDecoration = TextDecoration.Underline)
+        withLink(LinkAnnotation.Clickable(path, TextLinkStyles(look)) { open?.invoke(path) }) { piece() }
+    }
     for (span in Markdown.inline(text)) {
         val style = SpanStyle(
             fontWeight = if (span.bold) FontWeight.SemiBold else null,
@@ -147,6 +164,17 @@ private fun styled(text: String, words: FontFamily, colors: Colors): AnnotatedSt
             withLink(LinkAnnotation.Url(link, TextLinkStyles(SpanStyle(color = colors.blue, textDecoration = TextDecoration.Underline)))) {
                 withStyle(style) { append(span.text) }
             }
+        } else if (open != null && span.code && ImagePaths.whole(span.text)) {
+            picture(span.text, code = true) { withStyle(style) { append(span.text) } }
+        } else if (open != null && !span.code) {
+            var at = 0
+            for (r in ImagePaths.find(span.text)) {
+                withStyle(style) { append(span.text.substring(at, r.first)) }
+                val path = span.text.substring(r)
+                picture(path, code = false) { withStyle(style) { append(path) } }
+                at = r.last + 1
+            }
+            withStyle(style) { append(span.text.substring(at)) }
         } else {
             withStyle(style) { append(span.text) }
         }
