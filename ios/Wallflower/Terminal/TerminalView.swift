@@ -1,5 +1,6 @@
 import CoreText
 import QuartzCore
+import ScreenReading
 import TerminalCore
 import UIKit
 import WallflowerDesign
@@ -54,6 +55,8 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
     var onSwipe: ((CGFloat) -> Void)?
     /** The sideways drag let go: how far it went, and how fast (points a second; negative is leftwards). */
     var onSwipeEnd: ((CGFloat, CGFloat) -> Void)?
+    /** Held: felt, as the paste it offers comes up. */
+    var onHeld: (() -> Void)?
     /** What's typed while it has the keyboard. */
     var onTyped: ((Typed) -> Void)?
     /** It took the keyboard, or let go of it. */
@@ -109,6 +112,10 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         pan.maximumNumberOfTouches = 1
         addGestureRecognizer(pan)
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
+        let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
+        hold.minimumPressDuration = 0.45
+        addGestureRecognizer(hold)
+        addInteraction(editMenu)
         updateMetrics()
     }
 
@@ -391,6 +398,28 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
     private var lastMomentum: CFTimeInterval = 0
     private var touchPoint: CGPoint = .zero
 
+    private lazy var editMenu = UIEditMenuInteraction(delegate: self)
+
+    /** Held, it offers to paste into the pane, as iOS text does; there's no clipboard key on the phone's keyboard. */
+    @objc private func held(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began, terminal != nil else { return }
+        stopMomentum()
+        onHeld?()
+        if typingEnabled && UIPasteboard.general.hasStrings && !isFirstResponder { _ = becomeFirstResponder() } // what pastes types, so the keyboard's up for it
+        editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: g.location(in: self)))
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)) { return typingEnabled && UIPasteboard.general.hasStrings }
+        return false
+    }
+
+    /** What's on the clipboard, typed into the pane: pasted whole, so its lines don't run one by one. */
+    override func paste(_ sender: Any?) {
+        guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+        onTyped?(.text(text))
+    }
+
     @objc private func tapped() {
         stopMomentum()
         if typingEnabled && !isFirstResponder { becomeFirstResponder() }
@@ -537,6 +566,32 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         let c = UIColor(red: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
         colors[rgb] = c
         return c
+    }
+}
+
+extension TerminalView: UIEditMenuInteractionDelegate {
+    /** Held: paste, when there's something to, and copy what the screen shows. */
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]) -> UIMenu? {
+        let copy = UIAction(title: "Copy screen") { [weak self] _ in
+            guard let text = self?.screenText(), !text.isEmpty else { return }
+            UIPasteboard.general.string = text
+        }
+        return UIMenu(children: suggestedActions + [copy])
+    }
+
+    /** The text on screen, a line a row, rows the program wrapped joined up, trailing blanks gone. */
+    func screenText() -> String? {
+        guard let bytes = terminal?.screenBytes(), let s = Screen.parse(bytes) else { return nil }
+        var out = ""
+        for y in 0..<s.rows {
+            var row = ""
+            for x in 0..<s.cols where !s.isSpacer(x, y) {
+                let t = s.text(x, y)
+                row += t.isEmpty ? " " : t
+            }
+            out += s.isWrapped(y) ? row : row.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression) + "\n"
+        }
+        return out.trimmingCharacters(in: .newlines)
     }
 }
 

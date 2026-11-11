@@ -218,3 +218,27 @@ extension WalkthroughTests {
         shot("swiped-typing")
     }
 }
+
+extension WalkthroughTests {
+    /** Held, a terminal offers to paste what's on the clipboard into its pane. */
+    func testPaste() {
+        UIPasteboard.general.string = "echo pasted from the phone"
+        app.launch()
+        sleep(6)
+        at(0.31, 0.098).tap() // the shell's tab
+        sleep(2)
+        at(0.5, 0.4).press(forDuration: 0.8)
+        sleep(1)
+        shot("paste-menu")
+        let paste = app.menuItems["Paste"].firstMatch
+        if paste.waitForExistence(timeout: 3) {
+            paste.tap()
+            sleep(2)
+        }
+        shot("pasted")
+        at(0.5, 0.4).press(forDuration: 0.8)
+        sleep(1)
+        shot("copy-menu") // reading the clipboard back here would ask the test runner's own paste permission
+        XCTAssertTrue(app.menuItems["Copy screen"].firstMatch.waitForExistence(timeout: 3))
+    }
+}

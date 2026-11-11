@@ -21,6 +21,7 @@ final class TerminalHandle {
 
 /** A terminal view in SwiftUI. */
 struct TerminalHost: UIViewRepresentable {
+    @Environment(\.haptics) private var haptics
     let terminal: Terminal?
     let theme: Theme
     let paused: Bool
@@ -49,6 +50,7 @@ struct TerminalHost: UIViewRepresentable {
         v.onTap = onTap
         v.onTyped = onTyped
         v.onTypingChanged = onTypingChanged
+        v.onHeld = { [haptics] in haptics.hold() }
         if v.isFirstResponder && !(typing && current) { handle.handoff = true }
         v.typingEnabled = typing && current
         if let swipe {
