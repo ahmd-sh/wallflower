@@ -20,6 +20,7 @@ const (
 	maxListed  = 5000      // a directory's entries sent, at most
 	maxFetch   = 256 << 20 // bytes of a file sent, at most
 	fetchChunk = 64 << 10
+	fetchAhead = 256 << 10 // bytes of fetches sent that the client hasn't said have arrived, at most
 	fetchWater = 128 << 10 // send a fetch's next chunk only below this backlog, so pane output and repaints go first
 	fetchPoll  = 10 * time.Millisecond
 )
@@ -28,11 +29,13 @@ const (
 // anywhere the user can read. It works off the loop, so a slow disk never
 // holds up typing: listings each on their own, and fetches in one sender
 // that takes turns among them, a chunk at a time, while the client's
-// backlog is low.
+// backlog is low and it has said most of what was sent has arrived, so
+// what's typed meanwhile waits behind a little of a file at most, not all
+// of it in the network's buffers.
 type files struct {
 	out  *outbox
 	home string
-	asks chan any // *protocol.Fetch or *protocol.Cancel, in the order they came
+	asks chan any // *protocol.Fetch, *protocol.Got or *protocol.Cancel, in the order they came
 }
 
 func newFiles(ctx context.Context, out *outbox) *files {
@@ -134,12 +137,21 @@ func (f *files) cancel(m *protocol.Cancel) {
 	}
 }
 
-// A sending is a fetch on its way: its file, and the bytes of it left to send.
+// got hears how much of a file has arrived. It waits for room, so none is
+// lost: the sender only ever takes from asks.
+func (f *files) got(m *protocol.Got) { f.asks <- m }
+
+// A sending is a fetch on its way: its file, the bytes of it left to send,
+// and those sent that the client hasn't yet said have arrived.
 type sending struct {
 	id, path string
 	file     *os.File
 	left     int64
+	sent     int64
+	got      int64
 }
+
+func (s *sending) unheard() int64 { return s.sent - s.got }
 
 // run opens the files fetches ask for and sends them, until ctx ends.
 func (f *files) run(ctx context.Context) {
@@ -159,6 +171,12 @@ func (f *files) run(ctx context.Context) {
 			if s := f.start(a); s != nil {
 				open = append(open, s)
 			}
+		case *protocol.Got:
+			for _, s := range open {
+				if s.id == a.ID {
+					s.got = max(s.got, min(a.Size, s.sent))
+				}
+			}
 		case *protocol.Cancel:
 			for i, s := range open {
 				if s.id == a.ID {
@@ -170,7 +188,23 @@ func (f *files) run(ctx context.Context) {
 	}
 	turn := 0
 	for {
-		if len(open) > 0 && f.out.buffered() < fetchWater {
+		// Those sent whole stay until the client has them all, as they count towards what's on its way.
+		for i := 0; i < len(open); i++ {
+			if open[i].left == 0 && open[i].unheard() <= 0 {
+				drop(i)
+				i--
+			}
+		}
+		var unheard int64
+		sending := 0
+		for _, s := range open {
+			unheard += s.unheard()
+			if s.left > 0 {
+				sending++
+			}
+		}
+		room := sending > 0 && unheard < fetchAhead
+		if room && f.out.buffered() < fetchWater {
 			select {
 			case a := <-f.asks:
 				ask(a)
@@ -179,9 +213,12 @@ func (f *files) run(ctx context.Context) {
 				return
 			default:
 			}
+			for open[turn%len(open)].left == 0 {
+				turn++
+			}
 			turn %= len(open)
 			s := open[turn]
-			if !f.next(s) || s.left == 0 {
+			if !f.next(s) {
 				drop(turn)
 			} else {
 				turn++
@@ -189,8 +226,8 @@ func (f *files) run(ctx context.Context) {
 			continue
 		}
 		var wait <-chan time.Time
-		if len(open) > 0 {
-			wait = time.After(fetchPoll)
+		if room {
+			wait = time.After(fetchPoll) // until the backlog's down
 		}
 		select {
 		case a := <-f.asks:
@@ -267,6 +304,10 @@ func (f *files) next(s *sending) bool {
 	}
 	f.out.push(protocol.AppendFile(nil, s.id, buf[:n]))
 	s.left -= int64(n)
+	s.sent += int64(n)
+	if s.left == 0 {
+		s.file.Close() // sent whole: it waits only to hear it's arrived
+	}
 	return true
 }
 

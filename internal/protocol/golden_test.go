@@ -55,6 +55,7 @@ func goldenClient(t *testing.T) []byte {
 		List{ID: "l2", Path: ""},
 		Fetch{ID: "f1", Path: "/Users/me/shot.png"},
 		Fetch{ID: "f2", Path: "~/log.txt", Limit: 65536},
+		Got{ID: "f1", Size: 65536},
 		Cancel{ID: "f1"},
 	} {
 		b = mustJSON(t, b, m)

@@ -93,6 +93,7 @@ client never has to resync on its own.
 | `upload` | `id`, `name`, `size` | send a file: `size` bytes follow in upload frames with this `id`, see below |
 | `list` | `id`, `path` | a directory's entries, which come in `listing`, if the gateway `can` `files`; see Files |
 | `fetch` | `id`, `path`, `limit`? | a file's bytes: `file` says how many, then they come in file frames with this `id`; `limit` sends no more than that many, from the start |
+| `got` | `id`, `size` | how many of a fetch's bytes have arrived, said as they do |
 | `cancel` | `id` | stop a fetch partway |
 | `ping` | `id` | |
 | `away` | `on` | the user has left the client for now (or is back): see Sizing |
@@ -309,8 +310,12 @@ is refused with an `error`, unless a `limit` asks for its start only. One
 that can't be read to the end (it shrank as it went) has a second `file`
 with an `error` in place of the rest. Fetches' frames take turns, a chunk
 each, behind the panes' output, so a picture asked for during a big
-download isn't kept waiting for it, nor is typing. After `cancel`, no more
-of a fetch's frames are sent; those already on their way still come.
+download isn't kept waiting for it. As they arrive, the client says how
+much of each fetch it has, with `got`; the gateway sends no more than 256
+KiB of them ahead of what it's heard, so what's typed meanwhile waits
+behind a little of a file at most, not all of it in the network's buffers.
+After `cancel`, no more of a fetch's frames are sent; those already on
+their way still come.
 
 macOS keeps some folders (`~/Desktop`, `~/Documents`, Mail's) from remote
 users unless Remote Login allows them full disk access; the `error` then

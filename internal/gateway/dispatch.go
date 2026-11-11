@@ -105,6 +105,9 @@ func (g *gateway) handle(f protocol.Frame) error {
 	case *protocol.Fetch:
 		g.files.fetch(m)
 		return nil
+	case *protocol.Got:
+		g.files.got(m)
+		return nil
 	case *protocol.Cancel:
 		g.files.cancel(m)
 		return nil

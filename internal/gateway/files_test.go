@@ -57,6 +57,7 @@ func (c *client) fetched(id string) (protocol.File, []byte) {
 				c.t.Errorf("a file frame of %d bytes", len(fr.Data))
 			}
 			data = append(data, fr.Data...)
+			c.send(protocol.Got{ID: id, Size: int64(len(data))})
 		}
 		if e, ok := m.(*protocol.File); ok && e.ID == id {
 			c.t.Fatalf("partway, %+v", e)
@@ -233,7 +234,7 @@ func TestFetchErrors(t *testing.T) {
 }
 
 // Fetches take turns, a chunk each, so a picture asked for during a big
-// download isn't kept waiting for it; a cancelled one stops.
+// download isn't kept waiting for it.
 func TestFetchesTakeTurns(t *testing.T) {
 	dir := t.TempDir()
 	big := filepath.Join(dir, "big")
@@ -248,18 +249,26 @@ func TestFetchesTakeTurns(t *testing.T) {
 	c.expect("small", func(f protocol.Frame, _ protocol.Message) bool {
 		if f.Type == protocol.FrameFile && f.ID == "big" {
 			bigBytes += int64(len(f.Data))
+			c.send(protocol.Got{ID: "big", Size: bigBytes})
 		}
 		return f.Type == protocol.FrameFile && f.ID == "small"
 	})
-	if bigBytes > 8<<20 {
+	if bigBytes > fetchAhead {
 		t.Errorf("%d bytes of the big file came before the small one", bigBytes)
 	}
+}
 
-	c.send(protocol.Cancel{ID: "big"})
-	c.send(protocol.Ping{ID: 1})
-	quiet := func(d time.Duration) int64 {
+// A fetch goes only so far ahead of what the client says has arrived, so
+// what's typed meanwhile isn't stuck behind it in the network's buffers;
+// cancelled, it stops.
+func TestFetchesWaitForTheClient(t *testing.T) {
+	big := filepath.Join(t.TempDir(), "big")
+	os.WriteFile(big, nil, 0o644)
+	os.Truncate(big, 10<<20)
+	c := browse(t)
+	quiet := func() int64 {
 		var n int64
-		for deadline := time.After(d); ; {
+		for deadline := time.After(300 * time.Millisecond); ; {
 			select {
 			case f := <-c.frames:
 				if f.Type == protocol.FrameFile {
@@ -270,11 +279,18 @@ func TestFetchesTakeTurns(t *testing.T) {
 			}
 		}
 	}
-	bigBytes += quiet(300 * time.Millisecond)
-	if more := quiet(300 * time.Millisecond); more != 0 {
-		t.Errorf("%d bytes came well after the fetch was cancelled", more)
+
+	c.send(protocol.Fetch{ID: "big", Path: big})
+	if n := quiet(); n != fetchAhead {
+		t.Fatalf("%d bytes came before the client said any had arrived, want %d", n, fetchAhead)
 	}
-	if bigBytes >= 200<<20 {
-		t.Error("the cancelled fetch was sent whole")
+	c.send(protocol.Got{ID: "big", Size: fetchAhead})
+	if n := quiet(); n != fetchAhead {
+		t.Fatalf("%d more came once it had, want %d", n, fetchAhead)
+	}
+	c.send(protocol.Cancel{ID: "big"})
+	c.send(protocol.Got{ID: "big", Size: 2 * fetchAhead})
+	if n := quiet(); n != 0 {
+		t.Errorf("%d bytes came after the fetch was cancelled", n)
 	}
 }

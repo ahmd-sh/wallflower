@@ -138,6 +138,13 @@ type Fetch struct {
 	Limit int64  `json:"limit,omitempty"`
 }
 
+// Got says how many of a fetch's bytes have arrived, as they do: the
+// gateway sends only so far ahead of it.
+type Got struct {
+	ID   string `json:"id"`
+	Size int64  `json:"size"`
+}
+
 // Cancel stops a fetch partway; frames already on their way still come.
 type Cancel struct {
 	ID string `json:"id"`
@@ -199,6 +206,7 @@ func (Picture) Type() string       { return "picture" }
 func (Upload) Type() string        { return "upload" }
 func (List) Type() string          { return "list" }
 func (Fetch) Type() string         { return "fetch" }
+func (Got) Type() string           { return "got" }
 func (Cancel) Type() string        { return "cancel" }
 func (Ping) Type() string          { return "ping" }
 func (Away) Type() string          { return "away" }
@@ -507,7 +515,7 @@ func (File) Type() string         { return "file" }
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Submit{}, Select{}, Focus{}, Split{}, New{}, Rename{}, Kill{},
 	Read{}, Picture{}, Upload{}, Ping{}, Away{}, Sessions{}, Switch{}, NewSession{}, RenameSession{}, KillSession{}, Detach{},
-	List{}, Fetch{}, Cancel{},
+	List{}, Fetch{}, Got{}, Cancel{},
 )
 
 var serverMessages = registry(
