@@ -20,7 +20,7 @@ func TestMachineName(t *testing.T) {
 		}
 	}
 	for info, want := range map[string]string{
-		"PRETTY_HOSTNAME=\"Marwan's Laptop\"\nCHASSIS=laptop\n": "Marwan's Laptop",
+		"PRETTY_HOSTNAME=\"Sam's Laptop\"\nCHASSIS=laptop\n": "Sam's Laptop",
 		"CHASSIS=laptop\nPRETTY_HOSTNAME=gamer\n":               "gamer",
 		"CHASSIS=laptop\n": "",
 	} {

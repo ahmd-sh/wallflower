@@ -12,16 +12,16 @@ import (
 )
 
 func TestCodeURL(t *testing.T) {
-	c := code{host: "100.101.102.103", port: 2222, user: "marwan", name: "Marwan's Laptop", hostKey: []byte{1, 2, 3}, seed: make([]byte, 32)}
+	c := code{host: "100.101.102.103", port: 2222, user: "sam", name: "Sam's Laptop", hostKey: []byte{1, 2, 3}, seed: make([]byte, 32)}
 	u, err := url.Parse(c.url())
 	if err != nil {
 		t.Fatal(err)
 	}
 	q := u.Query()
-	if u.Scheme != "wallflower" || u.Host != "pair" || q.Get("h") != "100.101.102.103" || q.Get("p") != "2222" || q.Get("u") != "marwan" || q.Get("k") != "AQID" || len(q.Get("c")) != 43 {
+	if u.Scheme != "wallflower" || u.Host != "pair" || q.Get("h") != "100.101.102.103" || q.Get("p") != "2222" || q.Get("u") != "sam" || q.Get("k") != "AQID" || len(q.Get("c")) != 43 {
 		t.Errorf("url %s", c.url())
 	}
-	if strings.Contains(c.url(), "+") || q.Get("n") != "Marwan's Laptop" {
+	if strings.Contains(c.url(), "+") || q.Get("n") != "Sam's Laptop" {
 		t.Errorf("name in %s", c.url())
 	}
 	c.port = 22

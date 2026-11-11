@@ -11,15 +11,15 @@ final class PairingTests: XCTestCase {
     private let ed25519 = PhoneKey.sshStrings([Data("ssh-ed25519".utf8), Curve25519.Signing.PrivateKey().publicKey.rawRepresentation])
 
     func testReadsACode() throws {
-        let p = try XCTUnwrap(Pairing(url: code("h=100.101.102.103&u=marwan&p=2222&n=Marwan%27s%20Laptop&k=\(b64url(ed25519))&c=\(b64url(seed))")))
+        let p = try XCTUnwrap(Pairing(url: code("h=100.101.102.103&u=sam&p=2222&n=Sam%27s%20Laptop&k=\(b64url(ed25519))&c=\(b64url(seed))")))
         XCTAssertEqual(p.address, "100.101.102.103")
         XCTAssertEqual(p.port, 2222)
-        XCTAssertEqual(p.user, "marwan")
-        XCTAssertEqual(p.machine, "Marwan's Laptop")
+        XCTAssertEqual(p.user, "sam")
+        XCTAssertEqual(p.machine, "Sam's Laptop")
         XCTAssertEqual(p.hostKey, "ssh-ed25519 " + ed25519.base64EncodedString())
         XCTAssertEqual(p.seed, seed)
-        XCTAssertEqual(p.called, "Marwan's Laptop")
-        XCTAssertEqual(p.host, Host(address: "100.101.102.103", port: 2222, user: "marwan", machine: "Marwan's Laptop"))
+        XCTAssertEqual(p.called, "Sam's Laptop")
+        XCTAssertEqual(p.host, Host(address: "100.101.102.103", port: 2222, user: "sam", machine: "Sam's Laptop"))
     }
 
     /** The host key as the transport's check writes the key the server shows, so a code's pin is trusted the next time. */

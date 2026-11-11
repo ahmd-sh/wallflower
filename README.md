@@ -2,7 +2,8 @@
 
 A phone-first shell around your terminal. Your multiplexer stays the
 server (tmux or Rex); a small gateway on the computer (macOS or Linux)
-drives it and serves a lean, versioned protocol to clients (an Android app first) over SSH. How it fits
+drives it and serves a lean, versioned protocol to the phone apps (Android
+and iOS) over SSH. How it fits
 together, and where multiplexers and programs plug in:
 [docs/architecture.md](docs/architecture.md). Programs beyond the built-in
 ones (Claude Code, shells) can have plugins of your own:
@@ -35,7 +36,9 @@ into `dist/release` (`-publish` makes the GitHub release).
 The gateway works end to end. The Android app (`android/`) renders live panes
 with libghostty-vt, with window tabs, native scrollback, a composer, mobile
 views of the programs that have one, and the sessions of every multiplexer;
-it connects over SSH (Tailscale), or a development TCP transport.
+it connects over SSH (Tailscale), or a development TCP transport. The iOS app
+(`ios/`, see [ios/README.md](ios/README.md)) does the same, the OS's own way
+where that's more natural.
 
 <img src="docs/first-light.png" width="300" alt="A tmux pane in wallflower on Android"> The wire format is
 [docs/protocol.md](docs/protocol.md), pinned by golden frames in `testdata/`
