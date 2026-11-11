@@ -16,10 +16,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/ahmd-sh/wallflower/internal/mobileview"
 )
@@ -39,6 +41,7 @@ type Source struct {
 	turns map[string]*turn           // rollout -> what its thread is doing, as read so far
 	index index
 	ttys  map[string]started // terminal -> when the codex on it started
+	needs map[string]int64   // pane -> since when codex has needed the user, Unix milliseconds
 }
 
 type found struct {
@@ -61,6 +64,7 @@ func New(dir string) *Source {
 		metas: map[string]meta{},
 		turns: map[string]*turn{},
 		ttys:  map[string]started{},
+		needs: map[string]int64{},
 	}
 }
 
@@ -71,6 +75,7 @@ func New(dir string) *Source {
 func (s *Source) Find(panes []mobileview.Pane) map[string]mobileview.Found {
 	out := map[string]mobileview.Found{}
 	seen := map[string]mobileview.Pane{}
+	now := time.Now().UnixMilli()
 	for _, p := range panes {
 		if p.Command != command {
 			continue
@@ -80,13 +85,32 @@ func (s *Source) Find(panes []mobileview.Pane) map[string]mobileview.Found {
 		if path := s.rollout(p); path != "" {
 			f.Activity, f.Since = s.doing(path)
 		}
+		if needs.MatchString(p.Title) {
+			s.mu.Lock()
+			if s.needs[p.ID] == 0 {
+				s.needs[p.ID] = now
+			}
+			f = mobileview.Found{Activity: mobileview.Waiting, Since: s.needs[p.ID]}
+			s.mu.Unlock()
+		}
 		out[p.ID] = f
 	}
 	s.mu.Lock()
 	s.panes = seen
+	for id := range s.needs {
+		if _, ok := out[id]; !ok || out[id].Activity != mobileview.Waiting {
+			delete(s.needs, id)
+		}
+	}
 	s.mu.Unlock()
 	return out
 }
+
+// needs is codex's title while it asks the user something, an approval or
+// a question asked while it works, which its rollout says nothing of until
+// it's answered: "[ ! ] Action Required | <thread name> | <project>", the
+// mark blinking.
+var needs = regexp.MustCompile(`^\s*\[[^\]]*\]\s*Action Required(\s*\|\s*|$)`)
 
 var errNone = errors.New("codex isn't running in this pane")
 
@@ -122,7 +146,7 @@ func (s *Source) Read(ctx context.Context, pane mobileview.Pane, send func(mobil
 // the newest that codex started in the pane's directory since it started;
 // "" if there's none.
 func (s *Source) rollout(p mobileview.Pane) string {
-	if name := nameIn(p.Title); name != "" {
+	for _, name := range namesIn(p.Title) {
 		var any string
 		for _, id := range s.index.ids(filepath.Join(s.dir, "session_index.jsonl"), name) {
 			path := s.path(id)
@@ -143,28 +167,22 @@ func (s *Source) rollout(p mobileview.Pane) string {
 	return s.unnamed(p)
 }
 
-// nameIn is the thread name in a codex terminal's title, which is the
-// project's name alone until codex names the thread, after a mark that
-// spins while it works.
-func nameIn(title string) string {
-	title = strings.TrimLeftFunc(title, func(r rune) bool { return !isWordy(r) })
-	name, _, ok := cutLast(title, " | ")
-	if !ok {
-		return ""
+// namesIn is what a codex terminal's title may name its thread, shortest
+// first: what comes before the project's name, after what codex puts first
+// (a mark that spins while it works, or that it needs the user), as far
+// back as a name can have " | " in it. Until codex names the thread, the
+// title is the project's name alone.
+func namesIn(title string) []string {
+	title = needs.ReplaceAllString(title, "")
+	title = strings.TrimLeftFunc(title, func(r rune) bool { return unicode.IsSpace(r) || (r >= 0x2800 && r <= 0x28ff) })
+	parts := strings.Split(title, " | ")
+	var names []string
+	for k := len(parts) - 2; k >= 0; k-- {
+		if name := strings.TrimSpace(strings.Join(parts[k:len(parts)-1], " | ")); name != "" {
+			names = append(names, name)
+		}
 	}
-	return strings.TrimSpace(name)
-}
-
-func isWordy(r rune) bool {
-	return r == '"' || r == '\'' || r == '(' || r == '[' || r == '`' || r == '/' || r == '.' ||
-		(r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r > 0x2fff
-}
-
-func cutLast(s, sep string) (before, after string, found bool) {
-	if i := strings.LastIndex(s, sep); i >= 0 {
-		return s[:i], s[i+len(sep):], true
-	}
-	return s, "", false
+	return names
 }
 
 // unnamed is the newest rollout of a thread codex's terminal started in the

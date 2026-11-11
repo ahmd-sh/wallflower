@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -76,18 +77,18 @@ func TestInterrupted(t *testing.T) {
 	}
 }
 
-func TestNameIn(t *testing.T) {
-	for title, want := range map[string]string{
-		"Read plugin documentation | wallflower":   "Read plugin documentation",
-		"⠋ Read plugin documentation | wallflower": "Read plugin documentation",
-		"wallflower":             "",
-		"a | b | wallflower":     "a | b",
-		"\"Quoted\" | proj":      "\"Quoted\"",
-		"":                       "",
-		"Fix the build | my | x": "Fix the build | my",
+func TestNamesIn(t *testing.T) {
+	for title, want := range map[string][]string{
+		"Read plugin documentation | wallflower":                     {"Read plugin documentation"},
+		"⠋ Read plugin documentation | wallflower":                   {"Read plugin documentation"},
+		"[ ! ] Action Required | Approve touch command | wallflower": {"Approve touch command"},
+		"[ . ] Action Required | wallflower":                         nil,
+		"wallflower":                                                 nil,
+		"a | b | wallflower":                                         {"b", "a | b"},
+		"":                                                           nil,
 	} {
-		if got := nameIn(title); got != want {
-			t.Errorf("nameIn(%q) = %q, want %q", title, got, want)
+		if got := namesIn(title); !slices.Equal(got, want) {
+			t.Errorf("namesIn(%q) = %q, want %q", title, got, want)
 		}
 	}
 }
@@ -133,6 +134,22 @@ func TestFind(t *testing.T) {
 	got = s.Find(panes)
 	if got["%1"].Activity != mobileview.Working || got["%1"].Since != time.Date(2026, 11, 11, 14, 30, 0, 0, time.UTC).UnixMilli() {
 		t.Errorf("after task_started: %+v", got["%1"])
+	}
+
+	// It asks something: the title says so, as the rollout doesn't.
+	panes[0].Title = "[ ! ] Action Required | Ask a question | proj"
+	got = s.Find(panes)
+	asked := got["%1"]
+	if asked.Activity != mobileview.Waiting || asked.Since == 0 {
+		t.Errorf("asking: %+v", asked)
+	}
+	panes[0].Title = "[ . ] Action Required | Ask a question | proj"
+	if again := s.Find(panes)["%1"]; again != asked {
+		t.Errorf("still asking, its mark blinking: %+v, was %+v", again, asked)
+	}
+	panes[0].Title = "⠋ Ask a question | proj"
+	if got := s.Find(panes)["%1"]; got.Activity != mobileview.Working {
+		t.Errorf("answered: %+v", got)
 	}
 }
 
