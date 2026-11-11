@@ -5,7 +5,7 @@ import Wire
 
 private let defaults = UserDefaults(suiteName: "wallflower.preview")!
 private let computer = Host(address: "100.101.102.103", user: "me", machine: "studio")
-private let command = "~/go/bin/wallflower authorize 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBA== wallflower@iPhone'"
+private let command = "wallflower authorize 'ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBA== wallflower@iPhone'"
 
 #Preview("settings") {
     let _ = Fonts.register()

@@ -239,8 +239,13 @@ final class AppModel {
 
     /** The command that authorizes this phone's key on the computer. */
     func authorizeCommand() -> String {
+        "wallflower authorize '\(key.authorizedKey(comment: keyComment))'"
+    }
+
+    /** What the computer calls this phone's key: wallflower@ and the phone's name. */
+    private var keyComment: String {
         let name = UIDevice.current.name.replacingOccurrences(of: " ", with: "-").filter { $0.isLetter || $0.isNumber || $0 == "-" }
-        return "~/go/bin/wallflower authorize '\(key.authorizedKey(comment: "wallflower@" + (name.isEmpty ? "iPhone" : name)))'"
+        return "wallflower@" + (name.isEmpty ? "iPhone" : name)
     }
 
     /** Face ID or the passcode, then the connection goes again. */
