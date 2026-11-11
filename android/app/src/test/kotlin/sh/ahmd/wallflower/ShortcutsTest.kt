@@ -10,6 +10,9 @@ import sh.ahmd.wallflower.program.KeyDefaults
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.program.Shortcut
 import sh.ahmd.wallflower.program.Supplied
+import sh.ahmd.wallflower.ui.ProfileRef
+import sh.ahmd.wallflower.ui.shippedFor
+import sh.ahmd.wallflower.ui.shortcutsSummary
 
 class ShortcutsTest {
     private val bar = KeyBar.defaults
@@ -103,6 +106,32 @@ class ShortcutsTest {
             KeyBar.steps(listOf("Escape", "Escape", ":wq", "Enter", "Enter", "ls")),
         )
         assertEquals(listOf(Step.Keys(listOf("C-e", "C-u")), Step.Text("fg", enter = true)), KeyBar.steps(listOf("C-e", "C-u", "fg", "Enter")))
+    }
+
+    @Test
+    fun aProfilesPageListsWhatItsProgramsShip() {
+        val claude = bar.profiles.indexOfFirst { "claude" in it.programs }
+        val ref = ProfileRef.At(claude)
+        assertEquals(19, shippedFor(bar, ref, bar.profiles[claude], null, null).size)
+        // zsh's and shell's are the same, once.
+        val shell = bar.profiles.indexOfFirst { "zsh" in it.programs }
+        assertEquals(5, shippedFor(bar, ProfileRef.At(shell), bar.profiles[shell], null, null).size)
+        // A profile by command (bash) gets the focused pane's program's, if the pane's is it.
+        val mine = bar.copy(profiles = listOf(KeyProfile("mine", listOf("bash"), emptyList())))
+        val at = ProfileRef.At(0)
+        assertEquals(5, shippedFor(mine, at, mine.profiles.last(), "bash", "shell").size)
+        assertEquals(0, shippedFor(mine, at, mine.profiles.last(), "vim", null).size)
+        // The default's are the focused pane's, if it has no profile.
+        assertEquals(0, shippedFor(bar, ProfileRef.Default, bar.default, "hntui", null).size)
+    }
+
+    @Test
+    fun aProfilesShortcutsSayHowManyInALine() {
+        val claude = bar.profileFor("claude", "claude")
+        val shipped = claude.shortcutsFor(Programs.of("claude"))
+        assertEquals("19", shortcutsSummary(claude, shipped))
+        assertEquals("18 · 1 yours · 2 hidden", shortcutsSummary(claude.copy(shortcuts = listOf(BarKey("x", listOf("x"))), hidden = listOf("mode", "/plan ⏎")), shipped))
+        assertEquals("none yet", shortcutsSummary(bar.default, emptyList()))
     }
 
     @Test
