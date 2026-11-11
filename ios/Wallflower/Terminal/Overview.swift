@@ -11,7 +11,8 @@ extension Pane: @retroactive HeaderPane {}
  * Every pane of a window as a card with its live contents, in the session's
  * order, then one to open a new pane. A card is headed by an icon for what
  * the pane runs and the directory it's in. Tap a card to show it, × to
- * close it. Cards fill as many columns as the screen is wide.
+ * close it; held, it offers the files where the pane is. Cards fill as many
+ * columns as the screen is wide.
  */
 struct PaneOverview: View {
     @Environment(\.palette) private var palette
@@ -23,6 +24,7 @@ struct PaneOverview: View {
     let onPick: (Pane) -> Void
     let onNew: () -> Void
     let onClose: (Pane) -> Void
+    var onFiles: ((Pane) -> Void)? = nil
 
     var body: some View {
         let panes = window.panes.sorted { $0.index < $1.index }
@@ -70,6 +72,10 @@ struct PaneOverview: View {
         .onTapGesture {
             haptics.tick()
             onPick(p)
+        }
+        .contextMenu {
+            if let onFiles { Button("files here") { onFiles(p) } }
+            Button("close", role: .destructive) { onClose(p) }
         }
     }
 

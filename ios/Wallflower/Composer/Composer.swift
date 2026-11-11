@@ -1,3 +1,4 @@
+import MobileViewUI
 import PhotosUI
 import ScreenReading
 import SwiftUI
@@ -272,10 +273,11 @@ private struct GhostLine: View {
     }
 }
 
-/** What the draft holds, each with × to take it out, then what's on its way; why one failed beneath. */
+/** What the draft holds, each with × to take it out, and tapped, opening in the viewer; then what's on its way; why one failed beneath. */
 private struct AttachmentsRow: View {
     @Environment(\.palette) private var palette
     @Environment(\.haptics) private var haptics
+    @Environment(\.viewing) private var viewing
     @Binding var text: String
     let uploads: [Uploads.Item]
     let dir: String?
@@ -292,6 +294,11 @@ private struct AttachmentsRow: View {
                             Tile(image: thumbnail(path), name: (path as NSString).lastPathComponent, failed: false, progress: nil) {
                                 haptics.tick()
                                 text = text.replacingOccurrences(of: path, with: "").replacingOccurrences(of: "  ", with: " ")
+                            }
+                            .onTapGesture {
+                                guard let open = viewing.path else { return }
+                                haptics.tick()
+                                open(path)
                             }
                         }
                         ForEach(uploads) { u in

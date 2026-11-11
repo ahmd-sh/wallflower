@@ -31,6 +31,7 @@ struct TabBar: View {
     let onSessions: () -> Void
     let onSettings: () -> Void
     let onExit: () -> Void
+    var onFiles: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 0) {
@@ -55,7 +56,7 @@ struct TabBar: View {
                     withAnimation(Motion.spatial) { proxy.scrollTo(id, anchor: .center) }
                 }
             }
-            ConnectionButton(status: status, machine: machine, address: address, session: session, onRetry: onRetry, onSessions: onSessions, onSettings: onSettings, onExit: onExit)
+            ConnectionButton(status: status, machine: machine, address: address, session: session, onRetry: onRetry, onSessions: onSessions, onSettings: onSettings, onExit: onExit, onFiles: onFiles)
         }
         .padding(.vertical, 9)
         .overlay(alignment: .bottom) { Rectangle().fill(palette.border).frame(height: 1) }

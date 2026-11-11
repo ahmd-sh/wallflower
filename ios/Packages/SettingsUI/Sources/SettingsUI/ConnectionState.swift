@@ -60,7 +60,8 @@ public struct ConnectionDot: View {
  * The connection's way in, at the end of the tab bar: its dot says how it
  * is. Its menu names the Mac ([machine], at [address]) and the [session],
  * says when it tries next and why the last try failed, and offers a retry
- * then, the sessions, settings and disconnecting (iOS apps don't quit).
+ * then, the sessions, the Mac's files, settings and disconnecting (iOS apps
+ * don't quit).
  */
 public struct ConnectionButton: View {
     @Environment(\.haptics) private var haptics
@@ -72,8 +73,12 @@ public struct ConnectionButton: View {
     let onSessions: (() -> Void)?
     let onSettings: () -> Void
     let onExit: () -> Void
+    let onFiles: (() -> Void)?
 
-    public init(status: Status, machine: String, address: String, session: String?, onRetry: @escaping () -> Void, onSessions: (() -> Void)?, onSettings: @escaping () -> Void, onExit: @escaping () -> Void) {
+    public init(
+        status: Status, machine: String, address: String, session: String?, onRetry: @escaping () -> Void, onSessions: (() -> Void)?,
+        onSettings: @escaping () -> Void, onExit: @escaping () -> Void, onFiles: (() -> Void)? = nil
+    ) {
         self.status = status
         self.machine = machine
         self.address = address
@@ -82,6 +87,7 @@ public struct ConnectionButton: View {
         self.onSessions = onSessions
         self.onSettings = onSettings
         self.onExit = onExit
+        self.onFiles = onFiles
     }
 
     public var body: some View {
@@ -97,6 +103,7 @@ public struct ConnectionButton: View {
                 SwiftUI.Section {
                     if status.waiting { Button("retry now") { pick(onRetry) } }
                     if let onSessions { Button("sessions") { pick(onSessions) } }
+                    if let onFiles { Button("files") { pick(onFiles) } }
                     Button("settings") { pick(onSettings) }
                     Button("disconnect", role: .destructive) { pick(onExit) }
                 }

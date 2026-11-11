@@ -1,3 +1,4 @@
+import Foundation
 import MarkdownKit
 import SwiftUI
 import WallflowerDesign
@@ -31,6 +32,7 @@ private struct BlockView: View {
     let block: Block
     @Environment(\.palette) private var palette
     @Environment(\.look) private var look
+    @Environment(\.viewing) private var viewing
 
     private var size: CGFloat { look.size(mono: 14, sans: 15) }
     private var lineHeight: CGFloat { look.size(mono: 21, sans: 22) }
@@ -113,7 +115,7 @@ private struct BlockView: View {
     }
 
     private func inline(_ text: String, size: CGFloat, weight: Font.Weight = .regular) -> AttributedString {
-        styled(text, look: look, palette: palette, size: size, weight: weight)
+        styled(text, look: look, palette: palette, size: size, weight: weight, paths: viewing.path != nil)
     }
 }
 
@@ -133,8 +135,12 @@ private struct Paragraph: View {
     }
 }
 
-/** A line of inline markdown in [look]'s words of [size], code in mono a little smaller, links underlined. */
-func styled(_ text: String, look: Look, palette: Colors, size: CGFloat, weight: Font.Weight = .regular) -> AttributedString {
+/**
+ * A line of inline markdown in [look]'s words of [size], code in mono a
+ * little smaller, links underlined. With [paths], pictures' paths are links
+ * too, dotted, to open in the viewer.
+ */
+func styled(_ text: String, look: Look, palette: Colors, size: CGFloat, weight: Font.Weight = .regular, paths: Bool = false) -> AttributedString {
     var out = AttributedString()
     for span in Markdown.inline(text) {
         var run = AttributedString(span.text)
@@ -153,8 +159,33 @@ func styled(_ text: String, look: Look, palette: Colors, size: CGFloat, weight: 
             run.link = url
             run.foregroundColor = palette.blue
             run.underlineStyle = .single
+        } else if paths {
+            linkPictures(&run, span, palette: palette)
         }
         out += run
     }
     return out
+}
+
+/** The pictures' paths in [span]'s [run] as links to them: all of it, if it's code that's one. */
+private func linkPictures(_ run: inout AttributedString, _ span: Span, palette: Colors) {
+    let mark = { (r: inout AttributedSubstring, path: String) in
+        guard let url = Viewing.link(path) else { return }
+        r.link = url
+        r.underlineStyle = Text.LineStyle(pattern: .dot)
+        if !span.code { r.foregroundColor = palette.aqua }
+    }
+    if span.code {
+        let trimmed = span.text.trimmingCharacters(in: .whitespaces)
+        if ImagePaths.whole(trimmed) { mark(&run[run.startIndex..<run.endIndex], trimmed) }
+        return
+    }
+    for r in ImagePaths.find(in: span.text) {
+        let path = String(span.text[r])
+        let from = span.text.distance(from: span.text.startIndex, to: r.lowerBound)
+        let count = span.text.distance(from: r.lowerBound, to: r.upperBound)
+        let lower = run.characters.index(run.startIndex, offsetBy: from)
+        let upper = run.characters.index(lower, offsetBy: count)
+        mark(&run[lower..<upper], path)
+    }
 }
