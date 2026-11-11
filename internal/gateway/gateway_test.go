@@ -238,10 +238,12 @@ func TestHelloStateOpenType(t *testing.T) {
 		if a := m.(*protocol.Attached); a.Mux.Name != b.name || a.Mux.Version == "" || !slices.Equal(a.Mux.Can, b.can) {
 			t.Errorf("attached = %+v", a)
 		}
-		s := c.state("phone-sized", func(s protocol.State) bool { p := activePane(s); return p.Cols == 56 && p.Rows == 20 })
-		p := activePane(s)
 		// macOS's /bin/sh is bash: tmux names the executable, Rex what it was run as.
-		if s.Name != "t" || p.ID == "" || (p.Command != "sh" && p.Command != "bash") {
+		// On Linux, a pane's first moments are tmux's, till the shell's exec'd.
+		sh := func(p protocol.Pane) bool { return p.Command == "sh" || p.Command == "bash" }
+		s := c.state("phone-sized", func(s protocol.State) bool { p := activePane(s); return p.Cols == 56 && p.Rows == 20 && sh(p) })
+		p := activePane(s)
+		if s.Name != "t" || p.ID == "" || !sh(p) {
 			t.Fatalf("state = %+v", s)
 		}
 
@@ -255,7 +257,8 @@ func TestHelloStateOpenType(t *testing.T) {
 		c.sendText(p.ID, "echo hi-$((1+1))\r")
 		c.output(p.ID, "hi-2\r\n")
 
-		c.send(protocol.Keys{Pane: p.ID, Keys: []string{"echo ", "-n", " ", `"key's"`, "Enter"}})
+		// -n is text, not a key; printf prints it as any sh does (echo takes it as a flag in some).
+		c.send(protocol.Keys{Pane: p.ID, Keys: []string{`printf '%s %s\n' `, "-n", " ", `"key's"`, "Enter"}})
 		c.output(p.ID, "-n key's\r\n")
 	})
 }

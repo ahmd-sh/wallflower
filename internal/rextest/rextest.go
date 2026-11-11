@@ -6,17 +6,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
 
-// Binary is the rex CLI: $REX, rex on the PATH, or Rex.app's.
+// Binary is the rex CLI: $REX, rex on the PATH, or Rex.app's on a Mac
+// (only there: a Linux VM that sees the Mac's files would run the Mac's).
 func Binary() string {
 	if b := os.Getenv("REX"); b != "" {
 		return b
 	}
 	if b, err := exec.LookPath("rex"); err == nil {
 		return b
+	}
+	if runtime.GOOS != "darwin" {
+		return ""
 	}
 	return "/Applications/Rex Beta.app/Contents/Helpers/Rex Server.rex/Contents/MacOS/rex"
 }
@@ -37,7 +42,7 @@ type Server struct {
 func Start(t *testing.T) *Server {
 	t.Helper()
 	bin := Binary()
-	if _, err := os.Stat(bin); err != nil {
+	if _, err := os.Stat(bin); bin == "" || err != nil {
 		t.Skip("rex not installed")
 	}
 	// A Unix socket's path has to be short, which a test's temporary directory isn't.

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/ahmd-sh/wallflower/internal/gateway"
 	"github.com/ahmd-sh/wallflower/internal/mux"
@@ -53,9 +54,12 @@ func gatewayFlags(fs *flag.FlagSet) func() (gateway.Options, error) {
 	codexDir := fs.String("codex", defaultCodexDir(), "Codex's data, for its mobile views (empty: none)")
 	plugins := fs.String("plugins", defaultPluginDir(), "plugins of your own, a JSON file each (docs/plugins.md)")
 	return func() (gateway.Options, error) {
-		muxes := map[string]mux.Mux{"tmux": tmux.Server{Socket: *socket}, "rex": rex.Server{Endpoint: *rexServer}}
+		muxes := map[string]mux.Mux{"tmux": tmux.Server{Socket: *socket}}
+		if runtime.GOOS == "darwin" || *rexServer != "" { // Rex is a Mac app: elsewhere, only a server named
+			muxes["rex"] = rex.Server{Endpoint: *rexServer}
+		}
 		if muxes[*multiplexer] == nil {
-			return gateway.Options{}, fmt.Errorf("no multiplexer %q: tmux or rex", *multiplexer)
+			return gateway.Options{}, fmt.Errorf("no multiplexer %q here", *multiplexer)
 		}
 		builtin := program.Builtin(*claudeDir, *codexDir)
 		own, errs := program.Load(*plugins, builtin)

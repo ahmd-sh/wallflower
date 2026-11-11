@@ -19,6 +19,15 @@ func TestMachineName(t *testing.T) {
 			t.Errorf("machineName(%q, %q) = %q, want %q", c.computer, c.host, got, c.want)
 		}
 	}
+	for info, want := range map[string]string{
+		"PRETTY_HOSTNAME=\"Marwan's Laptop\"\nCHASSIS=laptop\n": "Marwan's Laptop",
+		"CHASSIS=laptop\nPRETTY_HOSTNAME=gamer\n":               "gamer",
+		"CHASSIS=laptop\n": "",
+	} {
+		if got := pretty(info); got != want {
+			t.Errorf("pretty(%q) = %q, want %q", info, got, want)
+		}
+	}
 	if name := MachineName(); name == "" || strings.HasSuffix(name, ".local") {
 		t.Errorf("MachineName() = %q", name)
 	}
