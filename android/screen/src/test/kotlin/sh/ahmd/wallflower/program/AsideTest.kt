@@ -37,6 +37,12 @@ class AsideTest {
     }
 
     @Test
+    fun aFullscreenMenusRuleIsNoAnswersAndSaysNothingOfWork() {
+        assertNull(Claude.status(captured("claude-rewind-list-fullscreen.ansi", 52)))
+        assertNull(Claude.status(captured("claude-rewind-confirm-fullscreen.ansi", 52)))
+    }
+
+    @Test
     fun aSideQuestionsAnswerTakesTheBoxsPlace() {
         val s = captured("claude-btw.ansi", 54)
         val answer = Claude.aside(s) as Aside.Answer

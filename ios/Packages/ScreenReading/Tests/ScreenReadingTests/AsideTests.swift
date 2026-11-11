@@ -39,6 +39,11 @@ final class AsideTests: XCTestCase {
         }
     }
 
+    func testAFullscreenMenusRuleIsNoAnswersAndSaysNothingOfWork() {
+        XCTAssertNil(claude.status(captured("claude-rewind-list-fullscreen.ansi", 52)))
+        XCTAssertNil(claude.status(captured("claude-rewind-confirm-fullscreen.ansi", 52)))
+    }
+
     func testASideQuestionsAnswerTakesTheBoxsPlace() throws {
         let s = captured("claude-btw.ansi", 54)
         let a = try answer(claude.aside(s))

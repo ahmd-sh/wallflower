@@ -193,9 +193,12 @@ object Claude : Program {
         )
     }
 
-    /** The ▔ rule over an answer aside, the bottom-most on screen. */
-    private fun answered(s: Screen): Int? =
-        (s.rows - 1 downTo 0).firstOrNull { y -> s.text(0, y) == "▔" && (0 until s.cols).count { s.text(it, y) == "▔" } >= s.cols / 2 }
+    /** The ▔ rule over an answer aside, the bottom-most on screen, with a question asked aside below it (fullscreen mode rules its menus with ▔ too). */
+    private fun answered(s: Screen): Int? {
+        val top = (s.rows - 1 downTo 0).firstOrNull { y -> s.text(0, y) == "▔" && (0 until s.cols).count { s.text(it, y) == "▔" } >= s.cols / 2 } ?: return null
+        val asked = (top + 1 until s.rows).firstOrNull { row(s, it, 0).isNotBlank() } ?: return null
+        return top.takeIf { btw.matches(row(s, asked, 0)) }
+    }
 
     private val btw = Regex("^ {4}/btw(?: (.*))?$")
 

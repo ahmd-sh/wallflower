@@ -178,9 +178,11 @@ public final class Claude: Program {
         )
     }
 
-    /// The ▔ rule over an answer aside, the bottom-most on screen.
+    /// The ▔ rule over an answer aside, the bottom-most on screen, with a question asked aside below it (fullscreen mode rules its menus with ▔ too).
     private func answered(_ s: Screen) -> Int? {
-        downTo(s.rows - 1, 0).first { y in s.text(0, y) == "▔" && (0..<s.cols).filter { s.text($0, y) == "▔" }.count >= s.cols / 2 }
+        guard let top = downTo(s.rows - 1, 0).first(where: { y in s.text(0, y) == "▔" && (0..<s.cols).filter { s.text($0, y) == "▔" }.count >= s.cols / 2 }),
+              let asked = until(top + 1, s.rows).first(where: { !row(s, $0, from: 0).isBlank }) else { return nil }
+        return Claude.btw.matches(row(s, asked, from: 0)) ? top : nil
     }
 
     private static let btw = Pattern("^ {4}/btw(?: (.*))?$")
