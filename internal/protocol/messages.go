@@ -121,6 +121,35 @@ type Upload struct {
 	Size int64  `json:"size"`
 }
 
+// List asks for a directory's entries, which come in a Listing with the
+// same ID. Path is absolute, or starts with ~ for the user's home; empty is
+// the home.
+type List struct {
+	ID   string `json:"id"`
+	Path string `json:"path"`
+}
+
+// Fetch asks for a file's bytes: a File with the same ID says how many,
+// then they follow in file frames with it. Limit, if set, sends no more than
+// that many from the start. Path is as for List.
+type Fetch struct {
+	ID    string `json:"id"`
+	Path  string `json:"path"`
+	Limit int64  `json:"limit,omitempty"`
+}
+
+// Got says how many of a fetch's bytes have arrived, as they do: the
+// gateway sends only so far ahead of it.
+type Got struct {
+	ID   string `json:"id"`
+	Size int64  `json:"size"`
+}
+
+// Cancel stops a fetch partway; frames already on their way still come.
+type Cancel struct {
+	ID string `json:"id"`
+}
+
 type Ping struct {
 	ID int `json:"id"`
 }
@@ -175,6 +204,10 @@ func (Kill) Type() string          { return "kill" }
 func (Read) Type() string          { return "read" }
 func (Picture) Type() string       { return "picture" }
 func (Upload) Type() string        { return "upload" }
+func (List) Type() string          { return "list" }
+func (Fetch) Type() string         { return "fetch" }
+func (Got) Type() string           { return "got" }
+func (Cancel) Type() string        { return "cancel" }
 func (Ping) Type() string          { return "ping" }
 func (Away) Type() string          { return "away" }
 func (Sessions) Type() string      { return "sessions" }
@@ -198,7 +231,13 @@ type ServerHello struct {
 	// Programs are the phone halves of plugins the user gave the gateway,
 	// as data, for programs the client has no half of its own for.
 	Programs []Program `json:"programs,omitempty"`
+	// Can is what this gateway does beyond what every one of its version
+	// does (CanFiles), so a client offers only that.
+	Can []string `json:"can,omitempty"`
 }
+
+// CanFiles: the gateway lists directories (List) and sends files (Fetch).
+const CanFiles = "files"
 
 // Program is a plugin's phone half as data: the key bar its panes get
 // (Keys), the commands the composer offers, and the keys that start a new
@@ -383,6 +422,47 @@ type Bye struct {
 	Reason string `json:"reason"`
 }
 
+// Listing is a directory's entries, as List asked: Path is where it is,
+// absolute and clean, and More says it has more entries than were sent.
+// Error says why it couldn't be read.
+type Listing struct {
+	ID      string      `json:"id"`
+	Path    string      `json:"path"`
+	Entries []FileEntry `json:"entries,omitempty"`
+	More    bool        `json:"more,omitempty"`
+	Error   string      `json:"error,omitempty"`
+}
+
+// FileEntry is one of a directory's entries: its Kind is what it is, or,
+// for a symbolic link (Link), what it leads to. Size is a file's, in bytes;
+// Mtime when it last changed, in Unix milliseconds. Hidden is a name that
+// starts with a dot, or one the Mac hides (~/Library).
+type FileEntry struct {
+	Name   string `json:"name"`
+	Kind   string `json:"kind"` // KindDir, KindFile or KindOther
+	Link   bool   `json:"link,omitempty"`
+	Size   int64  `json:"size,omitempty"`
+	Mtime  int64  `json:"mtime,omitempty"`
+	Hidden bool   `json:"hidden,omitempty"`
+}
+
+// What a directory's entry is: a directory, a file, or anything else (a
+// device, a socket, a link to nothing).
+const (
+	KindDir   = "dir"
+	KindFile  = "file"
+	KindOther = "other"
+)
+
+// File answers a Fetch: Size bytes of the file at Path follow in file
+// frames with its ID, or Error says why none do.
+type File struct {
+	ID    string `json:"id"`
+	Path  string `json:"path"`
+	Size  int64  `json:"size"`
+	Error string `json:"error,omitempty"`
+}
+
 // Notification is a desktop notification a pane's program sent through its
 // terminal (OSC 9, 777 or 99), or its bell (Bell, with no body), from any
 // pane in the session.
@@ -437,14 +517,18 @@ func (Bye) Type() string          { return "bye" }
 func (Entries) Type() string      { return "entries" }
 func (Uploaded) Type() string     { return "uploaded" }
 func (Notification) Type() string { return "notification" }
+func (Listing) Type() string      { return "listing" }
+func (File) Type() string         { return "file" }
 
 var clientMessages = registry(
 	ClientHello{}, Resize{}, Open{}, Close{}, Keys{}, Submit{}, Select{}, Focus{}, Split{}, New{}, Rename{}, Kill{},
 	Read{}, Picture{}, Upload{}, Ping{}, Away{}, Sessions{}, Switch{}, NewSession{}, RenameSession{}, KillSession{}, Detach{},
+	List{}, Fetch{}, Got{}, Cancel{},
 )
 
 var serverMessages = registry(
 	ServerHello{}, Attached{}, Detached{}, State{}, Reset{}, Error{}, Pong{}, Bye{}, Entries{}, Uploaded{}, Notification{}, SessionList{},
+	Listing{}, File{},
 )
 
 // DecodeClient decodes a message sent by a client. It returns a pointer to

@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import sh.ahmd.wallflower.files.Fetches
+import sh.ahmd.wallflower.ui.files.Viewer
 import sh.ahmd.wallflower.prefs.Preferences
 import sh.ahmd.wallflower.session.HardwareKey
 import sh.ahmd.wallflower.session.Host
@@ -28,6 +30,9 @@ class AppModel(app: Application) : AndroidViewModel(app) {
     val keyBar = KeyBarStore(prefs)
     val settings get() = connection.settings
     val uploads = Uploads(app.contentResolver, prefs, drafts, File(app.cacheDir, "thumbs"), viewModelScope)
+    val fetches = Fetches(File(app.cacheDir, "files"))
+    /** The one viewer, for pictures and the Mac's files. */
+    val viewer = Viewer()
 
     val host: StateFlow<Host?> get() = connection.host
     val session: StateFlow<Session?> get() = connection.session

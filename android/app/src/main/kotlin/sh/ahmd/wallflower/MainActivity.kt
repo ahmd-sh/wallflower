@@ -26,6 +26,7 @@ import sh.ahmd.wallflower.ui.LocalHaptics
 import sh.ahmd.wallflower.ui.WallflowerRoot
 import sh.ahmd.wallflower.ui.WallflowerTheme
 import sh.ahmd.wallflower.ui.colorsOf
+import sh.ahmd.wallflower.ui.files.LocalViewer
 
 class MainActivity : ComponentActivity() {
     private companion object {
@@ -44,7 +45,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(colors.light) { bars(colors.light) }
             val view = LocalView.current
             val haptics = remember(view) { Haptics(view, model.settings.haptics.flow) }
-            CompositionLocalProvider(LocalHaptics provides haptics) {
+            CompositionLocalProvider(LocalHaptics provides haptics, LocalViewer provides model.viewer) {
                 WallflowerTheme(look, colors) {
                     WallflowerRoot(model, ::unlock) {
                         model.disconnect()

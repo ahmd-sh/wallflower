@@ -105,6 +105,7 @@ internal fun ConnectionButton(
     onSessions: (() -> Unit)?,
     onSettings: () -> Unit,
     onExit: () -> Unit,
+    onFiles: (() -> Unit)? = null,
 ) {
     val menu = rememberOpener()
     Box(Modifier.padding(end = 6.dp)) {
@@ -121,6 +122,7 @@ internal fun ConnectionButton(
             actions = listOfNotNull(
                 if (status.waiting) MenuAction("retry now", Palette.green) { menu.open = false; onRetry() } else null,
                 onSessions?.let { MenuAction("sessions") { menu.open = false; it() } },
+                onFiles?.let { MenuAction("files") { menu.open = false; it() } },
                 MenuAction("settings") { menu.open = false; onSettings() },
                 MenuAction("disconnect", Palette.red) { menu.open = false; onExit() },
             ),

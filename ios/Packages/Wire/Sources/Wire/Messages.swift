@@ -52,6 +52,18 @@ public enum ClientMessage: Sendable, Equatable {
     /// Starts sending a file: `size` bytes follow in upload frames with `id`; `Uploaded` says where it was saved.
     case upload(id: String, name: String, size: Int64)
 
+    /// Asks for a directory's entries, which come in a `Listing` with the same `id`; `path` is absolute, or starts with ~ for the home (empty: the home).
+    case list(id: String, path: String)
+
+    /// Asks for a file's bytes: a `FileReply` with the same `id` says how many, then they follow in file frames; with `limit`, no more than that many from the start.
+    case fetch(id: String, path: String, limit: Int64? = nil)
+
+    /// How many of a fetch's bytes have arrived, said as they do: the gateway sends only so far ahead of it.
+    case got(id: String, size: Int64)
+
+    /// Stops a fetch partway; frames already on their way still come.
+    case cancel(id: String)
+
     case ping(id: Int)
 
     /// The user has left the app for now (`on`), or is back: while away, it doesn't size the session's windows.
@@ -156,6 +168,26 @@ extension ClientMessage {
             o.field("name", name)
             o.field("size", size)
             return o.end()
+        case let .list(id, path):
+            var o = JSONObject("list")
+            o.field("id", id)
+            o.field("path", path)
+            return o.end()
+        case let .fetch(id, path, limit):
+            var o = JSONObject("fetch")
+            o.field("id", id)
+            o.field("path", path)
+            if let limit, limit > 0 { o.field("limit", limit) }
+            return o.end()
+        case let .got(id, size):
+            var o = JSONObject("got")
+            o.field("id", id)
+            o.field("size", size)
+            return o.end()
+        case let .cancel(id):
+            var o = JSONObject("cancel")
+            o.field("id", id)
+            return o.end()
         case let .ping(id):
             var o = JSONObject("ping")
             o.field("id", id)
@@ -230,6 +262,8 @@ public enum ServerMessage: Sendable, Equatable {
     case uploaded(Uploaded)
     case notification(ProgramNotification)
     case sessions(SessionList)
+    case listing(Listing)
+    case file(FileReply)
 }
 
 extension ServerMessage {
@@ -249,6 +283,8 @@ extension ServerMessage {
         case "uploaded": return .uploaded(try d.decode(Uploaded.self, from: json))
         case "notification": return .notification(try d.decode(ProgramNotification.self, from: json))
         case "sessions": return .sessions(try d.decode(SessionList.self, from: json))
+        case "listing": return .listing(try d.decode(Listing.self, from: json))
+        case "file": return .file(try d.decode(FileReply.self, from: json))
         default: return nil
         }
     }
@@ -263,17 +299,26 @@ public struct ServerHello: Sendable, Equatable, Decodable {
     public var machine: String?
     /// The phone halves of plugins the user gave the gateway, as data.
     public var programs: [ProgramData]
+    /// What this gateway does beyond what every one of its version does (`FILES`), so the app offers only that.
+    public var can: [String]
 
-    public init(v: Int, uploads: String? = nil, machine: String? = nil, programs: [ProgramData] = []) {
+    /// The gateway lists directories (`.list`) and sends files (`.fetch`).
+    public static let FILES = "files"
+
+    public init(v: Int, uploads: String? = nil, machine: String? = nil, programs: [ProgramData] = [], can: [String] = []) {
         self.v = v
         self.uploads = uploads
         self.machine = machine
         self.programs = programs
+        self.can = can
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: JSONKey.self)
-        self.init(v: try c.required("v"), uploads: try c.optional("uploads"), machine: try c.optional("machine"), programs: try c.value("programs", or: []))
+        self.init(
+            v: try c.required("v"), uploads: try c.optional("uploads"), machine: try c.optional("machine"),
+            programs: try c.value("programs", or: []), can: try c.value("can", or: [])
+        )
     }
 }
 
@@ -745,5 +790,83 @@ public struct SessionInfo: Sendable, Equatable, Decodable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: JSONKey.self)
         self.init(id: try c.required("id"), name: try c.required("name"), windows: try c.value("windows", or: 0))
+    }
+}
+
+/// A directory's entries, as `.list` asked: `path` is where it is, absolute and clean, and `more` says it has more entries than were sent. `error` says why it couldn't be read.
+public struct Listing: Sendable, Equatable, Decodable {
+    public var id: String
+    public var path: String
+    public var entries: [FileEntry]
+    public var more: Bool
+    public var error: String?
+
+    public init(id: String, path: String, entries: [FileEntry] = [], more: Bool = false, error: String? = nil) {
+        self.id = id
+        self.path = path
+        self.entries = entries
+        self.more = more
+        self.error = error
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: JSONKey.self)
+        self.init(
+            id: try c.required("id"), path: try c.required("path"), entries: try c.value("entries", or: []),
+            more: try c.value("more", or: false), error: try c.optional("error")
+        )
+    }
+}
+
+/// One of a directory's entries: its `kind` is what it is, or, for a symbolic link (`link`), what it leads to. `size` is a file's, in bytes; `mtime` when it last changed, in Unix milliseconds. `hidden` is a name that starts with a dot, or one the Mac hides (~/Library).
+public struct FileEntry: Sendable, Equatable, Hashable, Decodable {
+    public var name: String
+    public var kind: String
+    public var link: Bool
+    public var size: Int64
+    public var mtime: Int64
+    public var hidden: Bool
+
+    public static let DIR = "dir"
+    public static let FILE = "file"
+    public static let OTHER = "other"
+
+    public init(name: String, kind: String, link: Bool = false, size: Int64 = 0, mtime: Int64 = 0, hidden: Bool = false) {
+        self.name = name
+        self.kind = kind
+        self.link = link
+        self.size = size
+        self.mtime = mtime
+        self.hidden = hidden
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: JSONKey.self)
+        self.init(
+            name: try c.required("name"), kind: try c.required("kind"), link: try c.value("link", or: false),
+            size: try c.value("size", or: 0), mtime: try c.value("mtime", or: 0), hidden: try c.value("hidden", or: false)
+        )
+    }
+
+    public var isDir: Bool { kind == Self.DIR }
+}
+
+/// Answers a `.fetch`: `size` bytes of the file at `path` follow in file frames with its `id`, or `error` says why none do (or, partway, why the rest won't).
+public struct FileReply: Sendable, Equatable, Decodable {
+    public var id: String
+    public var path: String
+    public var size: Int64
+    public var error: String?
+
+    public init(id: String, path: String, size: Int64 = 0, error: String? = nil) {
+        self.id = id
+        self.path = path
+        self.size = size
+        self.error = error
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: JSONKey.self)
+        self.init(id: try c.required("id"), path: try c.required("path"), size: try c.value("size", or: 0), error: try c.optional("error"))
     }
 }

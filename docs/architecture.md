@@ -25,7 +25,7 @@ by the phone over ssh). It speaks the protocol and relays the session:
 - notifications, read from every pane's output by the terminal standards
   for them (OSC 9, 777 and 99, and the bell), whatever the program
 - mobile views, read by the program plugins that have one
-- uploads
+- uploads, and the Mac's files, read-only, to browse and fetch
 
 It knows no particular multiplexer or program. What it holds can be rebuilt
 from the multiplexer, so a connection can drop at any time.

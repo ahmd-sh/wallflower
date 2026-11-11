@@ -86,6 +86,19 @@ struct RootView: View {
                 }
             }
             .animation(Motion.spatial, value: page)
+            .fullScreenCover(item: Binding(get: { model.files }, set: { model.files = $0 })) { at in
+                FilesPage(at: at, session: session, onAdd: at.pane.map { pane in { path in add(path, to: pane) } }, onClose: { model.files = nil })
+                    .environment(\.palette, palette)
+                    .environment(\.look, model.settings.look)
+                    .environment(\.haptics, model.haptics)
+            }
+            .fullScreenCover(item: Binding(get: { model.showing }, set: { model.showing = $0 })) { s in
+                ViewerCover(showing: s, session: session, onAdd: { pane, path in add(path, to: pane) }, onClose: { model.showing = nil })
+                    .environment(\.palette, palette)
+                    .environment(\.look, model.settings.look)
+                    .environment(\.haptics, model.haptics)
+                    .tint(palette.orange)
+            }
         } else if let host = model.host {
             Disconnected(machine: host.called) { model.ensure() }
         } else {
@@ -180,6 +193,15 @@ struct RootView: View {
         if let s = r.arg("scheme"), let scheme = Scheme(rawValue: s) { model.settings.scheme = scheme }
         if let l = r.arg("lookas"), let look = Look(rawValue: l) { model.settings.look = look }
         if r.arg("sessions") != nil { model.session?.detach() }
+    }
+
+    private var palette: Colors { model.settings.scheme.colors(dark: scheme == .dark) }
+
+    /** A path from the files page or the viewer into a pane's draft, as a word of its own; back to the terminal to go on writing. */
+    private func add(_ path: String, to pane: String) {
+        model.drafts.insert(pane, messagePath(path))
+        model.files = nil
+        model.showing = nil
     }
 
     /** iOS apps don't quit: leaving disconnects, until the app's opened again. */

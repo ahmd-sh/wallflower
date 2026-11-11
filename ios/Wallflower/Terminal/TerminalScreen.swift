@@ -1,3 +1,5 @@
+import MarkdownKit
+import MobileViewUI
 import ReadModel
 import ScreenReading
 import SessionCore
@@ -73,7 +75,8 @@ struct TerminalScreen: View {
                 onRetry: { session.retry() },
                 onSessions: { session.detach() },
                 onSettings: onSettings,
-                onExit: onExit
+                onExit: onExit,
+                onFiles: session.canFiles ? { model.files = FilesAt(start: pane.map(\.path).flatMap(\.nilIfEmpty) ?? "~", pane: pane?.id) } : nil
             )
             if saysDown && state != nil {
                 Reconnecting(status: status, machine: host.called, onRetry: { session.retry() })
@@ -108,7 +111,11 @@ struct TerminalScreen: View {
                             if let pane { session.split(pane) }
                             withAnimation(Motion.spatial) { overview = false }
                         },
-                        onClose: { close(window, $0) }
+                        onClose: { close(window, $0) },
+                        onFiles: session.canFiles ? { p in
+                            withAnimation(Motion.spatial) { overview = false }
+                            model.files = FilesAt(start: p.path.nilIfEmpty ?? "~", pane: p.id)
+                        } : nil
                     )
                     .transition(.scale(scale: 1.08).combined(with: .opacity))
                     .zIndex(2)
@@ -134,6 +141,7 @@ struct TerminalScreen: View {
             .frame(maxHeight: .infinity)
             if let pane, let actions {
                 composer(pane: pane, actions: actions, mobile: mobile, activity: activity, bar: bar, connected: status == .connected)
+                    .environment(\.viewing, viewing(pane))
             }
         }
         .background(palette.bg0.ignoresSafeArea())
@@ -294,6 +302,15 @@ struct TerminalScreen: View {
             },
             onPrompt: { seeker.handled() },
             tab: tab
+        )
+        .environment(\.viewing, p.map(viewing) ?? Viewing())
+    }
+
+    /** What a pane's pictures, and the files it mentions (from where it is), open in: the viewer, its path going into the pane's draft. */
+    private func viewing(_ p: Pane) -> Viewing {
+        Viewing(
+            picture: { id, mime in model.showing = Showing(viewed: .picture(pane: p.id, id: id, mime: mime), pane: nil) },
+            path: session.canFiles ? { path in model.showing = Showing(viewed: .file(path: ImagePaths.resolve(path, in: p.path)), pane: p.id) } : nil
         )
     }
 

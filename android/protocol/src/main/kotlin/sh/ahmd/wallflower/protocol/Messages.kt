@@ -126,6 +126,30 @@ data class Picture(val pane: String, val id: String) : ClientMessage
 @SerialName("upload")
 data class Upload(val id: String, val name: String, val size: Long) : ClientMessage
 
+/** Asks for a directory's entries, which come in a [Listing] with the same [id]: [path] is absolute, or starts with ~ for the home; empty is the home. */
+@Serializable
+@SerialName("list")
+data class ListDir(val id: String, val path: String) : ClientMessage
+
+/**
+ * Asks for a file's bytes: a [FetchedFile] with the same [id] says how many,
+ * then they follow in file frames with it. [limit] sends no more than that
+ * many, from the start. [path] as for [ListDir].
+ */
+@Serializable
+@SerialName("fetch")
+data class Fetch(val id: String, val path: String, val limit: Long? = null) : ClientMessage
+
+/** How many of fetch [id]'s bytes have arrived, said as they do: the gateway sends only so far ahead of it. */
+@Serializable
+@SerialName("got")
+data class Got(val id: String, val size: Long) : ClientMessage
+
+/** Stops a fetch partway; frames already on their way still come. */
+@Serializable
+@SerialName("cancel")
+data class Cancel(val id: String) : ClientMessage
+
 @Serializable
 @SerialName("ping")
 data class Ping(val id: Int) : ClientMessage
@@ -178,7 +202,14 @@ data class ServerHello(
     val machine: String? = null,
     /** The phone halves of plugins the user gave the gateway, as data. */
     val programs: List<ProgramData> = emptyList(),
-) : ServerMessage
+    /** What this gateway does beyond what every one of its version does ([FILES]). */
+    val can: List<String> = emptyList(),
+) : ServerMessage {
+    companion object {
+        /** It lists directories ([ListDir]) and sends files ([Fetch]). */
+        const val FILES = "files"
+    }
+}
 
 /** A plugin's phone half as data: its key bar, the commands the composer offers, its shortcuts, what starts a new line and empties one. */
 @Serializable
@@ -362,3 +393,44 @@ data class MuxSessions(
 
 @Serializable
 data class SessionInfo(val id: String, val name: String, val windows: Int = 0)
+
+/** A directory's entries, as [ListDir] asked: [path] is where it is, absolute and clean; [more]: it has more than were sent. [error] says why it couldn't be read. */
+@Serializable
+@SerialName("listing")
+data class Listing(
+    val id: String,
+    val path: String,
+    val entries: List<FileEntry> = emptyList(),
+    val more: Boolean = false,
+    val error: String? = null,
+) : ServerMessage
+
+/**
+ * One of a directory's entries: its [kind] is what it is, or, for a symbolic
+ * [link], what it leads to. [size] is a file's, in bytes; [mtime] when it
+ * last changed, in Unix milliseconds. [hidden]: a name starting with a dot,
+ * or one the Mac hides (~/Library).
+ */
+@Serializable
+data class FileEntry(
+    val name: String,
+    val kind: String,
+    val link: Boolean = false,
+    val size: Long = 0,
+    val mtime: Long = 0,
+    val hidden: Boolean = false,
+) {
+    val dir: Boolean get() = kind == DIR
+
+    companion object {
+        const val DIR = "dir"
+        const val FILE = "file"
+        /** A device, a socket, a link to nothing. */
+        const val OTHER = "other"
+    }
+}
+
+/** Answers a [Fetch]: [size] bytes of the file at [path] follow in file frames with its [id], or [error] says why none do (or, after some, why the rest don't). */
+@Serializable
+@SerialName("file")
+data class FetchedFile(val id: String, val path: String, val size: Long = 0, val error: String? = null) : ServerMessage

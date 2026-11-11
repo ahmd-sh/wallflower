@@ -65,6 +65,8 @@ import sh.ahmd.wallflower.ui.PopupMenu
 import sh.ahmd.wallflower.ui.haptics
 import sh.ahmd.wallflower.ui.opens
 import sh.ahmd.wallflower.ui.rememberOpener
+import sh.ahmd.wallflower.ui.files.LocalViewer
+import sh.ahmd.wallflower.ui.files.Viewed
 import sh.ahmd.wallflower.ui.wordSize
 import sh.ahmd.wallflower.ui.words
 
@@ -174,13 +176,23 @@ internal fun AttachButton(
     }
 }
 
-/** A file in the draft: a photo as itself (its preview, found off the main thread), anything else by its name; × takes it out. */
+/**
+ * A file in the draft: a photo as itself (its preview, found off the main
+ * thread), anything else by its name; × takes it out. Tapped, it opens in
+ * the viewer, fetched back from the Mac, where the gateway can.
+ */
 @Composable
 private fun Attached(path: String, thumbnail: (String) -> File?, onRemove: () -> Unit) {
     val image by produceState<ImageBitmap?>(null, path) {
         value = withContext(Dispatchers.IO) { thumbnail(path)?.let { BitmapFactory.decodeFile(it.path)?.asImageBitmap() } }
     }
-    Tile(image, path.substringAfterLast('/')) { Remove(Modifier.align(Alignment.TopEnd), onRemove) }
+    val viewer = LocalViewer.current?.takeIf { it.canFetch }
+    val haptics = haptics()
+    val open = Modifier.clickable(enabled = viewer != null) {
+        haptics.tick()
+        viewer?.open(Viewed.OnMac(path, placeholder = thumbnail(path)))
+    }
+    Tile(image, path.substringAfterLast('/'), open) { Remove(Modifier.align(Alignment.TopEnd), onRemove) }
 }
 
 /** A file on its way, and how far along; failed, tap to let it go (why is said beneath). */

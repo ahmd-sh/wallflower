@@ -24,11 +24,14 @@ public enum Status: Equatable, Sendable {
 
 let log = Logger(subsystem: "sh.ahmd.wallflower", category: "session")
 
-/** What arrives on a connection's own thread and can't wait for the main one: pane output, repaints, pictures. */
+/** What arrives on a connection's own thread and can't wait for the main one: pane output, repaints, pictures, fetched files. */
 protocol FastPath: AnyObject, Sendable {
     func data(_ pane: String, _ bytes: Data)
     func reset(_ m: Reset)
     func picture(_ id: String, _ bytes: Data)
+    func file(_ m: FileReply)
+    /** A fetch's next bytes; how many of it have arrived now, to say so, if it's still wanted. */
+    func file(_ id: String, _ bytes: Data) -> Int64?
 }
 
 /**
@@ -409,8 +412,12 @@ final class Sink: ConnectionSink, @unchecked Sendable {
                     fast.data(pane, b)
                 case .picture(let id, let b):
                     fast.picture(id, b)
+                case .file(let id, let b):
+                    // Said at once, on this connection: the gateway sends only so far ahead of what it's heard.
+                    if let got = fast.file(id, b) { conn?.write(FrameEncoder.message(.got(id: id, size: got))) }
                 case .message(let m):
                     if case .reset(let r) = m { fast.reset(r) }
+                    if case .file(let r) = m { fast.file(r) }
                     deliver(m)
                 case .unknown(let json, let problem):
                     if let problem { log.warning("unread message (\(problem, privacy: .public)): \(json.prefix(200), privacy: .public)") }

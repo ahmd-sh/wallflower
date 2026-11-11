@@ -41,6 +41,9 @@ class Preferences(private val prefs: SharedPreferences) {
     /** Whether a program working, or needing the user, shows in the status bar while connected (Android 16's Live Updates). */
     val statusBar = boolean(STATUS_BAR, false)
 
+    /** Whether the Mac's files show their hidden ones (dotfiles, ~/Library). */
+    val hiddenFiles = boolean(HIDDEN_FILES, false)
+
     /** Panes whose program has a mobile view show it rather than the terminal: one switch, for every pane. */
     val mobileView = boolean(MOBILE_VIEW, prefs.getBoolean(OLD_READ_VIEW, false) || prefs.getStringSet(OLD_READ_PANES, null).orEmpty().isNotEmpty())
 
@@ -65,6 +68,7 @@ class Preferences(private val prefs: SharedPreferences) {
         const val ASK_WINDOW = "confirm_close_window"
         const val STATUS_BAR = "status_bar"
         const val MOBILE_VIEW = "mobile_view"
+        const val HIDDEN_FILES = "hidden_files"
         const val OLD_READ_VIEW = "read_view"
         const val OLD_READ_PANES = "conversation_panes"
         const val OLD_OFFERED = "conversations_offered"

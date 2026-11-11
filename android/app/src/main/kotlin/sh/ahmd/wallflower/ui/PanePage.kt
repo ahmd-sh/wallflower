@@ -11,10 +11,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.runtime.CompositionLocalProvider
+import sh.ahmd.wallflower.markdown.ImagePaths
 import sh.ahmd.wallflower.program.Asked
 import sh.ahmd.wallflower.program.Aside
 import sh.ahmd.wallflower.program.Mode
 import sh.ahmd.wallflower.program.Recall
+import sh.ahmd.wallflower.ui.files.LocalViewer
+import sh.ahmd.wallflower.ui.files.Viewed
 import sh.ahmd.wallflower.read.Entry
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.activityOf
@@ -83,9 +87,13 @@ internal fun PanePage(
     )
     val shown = rememberLast(reading) ?: Reading()
     if (actions == null) return@Box
+    // Pictures the program mentions by their paths open in the viewer, found from where the pane is.
+    val viewer = LocalViewer.current
+    val pane = actions.pane
+    val paths = if (viewer?.canFetch == true) { path: String -> viewer.open(Viewed.OnMac(ImagePaths.resolve(path, pane.path)), pane.id) } else null
     AnimatedVisibility(reading != null, enter = fadeIn(Motion.effect()), exit = fadeOut(Motion.effect())) {
         val compact = actions.compact
-        MobileView(
+        CompositionLocalProvider(LocalPicturePaths provides paths) { MobileView(
             shown,
             activity = activityOf(actions.pane),
             since = actions.pane.since,
@@ -114,7 +122,7 @@ internal fun PanePage(
             onEdit = if (current && prompt == null && !seeking) ({ e -> actions.recall(e, shown, line())?.let { onRecalled(e, it is Recall.Command) } }) else null,
             title = shown.title?.takeIf { it != tab },
             live = current,
-        )
+        ) }
     }
 }
 

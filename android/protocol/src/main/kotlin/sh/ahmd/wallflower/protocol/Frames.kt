@@ -15,6 +15,7 @@ const val FRAME_JSON: Int = 1
 const val FRAME_DATA: Int = 2
 const val FRAME_UPLOAD: Int = 3
 const val FRAME_PICTURE: Int = 4
+const val FRAME_FILE: Int = 5
 
 /** Bounds a frame's length field, so a corrupt stream can't make a reader allocate without limit. */
 const val MAX_FRAME = 16 shl 20
@@ -32,6 +33,9 @@ sealed interface Frame {
 
     /** A picture entry's bytes, as for [Data]; none if they're gone. */
     class Picture(val id: String, val bytes: ByteArray, val offset: Int, val length: Int) : Frame
+
+    /** The next of fetch [id]'s bytes, as for [Data]. */
+    class File(val id: String, val bytes: ByteArray, val offset: Int, val length: Int) : Frame
 }
 
 class FrameReader(input: InputStream) {
@@ -54,6 +58,7 @@ class FrameReader(input: InputStream) {
                 FRAME_JSON -> return decodeMessage(payload.decodeToString())
                 FRAME_DATA -> return id(payload) { id, at -> Frame.Data(id, payload, at, payload.size - at) }
                 FRAME_PICTURE -> return id(payload) { id, at -> Frame.Picture(id, payload, at, payload.size - at) }
+                FRAME_FILE -> return id(payload) { id, at -> Frame.File(id, payload, at, payload.size - at) }
             }
         }
     }

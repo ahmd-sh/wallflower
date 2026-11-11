@@ -54,6 +54,7 @@ public struct MobileView: View {
 
     @Environment(\.palette) private var palette
     @Environment(\.haptics) private var haptics
+    @Environment(\.viewing) private var viewing
     @State private var unread = false
     @State private var stopping = false
     @State private var feel = Fold()
@@ -175,6 +176,7 @@ public struct MobileView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.bg0)
         .environment(\.mobileViewLive, live)
+        .environment(\.openURL, viewing.opener)
         .gesture(Swipe(onDrag: onSwipe, onEnd: onSwipeEnd))
         .task(id: Unread(activity: activity, asking: asking != nil, asked: asked != nil)) {
             unread = false
@@ -647,10 +649,13 @@ private func count(_ n: Int) -> String {
     return String(format: "%.1fM", Double(n) / 1e6)
 }
 
+/** A picture, shown at about the size it was taken; tapped, it opens in the viewer, to zoom and share. */
 private struct Picture: View {
     let e: Entry.Picture
     let fetch: (String) async -> Data?
     @Environment(\.displayScale) private var scale
+    @Environment(\.viewing) private var viewing
+    @Environment(\.haptics) private var haptics
     @State private var image: UIImage?
     @State private var room: CGFloat = 0
 
@@ -676,6 +681,12 @@ private struct Picture: View {
                     .resizable()
                     .frame(width: natural.width * k, height: natural.height * k)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .contentShape(RoundedRectangle(cornerRadius: 12))
+                    .onTapGesture {
+                        guard let open = viewing.picture else { return }
+                        haptics.tick()
+                        open(e.id, e.mime)
+                    }
                     .transition(.opacity)
             }
             if e.by != .user { Spacer(minLength: 0) }

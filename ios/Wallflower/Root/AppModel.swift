@@ -38,6 +38,10 @@ final class AppModel {
     private(set) var unlockSeconds: Int?
     /** A pane to show, from a notification tapped. */
     var opening: String?
+    /** The files page, open where it was asked for. */
+    var files: FilesAt?
+    /** The viewer, open on a picture or a file. */
+    var showing: Showing?
     /** The user isn't looking at the app. */
     private(set) var away = true
     @ObservationIgnored private var latest: [String: ProgramNotification] = [:]
@@ -49,6 +53,7 @@ final class AppModel {
         unlockSeconds = key.unlockSeconds
         haptics.on = settings.haptics
         notices.onOpen = { [weak self] pane in self?.opening = pane }
+        Fetched.clear()
         ensure()
     }
 
