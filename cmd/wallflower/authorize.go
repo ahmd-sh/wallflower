@@ -35,11 +35,8 @@ func authorize(args []string) error {
 	if err != nil {
 		return err
 	}
-	exe, err := os.Executable()
+	exe, err := executable()
 	if err != nil {
-		return err
-	}
-	if exe, err = filepath.EvalSymlinks(exe); err != nil {
 		return err
 	}
 	line := authorizedLine(key, *from, exe)
@@ -55,18 +52,7 @@ func authorize(args []string) error {
 	if hasKey(string(existing), key) {
 		return fmt.Errorf("%s already has this key; remove its line to re-authorize", *file)
 	}
-	if err := os.MkdirAll(filepath.Dir(*file), 0o700); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(*file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
-		line = "\n" + line
-	}
-	if _, err := fmt.Fprintln(f, line); err != nil {
+	if err := appendLine(*file, line); err != nil {
 		return err
 	}
 	fmt.Printf("authorized %s in %s\n", fingerprint(key), *file)

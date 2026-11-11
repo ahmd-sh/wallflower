@@ -18,6 +18,8 @@ import (
 const usage = `usage: wallflower <command> [flags]
 
 commands:
+  setup      get this computer ready for your phone, then pair it
+  pair       show a code for a phone to scan, letting it in
   serve      speak the wallflower protocol on stdin/stdout (run by the phone over ssh)
   authorize  add a phone's key to authorized_keys, restricted to running serve
   devices    list the phones whose keys can connect
@@ -32,7 +34,7 @@ func main() {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
 	}
-	commands := map[string]func([]string) error{"serve": serve, "authorize": authorize, "devices": devices, "revoke": revoke, "debug": debug, "listen": listen, "watch": watch}
+	commands := map[string]func([]string) error{"setup": setup, "pair": pair, "claim": claim, "serve": serve, "authorize": authorize, "devices": devices, "revoke": revoke, "debug": debug, "listen": listen, "watch": watch}
 	run, ok := commands[os.Args[1]]
 	if !ok {
 		fmt.Fprint(os.Stderr, usage)
