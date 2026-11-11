@@ -1,0 +1,152 @@
+import XCTest
+
+/**
+ * The app walked through by touch, against `wallflower listen` on a
+ * throwaway server (WF_LISTEN, default 41778), each step's screen saved to
+ * WF_SHOTS if it's set: what the screens look like, and that the gestures
+ * (pane swipes, the arrow cluster's slide, menus) do what they should.
+ */
+final class WalkthroughTests: XCTestCase {
+    private var app: XCUIApplication!
+    private var shots: String?
+    private var step = 0
+
+    override func setUp() {
+        continueAfterFailure = true
+        let env = ProcessInfo.processInfo.environment
+        shots = env["WF_SHOTS"] ?? env["TEST_RUNNER_WF_SHOTS"]
+        app = XCUIApplication()
+        let port = env["WF_LISTEN"] ?? env["TEST_RUNNER_WF_LISTEN"] ?? "41778"
+        app.launchArguments = ["-wfDev", port, "-wfSession", "$0", "-wfScript", "tab:1", "-wfStill", "YES"]
+        addUIInterruptionMonitor(withDescription: "notifications") { alert in
+            let allow = alert.buttons["Allow"]
+            if allow.exists {
+                allow.tap()
+                return true
+            }
+            return false
+        }
+    }
+
+    private func shot(_ name: String) {
+        step += 1
+        guard let dir = shots else { return }
+        let png = XCUIScreen.main.screenshot().pngRepresentation
+        try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent(String(format: "%02d-%@.png", step, name)))
+    }
+
+    private func at(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
+        app.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+    }
+
+    private func allowNotifications() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = springboard.buttons["Allow"]
+        if allow.waitForExistence(timeout: 2) { allow.tap() }
+    }
+
+    func testWalkthrough() {
+        app.launch()
+        allowNotifications()
+        sleep(6)
+        shot("terminal")
+
+        // Tabs: held, rename and close.
+        at(0.175, 0.098).press(forDuration: 1.0)
+        sleep(1)
+        shot("tab-menu")
+        at(0.5, 0.6).tap() // away from the menu
+        sleep(1)
+
+        // The arrow cluster: pressed, it bubbles up; slid onto ↑ and let go, it sends and shuts.
+        let cluster = at(0.215, 0.92)
+        cluster.press(forDuration: 0.05)
+        sleep(1)
+        shot("cluster-open")
+        at(0.5, 0.97).tap()
+        sleep(1)
+        cluster.press(forDuration: 0.3, thenDragTo: at(0.215, 0.79))
+        sleep(1)
+        shot("cluster-slid")
+
+        // A second pane, then a swipe between them.
+        at(0.5, 0.4).tap()
+        sleep(1)
+        shot("keyboard")
+        app.swipeDown()
+        sleep(1)
+        at(0.5, 0.5).press(forDuration: 0.05, thenDragTo: at(0.05, 0.5), withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(2)
+        shot("swiped")
+
+        // The overview of panes, from the dots.
+        at(0.93, 0.145).tap()
+        sleep(2)
+        shot("overview")
+        at(0.25, 0.25).tap()
+        sleep(2)
+
+        // Claude's window: its mobile view, a fold opened.
+        at(0.58, 0.098).tap()
+        sleep(3)
+        shot("mobile")
+        let steps = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'steps'")).firstMatch
+        if steps.waitForExistence(timeout: 2) {
+            steps.tap()
+            sleep(2)
+            shot("steps-open")
+        }
+        app.swipeDown()
+        sleep(1)
+        shot("mobile-scrolled")
+
+        // The + menu.
+        at(0.085, 0.92).tap()
+        sleep(2)
+        shot("plus-menu")
+        at(0.5, 0.2).tap()
+        sleep(1)
+
+        // Away: the Live Activity in the Dynamic Island, and on the Home Screen.
+        XCUIDevice.shared.press(.home)
+        sleep(4)
+        shot("island")
+        app.activate()
+        sleep(2)
+        shot("back")
+    }
+}
+
+extension WalkthroughTests {
+    /** Claude at work, and the app left: the Live Activity in the Dynamic Island, and on the Lock Screen. */
+    func testLiveActivity() {
+        app.launchArguments = ["-wfDev", ProcessInfo.processInfo.environment["WF_LISTEN"] ?? "41778", "-wfSession", "$0", "-wfScript", "tab:2;mobile:on", "-wfStill", "YES"]
+        app.launch()
+        allowNotifications()
+        sleep(6)
+        shot("working")
+        XCUIDevice.shared.press(.home)
+        sleep(3)
+        shot("island")
+        XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
+        sleep(2)
+        XCUIDevice.shared.press(.home) // wakes it to the Lock Screen
+        sleep(2)
+        shot("lock-screen")
+    }
+}
+
+extension WalkthroughTests {
+    /** Away a while, past when iOS would otherwise freeze the app: what a program notifies still arrives, as a notification. */
+    func testNotifiedWhileAway() {
+        app.launchArguments = ["-wfDev", ProcessInfo.processInfo.environment["WF_LISTEN"] ?? "41778", "-wfSession", "$0", "-wfScript", "tab:0", "-wfStill", "YES"]
+        app.launch()
+        allowNotifications()
+        sleep(4)
+        XCUIDevice.shared.press(.home)
+        sleep(80)
+        shot("notified")
+        sleep(6)
+        shot("notified-later")
+    }
+}

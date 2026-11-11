@@ -101,15 +101,9 @@ struct TabBar: View {
 struct AgentDot: View {
     @Environment(\.palette) private var palette
     let activity: Activity
-    @State private var breath = false
 
     var body: some View {
-        Circle()
-            .fill(activity == .waiting ? palette.orange : palette.purple)
+        BreathingDot(color: activity == .waiting ? palette.orange : palette.purple, breathing: activity == .working)
             .frame(width: 6, height: 6)
-            .opacity(activity == .working && breath ? 0.35 : 1)
-            .animation(activity == .working ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true) : Motion.effect, value: breath)
-            .onAppear { breath = activity == .working }
-            .onChange(of: activity) { _, a in breath = a == .working }
     }
 }

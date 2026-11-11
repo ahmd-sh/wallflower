@@ -41,15 +41,11 @@ public final class PhoneKey: @unchecked Sendable {
     /** Makes the key, in place of any before, usable for [seconds] after an unlock. */
     public func generate(seconds: Int = AUTH_SECONDS) throws {
         delete()
-        if SecureEnclave.isAvailable {
-            var error: Unmanaged<CFError>?
-            guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .userPresence], &error) else {
-                throw error!.takeRetainedValue() as Error
-            }
-            let key = try SecureEnclave.P256.Signing.PrivateKey(accessControl: access)
+        if let key = Self.enclaveKey() {
             try save(key.dataRepresentation)
             defaults.set(true, forKey: account + ".enclave")
         } else {
+            // No enclave to make it in (the simulator), or none that will (no passcode set): kept in the keychain, signing without an unlock.
             let key = P256.Signing.PrivateKey()
             try save(key.rawRepresentation)
             defaults.set(false, forKey: account + ".enclave")
@@ -59,6 +55,16 @@ public final class PhoneKey: @unchecked Sendable {
             context = nil
             unlockedAt = nil
         }
+    }
+
+    private static func enclaveKey() -> SecureEnclave.P256.Signing.PrivateKey? {
+        #if targetEnvironment(simulator)
+        return nil
+        #else
+        guard SecureEnclave.isAvailable,
+              let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .userPresence], nil) else { return nil }
+        return try? SecureEnclave.P256.Signing.PrivateKey(accessControl: access)
+        #endif
     }
 
     /** SSH wire format: string "ecdsa-sha2-nistp256", string "nistp256", string Q. */
@@ -129,8 +135,8 @@ public final class PhoneKey: @unchecked Sendable {
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: AnyObject?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
-        return out as? Data
+        if SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data { return d }
+        return try? Data(contentsOf: file)
     }
 
     private func save(_ data: Data) throws {
@@ -138,11 +144,19 @@ public final class PhoneKey: @unchecked Sendable {
         q[kSecValueData as String] = data
         q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let status = SecItemAdd(q as CFDictionary, nil)
-        guard status == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+        if status == errSecSuccess { return }
+        // Where the keychain won't have it (an app signed without the entitlement for it, as the simulator's can be), a file only the app can read, encrypted while the phone's locked after a restart.
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
     private func delete() {
         SecItemDelete(query as CFDictionary)
+        try? FileManager.default.removeItem(at: file)
+    }
+
+    private var file: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(account + ".key")
     }
 
     static func sshStrings(_ parts: [Data]) -> Data {

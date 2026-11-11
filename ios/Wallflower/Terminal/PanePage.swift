@@ -10,6 +10,8 @@ import Wire
 @MainActor
 final class TerminalHandle {
     weak var view: TerminalView?
+    /** The keyboard was up on a pane that's no longer the one shown: the next one takes it. */
+    var handoff = false
 
     func predict(_ text: String) { view?.predict(text) }
     func scrollToBottom() { view?.scrollToBottom() }
@@ -47,6 +49,7 @@ struct TerminalHost: UIViewRepresentable {
         v.onTap = onTap
         v.onTyped = onTyped
         v.onTypingChanged = onTypingChanged
+        if v.isFirstResponder && !(typing && current) { handle.handoff = true }
         v.typingEnabled = typing && current
         if let swipe {
             v.onSwipe = { [weak swipe] dx in swipe?.drag(dx) }
@@ -55,7 +58,13 @@ struct TerminalHost: UIViewRepresentable {
             v.onSwipe = nil
             v.onSwipeEnd = nil
         }
-        if current { handle.view = v }
+        if current {
+            handle.view = v
+            if handle.handoff && typing {
+                handle.handoff = false
+                DispatchQueue.main.async { _ = v.becomeFirstResponder() }
+            }
+        }
     }
 }
 

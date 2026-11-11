@@ -44,9 +44,9 @@ final class AppModel {
     @ObservationIgnored private var watching: Task<Void, Never>?
 
     init() {
+        host = Self.launchHost() ?? Host.load()
         hasKey = key.exists
         unlockSeconds = key.unlockSeconds
-        host = Self.launchHost() ?? Host.load()
         haptics.on = settings.haptics
         notices.onOpen = { [weak self] pane in self?.opening = pane }
         ensure()
@@ -59,6 +59,18 @@ final class AppModel {
         if let i = args.firstIndex(of: "-wfDev"), i + 1 < args.count, let port = Int(args[i + 1]) {
             let session = args.firstIndex(of: "-wfSession").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
             return Host(address: "127.0.0.1", port: port, user: "dev", mux: "tmux", session: session, dev: true)
+        }
+        // Over ssh to a server of the developer's (`-wfSSH 22022 -wfUser me`), the key made if need be and left where it can be read off.
+        if let i = args.firstIndex(of: "-wfSSH"), i + 1 < args.count, let port = Int(args[i + 1]) {
+            let user = args.firstIndex(of: "-wfUser").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? "dev"
+            let key = PhoneKey()
+            var problem = ""
+            if !key.exists {
+                do { try key.generate() } catch { problem = "\(error)" }
+            }
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            try? (key.authorizedKey(comment: "wallflower@simulator") + (problem.isEmpty ? "" : "\n# " + problem) + "\n# enclave \(key.hardware) exists \(key.exists)").write(to: docs.appendingPathComponent("authorized_key"), atomically: true, encoding: .utf8)
+            return Host(address: "127.0.0.1", port: port, user: user, mux: "tmux", dev: false)
         }
         #endif
         return nil

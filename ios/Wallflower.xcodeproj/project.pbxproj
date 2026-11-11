@@ -27,6 +27,13 @@
 			remoteGlobalIDString = DF2A519F926ADFD68ADBB831;
 			remoteInfo = WallflowerWidgets;
 		};
+		5B1D83299DD1983A5F25B359 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F01C2E624E08A72BC055B46F;
+			remoteInfo = Wallflower;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -57,6 +64,7 @@
 		0E25D47E21FC1352F403BF31 /* SettingsUI */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = SettingsUI; path = Packages/SettingsUI; sourceTree = "<group>"; };
 		33D5E311F21C104B7EECB180 /* Wallflower-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Wallflower-Info.plist"; sourceTree = "<group>"; };
 		923FD51ED69E0FDC21E693BD /* Widgets-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Widgets-Info.plist"; sourceTree = "<group>"; };
+		2777EF82B12DC4D33A2DBDD7 /* WallflowerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WallflowerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -73,6 +81,11 @@
 		3AC73B1B9BE32CC7AB22405E /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Shared;
+			sourceTree = "<group>";
+		};
+		241E76ADF3F8791864B75BC6 /* WallflowerUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = WallflowerUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -94,6 +107,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F9B9A31A5DCAD6F1587E70F1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		152D566F6B80540F5E1E6186 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -110,6 +130,7 @@
 				42006AB264CF2AB66A8087C0 /* Wallflower */,
 				A5854DF06F00D92594FFFC33 /* WallflowerWidgets */,
 				3AC73B1B9BE32CC7AB22405E /* Shared */,
+				241E76ADF3F8791864B75BC6 /* WallflowerUITests */,
 				89B104369EBC5E85E7E43C6B /* Config */,
 				342340C785F061FD17F695FB /* Packages */,
 				86024CAD1E83101D97359D73 /* Products */,
@@ -121,6 +142,7 @@
 			children = (
 				4EE10481494F7874AA365F8D /* Wallflower.app */,
 				9694650F840AC4914A842D98 /* WallflowerWidgets.appex */,
+				2777EF82B12DC4D33A2DBDD7 /* WallflowerUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -210,6 +232,29 @@
 			productReference = 9694650F840AC4914A842D98 /* WallflowerWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		3A64ECAF98DFAF2BC218DB7D /* WallflowerUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F5C75889806130B7DEB14087 /* Build configuration list for PBXNativeTarget "WallflowerUITests" */;
+			buildPhases = (
+				F37F6C49426D094C8F1F737E /* Sources */,
+				F9B9A31A5DCAD6F1587E70F1 /* Frameworks */,
+				F3E8E127E4824D6D7236B06B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D9FCFF30B25896E3C54064F1 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				241E76ADF3F8791864B75BC6 /* WallflowerUITests */,
+			);
+			name = WallflowerUITests;
+			packageProductDependencies = (
+			);
+			productName = WallflowerUITests;
+			productReference = 2777EF82B12DC4D33A2DBDD7 /* WallflowerUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -225,6 +270,10 @@
 					};
 					DF2A519F926ADFD68ADBB831 = {
 						CreatedOnToolsVersion = 27.0;
+					};
+					3A64ECAF98DFAF2BC218DB7D = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = F01C2E624E08A72BC055B46F;
 					};
 				};
 			};
@@ -255,6 +304,7 @@
 			targets = (
 				F01C2E624E08A72BC055B46F /* Wallflower */,
 				DF2A519F926ADFD68ADBB831 /* WallflowerWidgets */,
+				3A64ECAF98DFAF2BC218DB7D /* WallflowerUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -268,6 +318,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		42669941DFD9F2076690B30A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F3E8E127E4824D6D7236B06B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -291,6 +348,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F37F6C49426D094C8F1F737E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -298,6 +362,11 @@
 			isa = PBXTargetDependency;
 			target = DF2A519F926ADFD68ADBB831 /* WallflowerWidgets */;
 			targetProxy = B3F5442CF85D0A2E06266A84 /* PBXContainerItemProxy */;
+		};
+		D9FCFF30B25896E3C54064F1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F01C2E624E08A72BC055B46F /* Wallflower */;
+			targetProxy = 5B1D83299DD1983A5F25B359 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -472,6 +541,36 @@
 			};
 			name = Release;
 		};
+		4C06522FED7276675D2A4409 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.ahmd.wallflower.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Wallflower;
+			};
+			name = Debug;
+		};
+		E6578739DE4C43F36722512C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = sh.ahmd.wallflower.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Wallflower;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -498,6 +597,15 @@
 			buildConfigurations = (
 				78C9A8FDE81EF2963EF240D5 /* Debug */,
 				3C49F9097FDD7AE50FF61C7D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F5C75889806130B7DEB14087 /* Build configuration list for PBXNativeTarget "WallflowerUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4C06522FED7276675D2A4409 /* Debug */,
+				E6578739DE4C43F36722512C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -98,6 +98,11 @@ struct HomeScreen: View {
         .animation(Motion.spatial, value: status.isBlocked)
         .onAppear { session.start() }
         .onChange(of: model.rehearsal.count) { _, _ in
+            if model.rehearsal.arg("trust") != nil, case .needsUser(.unknownHost(let h, let k)) = session.status {
+                model.hostKeys.trust(host: h, key: k)
+                session.retry()
+            }
+            if model.rehearsal.arg("retry") != nil { session.retry() }
             if let name = model.rehearsal.arg("open"), let m = session.sessions?.muxes.first(where: { $0.sessions.contains { $0.name == name } }), let s = m.sessions.first(where: { $0.name == name }) {
                 session.switchTo(mux: m.name, session: s.id)
             }
@@ -243,7 +248,7 @@ private struct NewSession: View {
             .frame(maxWidth: .infinity)
             .padding(14)
             .background {
-                TimelineView(.animation(paused: still)) { t in
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: still)) { t in
                     let crept = still ? 0 : Self.crept(t.date.timeIntervalSince(start))
                     GeometryReader { geo in
                         let w: CGFloat = 1.5

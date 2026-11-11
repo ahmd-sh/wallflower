@@ -777,16 +777,8 @@ private struct Running: View {
     @Environment(\.mobileViewLive) private var live
 
     var body: some View {
-        let dot = Circle().fill(palette.purple).frame(width: 6, height: 6)
-        if live {
-            dot.phaseAnimator([0.3, 1.0]) { view, alpha in
-                view.opacity(alpha)
-            } animation: { _ in
-                .timingCurve(0.4, 0, 0.2, 1, duration: 0.7)
-            }
-        } else {
-            dot
-        }
+        BreathingDot(color: palette.purple, breathing: live, low: 0.3, period: 0.7)
+            .frame(width: 6, height: 6)
     }
 }
 
@@ -903,22 +895,42 @@ private struct Working: View {
     @Environment(\.mobileViewLive) private var live
 
     var body: some View {
-        TimelineView(.animation(paused: !live)) { timeline in
-            let now = timeline.date
-            // A light passing along it.
-            let x = live ? -0.5 + 2 * now.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.6) / 1.6 : -0.5
+        // The words change once a second; the light passing along them moves on its own, without laying them out again.
+        TimelineView(.periodic(from: .now, by: 1)) { timeline in
+            let label = (doing?.lowercased() ?? "working") + (since > 0 ? " · " + duration(elapsed(since, timeline.date)) : "")
             HStack(spacing: 0) {
                 Running()
-                Text((doing?.lowercased() ?? "working") + (since > 0 ? " · " + duration(elapsed(since, now)) : ""))
+                Text(label)
                     .words(.label)
-                    .foregroundStyle(LinearGradient(
-                        colors: [palette.grey, palette.purple, palette.grey],
-                        startPoint: UnitPoint(x: x - 1.0 / 3, y: 0.5),
-                        endPoint: UnitPoint(x: x + 1.0 / 3, y: 0.5)
-                    ))
+                    .foregroundColor(palette.grey)
+                    .overlay {
+                        if live {
+                            Text(label)
+                                .words(.label)
+                                .foregroundColor(palette.purple)
+                                .mask(Sheen())
+                        }
+                    }
                     .padding(.leading, 8)
             }
             .padding(.vertical, 2)
+        }
+    }
+}
+
+/** A band of light that passes along what it masks, over and over. */
+private struct Sheen: View {
+    @State private var at: CGFloat = -0.5
+
+    var body: some View {
+        GeometryReader { g in
+            LinearGradient(colors: [.clear, .black, .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: g.size.width * 2 / 3)
+                .offset(x: at * g.size.width - g.size.width / 3)
+        }
+        .onAppear {
+            guard !UserDefaults.standard.bool(forKey: "wfStill") else { return } // still for UI tests, which wait for the app to come to rest
+            withAnimation(.linear(duration: 1.6).repeatForever(autoreverses: false)) { at = 1.5 }
         }
     }
 }
