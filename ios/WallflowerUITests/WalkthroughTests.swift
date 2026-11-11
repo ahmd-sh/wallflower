@@ -178,7 +178,10 @@ extension WalkthroughTests {
     func testFoldThenScroll() {
         app.launchArguments = ["-wfDev", ProcessInfo.processInfo.environment["WF_LISTEN"] ?? "41778", "-wfSession", "$0", "-wfScript", "tab:2;mobile:on", "-wfStill", "YES"]
         app.launch()
-        sleep(8)
+        for t in 1...4 {
+            sleep(3)
+            shot("t\(t * 3)")
+        }
         let steps = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'steps'")).firstMatch
         if steps.waitForExistence(timeout: 5) { steps.tap() }
         sleep(2)

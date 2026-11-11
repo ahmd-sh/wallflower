@@ -43,7 +43,7 @@ struct HomeScreen: View {
                     Text(statusLine(status, session: nil)).words(.label).foregroundColor(statusColor(status, palette))
                 }
                 Spacer()
-                ConnectionButton(status: status, machine: machine, address: address, session: nil, onRetry: { session.retry() }, onSessions: {}, onSettings: onSettings, onExit: onExit)
+                ConnectionButton(status: status, machine: machine, address: address, session: nil, onRetry: { session.retry() }, onSessions: nil, onSettings: onSettings, onExit: onExit)
             }
             .padding(.leading, 20)
             .padding(.top, 10)

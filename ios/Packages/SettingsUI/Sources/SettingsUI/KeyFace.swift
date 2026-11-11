@@ -187,7 +187,11 @@ struct KeyChoices: View {
             .onChanged { value in
                 guard let move, case .second(true, let drag?) = value, hypot(drag.translation.width, drag.translation.height) > 4,
                       let from = choices.firstIndex(where: { $0.id == c.id }) else { return }
-                if let to = choices.indices.first(where: { $0 != from && frames[choices[$0].id]?.contains(drag.location) == true }) {
+                // Only well inside another key: keys differ in width, so a swap can leave the finger on the edge of the one it just passed, which mustn't swap them back.
+                if let to = choices.indices.first(where: { i in
+                    guard i != from, let f = frames[choices[i].id] else { return false }
+                    return f.insetBy(dx: f.width * 0.25, dy: f.height * 0.2).contains(drag.location)
+                }) {
                     haptics.tick()
                     move(from, to)
                 }

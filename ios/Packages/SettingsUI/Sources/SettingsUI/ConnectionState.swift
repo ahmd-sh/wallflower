@@ -69,11 +69,11 @@ public struct ConnectionButton: View {
     let address: String
     let session: String?
     let onRetry: () -> Void
-    let onSessions: () -> Void
+    let onSessions: (() -> Void)?
     let onSettings: () -> Void
     let onExit: () -> Void
 
-    public init(status: Status, machine: String, address: String, session: String?, onRetry: @escaping () -> Void, onSessions: @escaping () -> Void, onSettings: @escaping () -> Void, onExit: @escaping () -> Void) {
+    public init(status: Status, machine: String, address: String, session: String?, onRetry: @escaping () -> Void, onSessions: (() -> Void)?, onSettings: @escaping () -> Void, onExit: @escaping () -> Void) {
         self.status = status
         self.machine = machine
         self.address = address
@@ -96,7 +96,7 @@ public struct ConnectionButton: View {
                 }
                 SwiftUI.Section {
                     if status.waiting { Button("retry now") { pick(onRetry) } }
-                    Button("sessions") { pick(onSessions) }
+                    if let onSessions { Button("sessions") { pick(onSessions) } }
                     Button("settings") { pick(onSettings) }
                     Button("disconnect", role: .destructive) { pick(onExit) }
                 }

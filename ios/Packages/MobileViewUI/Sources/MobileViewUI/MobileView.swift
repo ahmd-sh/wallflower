@@ -200,6 +200,9 @@ private struct Context {
 
 /** The conversation, newest at the bottom; following the newest until the user drags, and again once they've let go at it. */
 private struct Conversation: View {
+    /** How many items are laid out, the latest: all at once, as a lazy list's scroll watchers chased its corrected heights. */
+    static let laidOut = 150
+
     let items: [Item]
     let reading: Reading
     let status: Status?
@@ -256,9 +259,11 @@ private struct Conversation: View {
         }
         ScrollView {
             VStack(alignment: .leading, spacing: 14) { // not lazy: estimated heights corrected as rows come in kept the scroll position and its watchers chasing each other
-                if reading.more { Note(text: "earlier messages are in the terminal") }
-                ForEach(Array(items.enumerated()), id: \.element.key) { i, item in
-                    let newest = i == items.count - 1
+                // The latest, laid out whole; what came before is the terminal's, as what the gateway didn't send is.
+                let latest = Array(items.suffix(Self.laidOut))
+                if reading.more || items.count > latest.count { Note(text: "earlier messages are in the terminal") }
+                ForEach(Array(latest.enumerated()), id: \.element.key) { i, item in
+                    let newest = i == latest.count - 1
                     ItemView(
                         item: item,
                         picture: picture,
@@ -322,6 +327,7 @@ private struct Conversation: View {
         .overlay(alignment: .bottom) {
             if spot.away {
                 Button {
+                    following = true
                     withAnimation(Motion.spatial) { position.scrollTo(edge: .bottom) }
                 } label: {
                     Text("↓ latest")
@@ -897,7 +903,7 @@ private struct Working: View {
 
     var body: some View {
         // The words change once a second; the light passing along them moves on its own, without laying them out again.
-        TimelineView(.periodic(from: .now, by: 1)) { timeline in
+        TimelineView(.animation(minimumInterval: 1, paused: !live || since <= 0)) { timeline in
             let label = (doing?.lowercased() ?? "working") + (since > 0 ? " · " + duration(elapsed(since, timeline.date)) : "")
             HStack(spacing: 0) {
                 Running()

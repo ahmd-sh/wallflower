@@ -57,6 +57,7 @@ public struct ProfileScreen: View {
 }
 
 private struct ProfileEditor: View {
+    @Environment(\.isEnabled) private var isEnabled
     let store: KeyBarStore
     let ref: ProfileRef
     let profile: KeyProfile
@@ -129,7 +130,7 @@ private struct ProfileEditor: View {
                     WordButton("‹ earlier") { if i > 0 { move(i, i - 1) } }
                     WordButton("later ›") { if i < profile.keys.count - 1 { move(i, i + 1) } }
                     WordButton("remove") {
-                        save { $0.keys.remove(at: i) }
+                        save { if $0.keys.indices.contains(i) { $0.keys.remove(at: i) } }
                         selected = nil
                     }
                 }
@@ -227,6 +228,7 @@ private struct ProfileEditor: View {
     }
 
     private func save(_ change: (inout KeyProfile) -> Void) {
+        guard isEnabled else { return } // deleted: what shifted into its place isn't this one
         store.update { b in
             var b = b
             switch ref {
