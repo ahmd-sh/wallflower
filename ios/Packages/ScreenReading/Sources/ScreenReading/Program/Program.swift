@@ -74,6 +74,20 @@ public protocol Program: AnyObject, Sendable {
 
     /// The key bar its panes get until the user sets them one; programs with the same one share it.
     var keyBar: KeyDefaults? { get }
+
+    /// What the program shows in its input line's place that it isn't asking,
+    /// where keys are its own rather than typed (a view of its own, an answer
+    /// it gives aside); nil while there's nothing.
+    func aside(_ screen: Screen) -> Aside?
+
+    /// The mode the program says on its screen it's in; nil if it doesn't say, or it can't be seen.
+    func mode(_ screen: Screen) -> Mode?
+
+    /// What steps the program on to its next mode, if it goes round modes with a key.
+    var nextMode: [String]? { get }
+
+    /// Modes the program may have, by the names `mode` reads, in no order that means anything: which it has depends on how it's set up.
+    var modes: [String] { get }
 }
 
 extension Program {
@@ -119,6 +133,14 @@ extension Program {
     public func label(_ title: String) -> String? { nil }
 
     public var keyBar: KeyDefaults? { nil }
+
+    public func aside(_ screen: Screen) -> Aside? { nil }
+
+    public func mode(_ screen: Screen) -> Mode? { nil }
+
+    public var nextMode: [String]? { nil }
+
+    public var modes: [String] { [] }
 }
 
 /// A key bar a program ships: its `name`, its `keys` by wallflower's names
@@ -190,6 +212,168 @@ public enum Walk: Hashable, Sendable {
             self.back = back
         }
     }
+}
+
+/// What a program shows in its input line's place besides asking something, where keys are its own; `leave` puts it away.
+public enum Aside: Hashable, Sendable {
+    case view(View)
+
+    case answer(Answer)
+
+    public var leave: [String] {
+        switch self {
+        case .view(let v): v.leave
+        case .answer(let a): a.leave
+        }
+    }
+
+    /// A view of its own, as Claude's detailed transcript: what it is (`name`).
+    public struct View: Hashable, Sendable {
+        public var name: String
+        public var leave: [String]
+
+        public init(name: String, leave: [String]) {
+            self.name = name
+            self.leave = leave
+        }
+    }
+
+    /// An answer to a question asked aside, as with Claude's /btw: the
+    /// `question`, and the `rows` of its answer that show (nil while it's
+    /// being answered), wrapped at `width` and scrolled `step` rows at a time
+    /// by `up` and `down` when it's `taller` than its room.
+    public struct Answer: Hashable, Sendable {
+        public var question: String
+        public var rows: [String]?
+        public var width: Int
+        public var taller: Bool
+        public var leave: [String]
+        public var up: [String]
+        public var down: [String]
+        public var step: Int
+
+        public init(question: String, rows: [String]?, width: Int, taller: Bool, leave: [String], up: [String], down: [String], step: Int) {
+            self.question = question
+            self.rows = rows
+            self.width = width
+            self.taller = taller
+            self.leave = leave
+            self.up = up
+            self.down = down
+            self.step = step
+        }
+
+        /// What's been read of the answer: `kept`, read before (scrolled
+        /// elsewhere, or less of it written), with the rows showing now laid
+        /// over where they meet. Rows that don't meet it are another stretch,
+        /// or another answer, and stand alone.
+        public func over(_ kept: [String]) -> [String] {
+            guard let shown = rows else { return kept }
+            if kept.isEmpty || shown.isEmpty { return shown }
+            if contains(kept, shown) { return kept }
+            // A row or two alike (blanks between paragraphs) isn't enough to say they meet, unless it's all that was kept.
+            func meets(_ k: Int) -> Bool { k >= 2 || k == kept.count }
+            for k in downTo(min(kept.count, shown.count), 1) where meets(k) && Array(kept.suffix(k)) == Array(shown.prefix(k)) {
+                return kept + shown.dropFirst(k)
+            }
+            for k in downTo(min(kept.count, shown.count), 1) where meets(k) && Array(shown.suffix(k)) == Array(kept.prefix(k)) {
+                return shown + kept.dropFirst(k)
+            }
+            return shown
+        }
+
+        /// `rows` of the answer as text: each row the program wrapped (the next one's first word wouldn't fit beside it) joined to the next.
+        public func text(_ rows: [String]) -> String {
+            var out = ""
+            var previous: String?
+            for row in rows {
+                var next = row
+                if let previous {
+                    let word = row.trimmedStart().substringBefore(" ")
+                    if !previous.isEmpty && !word.isEmpty && previous.length + 1 + word.length > width {
+                        out += " "
+                        next = row.trimmedStart()
+                    } else {
+                        out += "\n"
+                    }
+                }
+                out += next
+                previous = row
+            }
+            return out.trimming("\n")
+        }
+
+        private func contains(_ all: [String], _ part: [String]) -> Bool {
+            guard part.count <= all.count else { return false }
+            return (0...(all.count - part.count)).contains { Array(all[$0..<($0 + part.count)]) == part }
+        }
+    }
+}
+
+/// A mode a program says it's in: its `name`, and the `mark` it shows with it (empty if it's not been seen).
+public struct Mode: Hashable, Sendable {
+    public var name: String
+    public var mark: String
+
+    public init(name: String, mark: String) {
+        self.name = name
+        self.mark = mark
+    }
+}
+
+/// The modes a program goes round, a `Program.nextMode` at a time, as far as
+/// they've been seen: which came after which, and how each is marked. Those
+/// the program may have (`Program.modes`) stand in for those not seen yet, in
+/// no order; one a whole round didn't come to goes, till it's seen.
+public final class Cycle {
+    private let known: [String]
+    private var after: [String: String] = [:]
+    private var marks: [(name: String, mark: String)] = []
+    private var missed: Set<String> = []
+
+    public init(known: [String]) {
+        self.known = known
+    }
+
+    /// `mode` is on screen.
+    public func saw(_ mode: Mode) {
+        if let i = marks.firstIndex(where: { $0.name == mode.name }) {
+            marks[i].mark = mode.mark
+        } else {
+            marks.append((mode.name, mode.mark))
+        }
+        missed.remove(mode.name)
+    }
+
+    /// `to` came up one step on from `from`.
+    public func stepped(from: Mode, to: Mode) {
+        saw(from)
+        saw(to)
+        after[from.name] = to.name
+    }
+
+    /// A whole round didn't come to `name`: what was seen around it is out of date.
+    public func missed(_ name: String) {
+        missed.insert(name)
+        after[name] = nil
+        after = after.filter { $0.value != name }
+    }
+
+    /// The modes from `at`, as far round as they've been seen to follow, then the rest, unordered.
+    public func from(_ at: Mode) -> [Mode] {
+        var out = [at]
+        var name = at.name
+        while let next = after[name], !out.contains(where: { $0.name == next }) {
+            out.append(Mode(name: next, mark: mark(next)))
+            name = next
+        }
+        for n in marks.map(\.name) + known where !missed.contains(n) && !out.contains(where: { $0.name == n }) {
+            out.append(Mode(name: n, mark: mark(n)))
+        }
+        return out
+    }
+
+    private func mark(_ name: String) -> String { marks.first { $0.name == name }?.mark ?? "" }
 }
 
 /// A notification as the phone shows it.

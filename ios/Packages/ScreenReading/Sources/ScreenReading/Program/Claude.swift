@@ -1,5 +1,6 @@
 /// Claude Code: its prompt box, the menus it asks with, and its own ways:
-/// vim mode, /compact, and /rewind, which takes its conversation back.
+/// vim mode, /compact, /rewind, which takes its conversation back, its
+/// permission modes, its transcript, and /btw's answers aside.
 public final class Claude: Program {
     public static let shared = Claude()
 
@@ -20,6 +21,7 @@ public final class Claude: Program {
         Command(text: "/rewind", about: "go back to an earlier message"),
         Command(text: "/clear", about: "start a new conversation"),
         Command(text: "/model", about: "switch model"),
+        Command(text: "/btw", about: "ask a side question, answered apart from the conversation"),
     ]
 
     public let keyBar: KeyDefaults? = KeyDefaults(
@@ -86,27 +88,126 @@ public final class Claude: Program {
         return nil
     }
 
-    /// What Claude asks takes its prompt box's place: with the box there, a numbered list on screen is something said (a message starting 1.), not a menu.
-    public func prompt(_ screen: Screen) -> Prompt? { line(screen) != nil ? nil : Prompt.read(screen) }
+    /// What Claude asks takes its prompt box's place: with the box there, a
+    /// numbered list on screen is something said (a message starting 1.), not
+    /// a menu; nor is one in its transcript, or in an answer aside.
+    public func prompt(_ screen: Screen) -> Prompt? { line(screen) != nil || aside(screen) != nil ? nil : Prompt.read(screen) }
 
     /// Above its prompt box while it works, Claude says what it's doing: a
     /// mark that spins, its word for it ("Compacting conversation", or one of
     /// its whims), then how long. What it's queued, and tips, can come between.
+    /// An answer aside takes the box's place, and it says so above that.
     public func status(_ screen: Screen) -> String? {
         let s = screen
-        guard let box = downTo(s.rows - 2, 1).first(where: { y in
-            (s.text(0, y) == "❯" || s.text(0, y) == "!") && s.text(1, y).isBlank && rule(s, y - 1)
-        }) else { return nil }
-        for y in downTo(box - 2, max(0, box - 12)) {
+        guard let top = box(s).map({ $0 - 1 }) ?? answered(s) else { return nil }
+        for y in downTo(top - 1, max(0, top - 11)) {
             if !Claude.spins.contains(s.text(0, y)) || !s.text(1, y).isBlank { continue }
-            var row = ""
-            for x in until(2, s.cols) where !s.isSpacer(x, y) {
-                let t = s.text(x, y)
-                row += t.isEmpty ? " " : t
-            }
-            return Claude.working.find(row)?.groupValue(1)
+            return Claude.working.find(row(s, y, from: 2))?.groupValue(1)
         }
         return nil
+    }
+
+    /// Below its prompt box Claude says which permission mode it's in, after
+    /// vim mode's -- INSERT -- while that's on: a mark (⏵⏵, ⏸), the mode's
+    /// name and "on" ("⏸ plan mode on", "⏵⏵ accept edits on"), then how to
+    /// change it. Shift+Tab steps to the next, round the modes it's set up
+    /// with (here manual, accept edits, plan, auto).
+    public func mode(_ screen: Screen) -> Mode? {
+        let s = screen
+        guard let box = box(s), let end = until(box + 1, s.rows).first(where: { rule(s, $0) }) else { return nil }
+        for y in until(end + 1, s.rows) {
+            guard let m = Claude.moded.find(row(s, y, from: 0)) else { continue }
+            return Mode(name: m.groupValue(2).removingSuffix(" mode"), mark: m.groupValue(1))
+        }
+        return nil
+    }
+
+    public let nextMode: [String]? = ["BTab"]
+
+    public let modes = ["manual", "accept edits", "plan", "auto"]
+
+    private static let moded = Pattern("^\\s*(?:-- [A-Z]+ --\\s+)?([\u{2300}-\u{23ff}]+)\\s+(\\p{L}[\\p{L} ]*?) on\\b")
+
+    /// Claude's own views in its prompt box's place, where keys are theirs:
+    /// its detailed transcript (ctrl+o), which says so below its last rule, a
+    /// faint one (or its keys there, after ?, or a search, after /); ctrl+o
+    /// leaves it from any of those. And an answer to /btw (see `answer`).
+    public func aside(_ screen: Screen) -> Aside? {
+        let s = screen
+        if box(s) != nil { return nil }
+        if let last = downTo(s.rows - 1, 0).first(where: { rule(s, $0) }) {
+            let below = until(last + 1, s.rows).map { row(s, $0, from: 0).trimmed() }.filter { !$0.isEmpty }
+            let first = below.first ?? ""
+            let faint = (0..<s.cols).filter { s.isFaint($0, last) }.count >= s.cols / 2
+            if first.startsWith("Showing detailed transcript") || below.contains(where: { $0.contains("ctrl+o toggle") }) || faint && first.startsWith("/") {
+                return .view(Aside.View(name: "transcript", leave: ["C-o"]))
+            }
+        }
+        return answer(s).map { .answer($0) }
+    }
+
+    /// /btw's answer: under a rule of ▔, the questions asked aside so far, a
+    /// row each (/btw …), the one answered below in bold; a blank row, then
+    /// the answer, indented past them (✽ Answering… while it comes), wrapped
+    /// eight columns short of the screen's edge; a blank row, and grey hints,
+    /// which say Esc closes it. Taller than the screen has room for, it takes
+    /// all but the top seven rows, and the arrows move it three rows at a time.
+    private func answer(_ s: Screen) -> Aside.Answer? {
+        guard let top = answered(s), let asked = until(top + 1, s.rows).first(where: { !row(s, $0, from: 0).isBlank }) else { return nil }
+        var questions: [Int] = []
+        for y in until(asked, s.rows) {
+            guard Claude.btw.matches(row(s, y, from: 0)) else { break }
+            questions.append(y)
+        }
+        guard let last = questions.last, let foot = downTo(s.rows - 1, 0).first(where: { !row(s, $0, from: 0).isBlank }) else { return nil }
+        let shown = questions.first { !s.isMuted(4, $0) } ?? last
+        var hint = foot
+        while hint - 1 > last && indent(row(s, hint - 1, from: 0)) == 4 && s.isMuted(4, hint - 1) { hint -= 1 }
+        if indent(row(s, hint, from: 0)) != 4 || !s.isMuted(4, hint) { return nil }
+        let rows = until(last + 2, hint - 1).map { row(s, $0, from: 0).dropping(Claude.answerIndent).trimmedEnd() }
+        let answering = rows.count == 1 && rows[0].first.map { Claude.spins.contains(String($0)) } == true && rows[0].endsWith("Answering…")
+        return Aside.Answer(
+            question: Claude.btw.matchEntire(row(s, shown, from: 0))!.groupValue(1).trimmed(),
+            rows: answering ? nil : rows,
+            width: s.cols - 8,
+            taller: top <= Claude.aboveTallest,
+            leave: ["Escape"],
+            up: ["Up"],
+            down: ["Down"],
+            step: 3
+        )
+    }
+
+    /// The ▔ rule over an answer aside, the bottom-most on screen.
+    private func answered(_ s: Screen) -> Int? {
+        downTo(s.rows - 1, 0).first { y in s.text(0, y) == "▔" && (0..<s.cols).filter { s.text($0, y) == "▔" }.count >= s.cols / 2 }
+    }
+
+    private static let btw = Pattern("^ {4}/btw(?: (.*))?$")
+
+    /// How many of the screen's rows an answer aside leaves above it at most, to the conversation.
+    private static let aboveTallest = 7
+
+    /// Where an answer aside's rows start.
+    private static let answerIndent = 6
+
+    private func indent(_ row: String) -> Int { row.length - row.trimmedStart().length }
+
+    /// The first row of Claude's prompt box, if it's on screen.
+    private func box(_ s: Screen) -> Int? {
+        downTo(s.rows - 2, 1).first { y in
+            (s.text(0, y) == "❯" || s.text(0, y) == "!") && s.text(1, y).isBlank && rule(s, y - 1)
+        }
+    }
+
+    /// Row `y`'s text from column `from`, a blank for each empty cell.
+    private func row(_ s: Screen, _ y: Int, from: Int) -> String {
+        var row = ""
+        for x in until(from, s.cols) where !s.isSpacer(x, y) {
+            let t = s.text(x, y)
+            row += t.isEmpty ? " " : t
+        }
+        return row
     }
 
     /// The marks Claude's working line spins through.
