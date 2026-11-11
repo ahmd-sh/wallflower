@@ -95,6 +95,22 @@ interface Program {
 
     /** The key bar its panes get until the user sets them one; programs with the same one share it. */
     val keyBar: KeyDefaults? get() = null
+
+    /**
+     * What the program shows in its input line's place that it isn't asking,
+     * where keys are its own rather than typed (a view of its own, an answer
+     * it gives aside); null while there's nothing.
+     */
+    fun aside(screen: Screen): Aside? = null
+
+    /** The mode the program says on its screen it's in; null if it doesn't say, or it can't be seen. */
+    fun mode(screen: Screen): Mode? = null
+
+    /** What steps the program on to its next mode, if it goes round modes with a key. */
+    val nextMode: List<String>? get() = null
+
+    /** Modes the program may have, by the names [mode] reads, in no order that means anything: which it has depends on how it's set up. */
+    val modes: List<String> get() = emptyList()
 }
 
 /**
@@ -126,6 +142,114 @@ sealed interface Walk {
 
     /** What picking one asks: whether it's [on] the message walked to, and the keys [back] to the list, its cursor where it was. */
     data class Picked(val on: Boolean, val back: List<String>) : Walk
+}
+
+/** What a program shows in its input line's place besides asking something, where keys are its own; [leave] puts it away. */
+sealed interface Aside {
+    val leave: List<String>
+
+    /** A view of its own, as Claude's detailed transcript: what it [is]. */
+    data class View(val name: String, override val leave: List<String>) : Aside
+
+    /**
+     * An answer to a question asked aside, as with Claude's /btw: the
+     * [question], and the [rows] of its answer that show (null while it's
+     * being answered), wrapped at [width] and scrolled [step] rows at a time
+     * by [up] and [down] when there are more than its room.
+     */
+    data class Answer(
+        val question: String,
+        val rows: List<String>?,
+        val width: Int,
+        override val leave: List<String>,
+        val up: List<String>,
+        val down: List<String>,
+        val step: Int,
+    ) : Aside {
+        /**
+         * What's been read of the answer: [kept], read before (scrolled
+         * elsewhere, or less of it written), with the rows showing now laid
+         * over where they meet. Rows that don't meet it are another stretch,
+         * or another answer, and stand alone.
+         */
+        fun over(kept: List<String>): List<String> {
+            val shown = rows ?: return kept
+            if (kept.isEmpty() || shown.isEmpty()) return shown
+            if (java.util.Collections.indexOfSubList(kept, shown) >= 0) return kept
+            // A row or two alike (blanks between paragraphs) isn't enough to say they meet, unless it's all that was kept.
+            fun meets(k: Int, of: Int) = k >= 2 || k == of
+            for (k in minOf(kept.size, shown.size) downTo 1) {
+                if (meets(k, kept.size) && kept.subList(kept.size - k, kept.size) == shown.subList(0, k)) return kept + shown.drop(k)
+            }
+            for (k in minOf(kept.size, shown.size) downTo 1) {
+                if (meets(k, kept.size) && shown.subList(shown.size - k, shown.size) == kept.subList(0, k)) return shown + kept.drop(k)
+            }
+            return shown
+        }
+
+        /** [rows] of the answer as text: each row the program wrapped (the next one's first word wouldn't fit beside it) joined to the next. */
+        fun text(rows: List<String>): String {
+            val out = StringBuilder()
+            var previous: String? = null
+            for (row in rows) {
+                if (previous != null) {
+                    val word = row.trimStart().substringBefore(' ')
+                    out.append(if (previous.isNotEmpty() && word.isNotEmpty() && previous.length + 1 + word.length > width) " " else "\n")
+                }
+                out.append(if (previous != null && out.endsWith(" ")) row.trimStart() else row)
+                previous = row
+            }
+            return out.toString().trim('\n')
+        }
+    }
+}
+
+/** A mode a program says it's in: its [name], and the [mark] it shows with it (empty if it's not been seen). */
+data class Mode(val name: String, val mark: String)
+
+/**
+ * The modes a program goes round, a [Program.nextMode] at a time, as far as
+ * they've been seen: which came after which, and how each is marked. Those
+ * the program may have ([Program.modes]) stand in for those not seen yet, in
+ * no order; one a whole round didn't come to goes, till it's seen.
+ */
+class Cycle(private val known: List<String>) {
+    private val after = HashMap<String, String>()
+    private val marks = LinkedHashMap<String, String>()
+    private val missed = HashSet<String>()
+
+    /** [mode] is on screen. */
+    fun saw(mode: Mode) {
+        marks[mode.name] = mode.mark
+        missed -= mode.name
+    }
+
+    /** [to] came up one step on from [from]. */
+    fun stepped(from: Mode, to: Mode) {
+        saw(from)
+        saw(to)
+        after[from.name] = to.name
+    }
+
+    /** A whole round didn't come to [name]: what was seen around it is out of date. */
+    fun missed(name: String) {
+        missed += name
+        after.remove(name)
+        after.values.removeAll { it == name }
+    }
+
+    /** The modes from [at], as far round as they've been seen to follow, then the rest, unordered. */
+    fun from(at: Mode): List<Mode> {
+        val out = mutableListOf(at)
+        var name = at.name
+        while (true) {
+            val next = after[name]?.takeIf { n -> out.none { it.name == n } } ?: break
+            out += Mode(next, marks[next].orEmpty())
+            name = next
+        }
+        for (n in marks.keys + known) if (n !in missed && out.none { it.name == n }) out += Mode(n, marks[n].orEmpty())
+        return out
+    }
 }
 
 /** A notification as the phone shows it. */

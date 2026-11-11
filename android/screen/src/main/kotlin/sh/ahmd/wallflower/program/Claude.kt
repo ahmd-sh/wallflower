@@ -6,7 +6,8 @@ import sh.ahmd.wallflower.screen.Screen
 
 /**
  * Claude Code: its prompt box, the menus it asks with, and its own ways:
- * vim mode, /compact, and /rewind, which takes its conversation back.
+ * vim mode, /compact, /rewind, which takes its conversation back, its
+ * permission modes, its transcript, and /btw's answers aside.
  */
 object Claude : Program {
     override val clearKeys = listOf("C-u") // a row at a time
@@ -24,6 +25,7 @@ object Claude : Program {
         Command("/rewind", "go back to an earlier message"),
         Command("/clear", "start a new conversation"),
         Command("/model", "switch model"),
+        Command("/btw", "ask a side question, answered apart from the conversation"),
     )
 
     override val keyBar = KeyDefaults(
@@ -91,26 +93,126 @@ object Claude : Program {
         return null
     }
 
-    /** What Claude asks takes its prompt box's place: with the box there, a numbered list on screen is something said (a message starting 1.), not a menu. */
-    override fun prompt(screen: Screen): Prompt? = if (line(screen) != null) null else Prompt.read(screen)
+    /**
+     * What Claude asks takes its prompt box's place: with the box there, a
+     * numbered list on screen is something said (a message starting 1.), not
+     * a menu; nor is one in its transcript, or in an answer aside.
+     */
+    override fun prompt(screen: Screen): Prompt? = if (line(screen) != null || aside(screen) != null) null else Prompt.read(screen)
 
     /**
      * Above its prompt box while it works, Claude says what it's doing: a
      * mark that spins, its word for it ("Compacting conversation", or one of
      * its whims), then how long. What it's queued, and tips, can come between.
+     * An answer aside takes the box's place, and it says so above that.
      */
     override fun status(screen: Screen): String? {
         val s = screen
-        val box = (s.rows - 2 downTo 1).firstOrNull { y ->
-            (s.text(0, y) == "❯" || s.text(0, y) == "!") && s.text(1, y).isBlank() && rule(s, y - 1)
-        } ?: return null
-        for (y in box - 2 downTo maxOf(0, box - 12)) {
+        val top = box(s)?.let { it - 1 } ?: answered(s) ?: return null
+        for (y in top - 1 downTo maxOf(0, top - 11)) {
             if (s.text(0, y) !in SPINS || s.text(1, y).isNotBlank()) continue
-            val row = StringBuilder()
-            for (x in 2 until s.cols) if (!s.spacer(x, y)) row.append(s.text(x, y).ifEmpty { " " })
-            return working.find(row)?.groupValues?.get(1)
+            return working.find(row(s, y, 2))?.groupValues?.get(1)
         }
         return null
+    }
+
+    /**
+     * Below its prompt box Claude says which permission mode it's in, after
+     * vim mode's -- INSERT -- while that's on: a mark (⏵⏵, ⏸), the mode's
+     * name and "on" ("⏸ plan mode on", "⏵⏵ accept edits on"), then how to
+     * change it. Shift+Tab steps to the next, round the modes it's set up
+     * with (here manual, accept edits, plan, auto).
+     */
+    override fun mode(screen: Screen): Mode? {
+        val s = screen
+        val box = box(s) ?: return null
+        val end = (box + 1 until s.rows).firstOrNull { rule(s, it) } ?: return null
+        for (y in end + 1 until s.rows) {
+            val m = moded.find(row(s, y, 0)) ?: continue
+            return Mode(m.groupValues[2].removeSuffix(" mode"), m.groupValues[1])
+        }
+        return null
+    }
+
+    override val nextMode = listOf("BTab")
+
+    override val modes = listOf("manual", "accept edits", "plan", "auto")
+
+    private val moded = Regex("^\\s*(?:-- [A-Z]+ --\\s+)?([\u2300-\u23ff]+)\\s+(\\p{L}[\\p{L} ]*?) on\\b")
+
+    /**
+     * Claude's own views in its prompt box's place, where keys are theirs:
+     * its detailed transcript (ctrl+o), which says so below its last rule, a
+     * faint one (or its keys there, after ?, or a search, after /); ctrl+o
+     * leaves it from any of those. And an answer to /btw (see [answer]).
+     */
+    override fun aside(screen: Screen): Aside? {
+        val s = screen
+        if (box(s) != null) return null
+        val last = (s.rows - 1 downTo 0).firstOrNull { rule(s, it) }
+        if (last != null) {
+            val below = (last + 1 until s.rows).map { row(s, it, 0).trim() }.filter { it.isNotEmpty() }
+            val first = below.firstOrNull().orEmpty()
+            val faint = (0 until s.cols).count { s.faint(it, last) } >= s.cols / 2
+            if (first.startsWith("Showing detailed transcript") || below.any { "ctrl+o toggle" in it } || faint && first.startsWith("/")) {
+                return Aside.View("transcript", listOf("C-o"))
+            }
+        }
+        return answer(s)
+    }
+
+    /**
+     * /btw's answer: under a rule of ▔, the questions asked aside so far, a
+     * row each (/btw …), the one answered below in bold; a blank row, then
+     * the answer, indented past them (✽ Answering… while it comes), wrapped
+     * eight columns short of the screen's edge, and moved three rows at a
+     * time by the arrows when it's taller than its room; a blank row, and
+     * grey hints, which say Esc closes it.
+     */
+    private fun answer(s: Screen): Aside.Answer? {
+        val top = answered(s) ?: return null
+        val asked = (top + 1 until s.rows).firstOrNull { row(s, it, 0).isNotBlank() } ?: return null
+        val questions = (asked until s.rows).takeWhile { y -> btw.matches(row(s, y, 0)) }
+        if (questions.isEmpty()) return null
+        val shown = questions.firstOrNull { y -> !s.muted(4, y) } ?: questions.last()
+        val foot = (s.rows - 1 downTo 0).firstOrNull { row(s, it, 0).isNotBlank() } ?: return null
+        var hint = foot
+        while (hint - 1 > questions.last() && indent(row(s, hint - 1, 0)) == 4 && s.muted(4, hint - 1)) hint--
+        if (indent(row(s, hint, 0)) != 4 || !s.muted(4, hint)) return null
+        val rows = (questions.last() + 2 until hint - 1).map { row(s, it, 0).drop(ANSWER_INDENT).trimEnd() }
+        val answering = rows.singleOrNull()?.let { it.firstOrNull()?.toString() in SPINS && it.endsWith("Answering…") } == true
+        return Aside.Answer(
+            question = btw.matchEntire(row(s, shown, 0))!!.groupValues[1].trim(),
+            rows = if (answering) null else rows,
+            width = s.cols - 8,
+            leave = listOf("Escape"),
+            up = listOf("Up"),
+            down = listOf("Down"),
+            step = 3,
+        )
+    }
+
+    /** The ▔ rule over an answer aside, the bottom-most on screen. */
+    private fun answered(s: Screen): Int? =
+        (s.rows - 1 downTo 0).firstOrNull { y -> s.text(0, y) == "▔" && (0 until s.cols).count { s.text(it, y) == "▔" } >= s.cols / 2 }
+
+    private val btw = Regex("^ {4}/btw(?: (.*))?$")
+
+    /** Where an answer aside's rows start. */
+    private const val ANSWER_INDENT = 6
+
+    private fun indent(row: String) = row.length - row.trimStart().length
+
+    /** The first row of Claude's prompt box, if it's on screen. */
+    private fun box(s: Screen): Int? = (s.rows - 2 downTo 1).firstOrNull { y ->
+        (s.text(0, y) == "❯" || s.text(0, y) == "!") && s.text(1, y).isBlank() && rule(s, y - 1)
+    }
+
+    /** Row [y]'s text from column [from], a blank for each empty cell. */
+    private fun row(s: Screen, y: Int, from: Int): String {
+        val row = StringBuilder()
+        for (x in from until s.cols) if (!s.spacer(x, y)) row.append(s.text(x, y).ifEmpty { " " })
+        return row.toString()
     }
 
     /** The marks Claude's working line spins through. */
