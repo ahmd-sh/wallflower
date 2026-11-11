@@ -1,6 +1,7 @@
 package sh.ahmd.wallflower.session
 
 import android.os.SystemClock
+import java.io.File
 import java.io.InputStream
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +24,8 @@ import sh.ahmd.wallflower.protocol.ClientMessage
 import sh.ahmd.wallflower.protocol.Detach
 import sh.ahmd.wallflower.protocol.Detached
 import sh.ahmd.wallflower.protocol.Entries
+import sh.ahmd.wallflower.protocol.FetchedFile
+import sh.ahmd.wallflower.protocol.Listing
 import sh.ahmd.wallflower.protocol.KillSession
 import sh.ahmd.wallflower.protocol.NewSession
 import sh.ahmd.wallflower.protocol.RenameSession
@@ -79,6 +82,7 @@ class Session(
     private val reads = MobileViews(link, clock, hidden)
     private val input = Input(link)
     private val transfer = Transfer(link)
+    private val files = Files(link)
 
     val status: StateFlow<Status> get() = link.status
     val state: StateFlow<State?> get() = workspace.state
@@ -147,6 +151,10 @@ class Session(
     /** The Mac's name, as the gateway last said. */
     val machine: StateFlow<String?> = _machine.asStateFlow()
 
+    private val _canFiles = MutableStateFlow(false)
+    /** The gateway shows the Mac's files ([list], [fetch]), as it last said. */
+    val canFiles: StateFlow<Boolean> = _canFiles.asStateFlow()
+
     private val _uploadDir = MutableStateFlow<String?>(null)
     /** Where the gateway saves uploads: paths under it in what's sent are uploads, pasted on their own. */
     val uploadDir: StateFlow<String?> = _uploadDir.asStateFlow()
@@ -182,6 +190,7 @@ class Session(
             when (m) {
                 is ServerHello -> {
                     _uploadDir.value = m.uploads
+                    _canFiles.value = ServerHello.FILES in m.can
                     m.machine?.let { _machine.value = it }
                     Programs.supply(m.programs.associate { it.id to it.program() })
                 }
@@ -218,6 +227,8 @@ class Session(
                 is Entries -> reads.entries(m)
                 is Pong -> input.arrived(m.id)
                 is Uploaded -> transfer.uploaded(m)
+                is Listing -> files.listing(m)
+                is FetchedFile -> files.fetched(m)
                 is Notification -> _notifications.tryEmit(m)
                 else -> Unit
             }
@@ -226,6 +237,8 @@ class Session(
         override fun data(pane: String, bytes: ByteArray, offset: Int, length: Int) = panes.write(pane, bytes, offset, length)
 
         override fun picture(id: String, bytes: ByteArray, offset: Int, length: Int) = transfer.picture(id, bytes, offset, length)
+
+        override fun file(id: String, bytes: ByteArray, offset: Int, length: Int) = files.file(id, bytes, offset, length)
 
         override fun down() = input.down()
     }
@@ -448,6 +461,13 @@ class Session(
 
     /** A picture entry of [pane]'s mobile view, its bytes asked of the gateway; null if they're gone. */
     suspend fun picture(pane: String, id: String): ByteArray? = transfer.picture(pane, id)
+
+    /** A directory on the Mac, its entries or why it couldn't be read; see [Files.list]. */
+    suspend fun list(path: String): Listing = files.list(path)
+
+    /** A file on the Mac, fetched into [to]; see [Files.fetch]. */
+    suspend fun fetch(path: String, to: File, limit: Long? = null, progress: (Long, Long) -> Unit = { _, _ -> }): FetchedFile =
+        files.fetch(path, to, limit, progress)
 
     /** See [Transfer.upload]. */
     suspend fun upload(id: String, name: String, size: Long, input: InputStream, progress: (Long) -> Unit) =

@@ -53,6 +53,11 @@ class FramesTest {
             RenameSession("tmux", "$2", "play"),
             KillSession("tmux", "$2"),
             Detach,
+            ListDir("l1", "~/dev ✓"),
+            ListDir("l2", ""),
+            Fetch("f1", "/Users/me/shot.png"),
+            Fetch("f2", "~/log.txt", limit = 65536),
+            Cancel("f1"),
         ).forEach(w::send)
         w.sendData("%1", "\u001b[<64;10;5M".encodeToByteArray())
         w.sendUpload("u1", byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0), length = 3)
@@ -68,7 +73,7 @@ class FramesTest {
         val r = FrameReader(ByteArrayInputStream(golden("server.bin")))
         fun message() = assertIs<Frame.Message>(r.next()).message
 
-        assertEquals(ServerHello(VERSION, uploads = "/Users/me/Library/Caches/wallflower/uploads", machine = "vishingstar"), message())
+        assertEquals(ServerHello(VERSION, uploads = "/Users/me/Library/Caches/wallflower/uploads", machine = "vishingstar", can = listOf(ServerHello.FILES)), message())
         assertEquals(Attached(Mux("tmux", "3.8", listOf(Mux.BINDINGS))), message())
         val state = assertIs<State>(message())
         assertEquals("o", state.name)
@@ -134,6 +139,23 @@ class FramesTest {
             ),
             message(),
         )
+        assertEquals(
+            Listing(
+                "l1", "/Users/me/dev ✓", more = true,
+                entries = listOf(
+                    FileEntry(".git", FileEntry.DIR, mtime = 1792209270006, hidden = true),
+                    FileEntry("latest", FileEntry.DIR, link = true, mtime = 1792209270007),
+                    FileEntry("notes ✓.md", FileEntry.FILE, size = 1234, mtime = 1792209270008),
+                    FileEntry("wf.sock", FileEntry.OTHER),
+                ),
+            ),
+            message(),
+        )
+        assertEquals(Listing("l2", "/Users/me/Library/Mail", error = "operation not permitted"), message())
+        assertEquals(FetchedFile("f1", "/Users/me/shot.png", 3), message())
+        val file = assertIs<Frame.File>(r.next())
+        assertEquals("f1" to listOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte()), file.id to file.bytes.copyOfRange(file.offset, file.offset + file.length).toList())
+        assertEquals(FetchedFile("f2", "/Users/me/log.txt", error = "permission denied"), message())
         assertEquals(Bye("tmux exited"), message())
         assertNull(r.next())
     }

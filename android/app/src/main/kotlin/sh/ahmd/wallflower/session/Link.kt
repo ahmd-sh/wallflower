@@ -76,6 +76,8 @@ internal class Link(
 
         fun picture(id: String, bytes: ByteArray, offset: Int, length: Int)
 
+        fun file(id: String, bytes: ByteArray, offset: Int, length: Int)
+
         /** It's gone. Under [lock]. */
         fun down()
     }
@@ -197,6 +199,7 @@ internal class Link(
                     when (val f = r.next() ?: return) {
                         is Frame.Data -> events.data(f.pane, f.bytes, f.offset, f.length)
                         is Frame.Picture -> events.picture(f.id, f.bytes, f.offset, f.length)
+                        is Frame.File -> events.file(f.id, f.bytes, f.offset, f.length)
                         is Frame.Message -> handle(l, f.message)
                         is Frame.Unknown -> f.problem?.let { android.util.Log.w("wallflower", "unread message ($it): ${f.json.take(200)}") }
                     }

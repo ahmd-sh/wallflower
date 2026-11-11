@@ -1,6 +1,7 @@
 package sh.ahmd.wallflower.session
 
 import java.io.DataInputStream
+import java.io.File
 import java.io.OutputStream
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
@@ -26,7 +27,14 @@ import org.junit.Test
 import sh.ahmd.wallflower.protocol.Bye
 import sh.ahmd.wallflower.protocol.ClientHello
 import sh.ahmd.wallflower.protocol.ClientMessage
+import sh.ahmd.wallflower.protocol.Cancel
 import sh.ahmd.wallflower.protocol.FRAME_DATA
+import sh.ahmd.wallflower.protocol.FRAME_FILE
+import sh.ahmd.wallflower.protocol.Fetch
+import sh.ahmd.wallflower.protocol.FetchedFile
+import sh.ahmd.wallflower.protocol.FileEntry
+import sh.ahmd.wallflower.protocol.ListDir
+import sh.ahmd.wallflower.protocol.Listing
 import sh.ahmd.wallflower.protocol.FRAME_JSON
 import sh.ahmd.wallflower.protocol.Mux
 import sh.ahmd.wallflower.protocol.Open
@@ -91,14 +99,17 @@ class SessionTest {
 
         fun send(m: ServerMessage) = frame(toPhone, WireJson.encodeToString(ServerMessage.serializer(), m).encodeToByteArray())
 
+        /** The next of fetch [id]'s bytes. */
+        fun sendFile(id: String, bytes: ByteArray) = frame(toPhone, byteArrayOf(id.length.toByte()) + id.encodeToByteArray() + bytes, FRAME_FILE)
+
         fun close() {
             runCatching { toPhone.close() }
             runCatching { fromPhone.close() }
         }
 
-        private fun frame(out: OutputStream, body: ByteArray) {
+        private fun frame(out: OutputStream, body: ByteArray, type: Int = FRAME_JSON) {
             val n = body.size + 1
-            out.write(byteArrayOf((n ushr 24).toByte(), (n ushr 16).toByte(), (n ushr 8).toByte(), n.toByte(), FRAME_JSON.toByte()))
+            out.write(byteArrayOf((n ushr 24).toByte(), (n ushr 16).toByte(), (n ushr 8).toByte(), n.toByte(), type.toByte()))
             out.write(body)
             out.flush()
         }
@@ -394,5 +405,61 @@ class SessionTest {
         g.send(Bye("protocol version 2 not supported"))
         val needs = eventually { session.status.first { it is Status.NeedsUser } } as Status.NeedsUser
         assertEquals("protocol version 2 not supported", (needs.blocked as Blocked.Refused).reason)
+    }
+
+    @Test
+    fun theMacsFilesAreListedAndFetched() {
+        val g = connect()
+        session.start(56, 20)
+        g.send(ServerHello(VERSION, can = listOf(ServerHello.FILES)))
+        eventually { session.canFiles.first { it } }
+
+        val listed = scope.async { session.list("~") }
+        val ask = g.message<ListDir>()
+        assertEquals("~", ask.path)
+        val listing = Listing(ask.id, "/Users/me", listOf(FileEntry("dev", FileEntry.DIR)))
+        g.send(listing)
+        assertEquals(listing, eventually { listed.await() })
+
+        val to = File.createTempFile("fetched", ".txt").also { it.delete() }
+        val heard = mutableListOf<Pair<Long, Long>>()
+        val fetched = scope.async { session.fetch("~/notes.txt", to) { got, of -> synchronized(heard) { heard += got to of } } }
+        val fetch = g.message<Fetch>()
+        assertEquals(Fetch(fetch.id, "~/notes.txt"), fetch)
+        g.send(FetchedFile(fetch.id, "/Users/me/notes.txt", 6))
+        g.sendFile(fetch.id, "abc".encodeToByteArray())
+        g.sendFile(fetch.id, "def".encodeToByteArray())
+        assertEquals("/Users/me/notes.txt", eventually { fetched.await() }.path)
+        assertEquals("abcdef", to.readText())
+        assertEquals(listOf(0L to 6L, 3L to 6L, 6L to 6L), synchronized(heard) { heard.toList() })
+        to.delete()
+    }
+
+    @Test
+    fun aFetchThatFailsOrIsCancelledLeavesNothingBehind() {
+        val g = connect()
+        session.start(56, 20)
+        g.send(ServerHello(VERSION, can = listOf(ServerHello.FILES)))
+        eventually { session.status.first { it is Status.Connected } }
+        val to = File.createTempFile("fetched", ".bin").also { it.delete() }
+
+        val refused = scope.async { runCatching { session.fetch("/etc/master.passwd", to) } }
+        g.send(FetchedFile(g.message<Fetch>().id, "/etc/master.passwd", error = "permission denied"))
+        assertEquals("permission denied", eventually { refused.await() }.exceptionOrNull()?.message)
+
+        val cancelled = scope.async { session.fetch("/big", to) }
+        val fetch = g.message<Fetch>()
+        g.send(FetchedFile(fetch.id, "/big", 10))
+        g.sendFile(fetch.id, "half".encodeToByteArray())
+        eventually { while (!to.exists()) delay(10) }
+        cancelled.cancel()
+        assertEquals(Cancel(fetch.id), g.message<Cancel>())
+        eventually { while (to.exists()) delay(10) }
+
+        val dropped = scope.async { runCatching { session.fetch("/big", to) } }
+        g.message<Fetch>()
+        g.close()
+        assertEquals("the connection dropped", eventually { dropped.await() }.exceptionOrNull()?.message)
+        assertFalse(to.exists())
     }
 }
