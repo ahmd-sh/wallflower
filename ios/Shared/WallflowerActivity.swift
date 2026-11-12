@@ -21,6 +21,18 @@ struct WallflowerActivity: ActivityAttributes {
         var done: Bool
         /** The connection's down, so this may be out of date. */
         var stale: Bool
+        /** The pane it's about, which a tap on it opens. */
+        var pane: String? = nil
+
+        /** Where a tap on it goes: the app, on [pane]. */
+        var link: URL? {
+            guard let pane else { return nil }
+            var c = URLComponents()
+            c.scheme = "wallflower"
+            c.host = "pane"
+            c.queryItems = [URLQueryItem(name: "id", value: pane)]
+            return c.url
+        }
     }
 
     /** The Mac's name. */

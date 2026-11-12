@@ -28,6 +28,7 @@ struct WallflowerLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: WallflowerActivity.self) { context in
             LockScreen(state: seen(context), machine: context.attributes.machine)
+                .widgetURL(context.state.link)
                 .activityBackgroundTint(Ink.bg)
                 .activitySystemActionForegroundColor(Ink.fg)
         } dynamicIsland: { context in
@@ -45,7 +46,7 @@ struct WallflowerLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(s.about).font(.system(.headline, design: .rounded)).foregroundColor(Ink.fg).lineLimit(1)
+                        Text(s.about).font(.system(.headline, design: .rounded)).foregroundColor(Ink.fg).lineLimit(1).privacySensitive() // hidden while locked, as on Android
                         Text(doing(s) + " · on \(context.attributes.machine)" + (s.others > 0 ? " · \(s.others) more at work" : ""))
                             .font(.system(.subheadline, design: .monospaced)).foregroundColor(Ink.grey).lineLimit(1)
                     }
@@ -64,6 +65,7 @@ struct WallflowerLiveActivity: Widget {
                 Dot(state: s)
             }
             .keylineTint(color(s))
+            .widgetURL(s.link)
         }
     }
 }
@@ -93,7 +95,7 @@ private struct LockScreen: View {
         HStack(spacing: 14) {
             Flower(size: 34)
             VStack(alignment: .leading, spacing: 3) {
-                Text(state.about).font(.system(.headline, design: .rounded)).foregroundColor(Ink.fg).lineLimit(1)
+                Text(state.about).font(.system(.headline, design: .rounded)).foregroundColor(Ink.fg).lineLimit(1).privacySensitive() // hidden while locked, as on Android
                 HStack(spacing: 6) {
                     Dot(state: state)
                     Text(doing(state)).foregroundColor(color(state)).lineLimit(1)

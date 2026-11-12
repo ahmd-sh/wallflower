@@ -50,7 +50,8 @@ final class LiveActivities {
             since: p.since > 0 ? Date(timeIntervalSince1970: Double(p.since) / 1000) : nil,
             others: others,
             done: false,
-            stale: !connected
+            stale: !connected,
+            pane: p.id
         )
         show(next, machine: machine)
     }

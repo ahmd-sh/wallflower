@@ -65,9 +65,17 @@ struct RootView: View {
             }
     }
 
-    /** A wallflower://pair link: asked about first, as anything could have opened it. */
+    /** A wallflower://pair link: asked about first, as anything could have opened it. A wallflower://pane link (the Live Activity's) shows its pane. */
     private func open(_ url: URL) {
-        guard url.scheme?.lowercased() == "wallflower", url.host?.lowercased() == "pair" else { return }
+        guard url.scheme?.lowercased() == "wallflower" else { return }
+        if url.host?.lowercased() == "pane" {
+            guard let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "id" })?.value else { return }
+            model.files = nil
+            model.showing = nil
+            model.opening = id
+            return
+        }
+        guard url.host?.lowercased() == "pair" else { return }
         model.files = nil // a cover over the session would hide the question
         model.showing = nil
         if let p = Pairing(url: url) {
