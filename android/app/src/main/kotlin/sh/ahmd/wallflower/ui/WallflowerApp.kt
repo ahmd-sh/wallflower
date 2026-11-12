@@ -8,11 +8,9 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -33,7 +31,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -47,23 +44,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
-import kotlin.math.abs
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.withTimeoutOrNull
 import sh.ahmd.wallflower.AppModel
-import sh.ahmd.wallflower.program.Mode
 import sh.ahmd.wallflower.program.Programs
-import sh.ahmd.wallflower.program.Walk
 import sh.ahmd.wallflower.protocol.Pane
 import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.read.Activity
-import sh.ahmd.wallflower.read.Entry
-import sh.ahmd.wallflower.read.Party
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.activityOf
-import sh.ahmd.wallflower.session.Blocked
 import sh.ahmd.wallflower.session.Host
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Status
@@ -75,14 +63,15 @@ import sh.ahmd.wallflower.terminal.TerminalView
 import sh.ahmd.wallflower.ui.composer.Attachments
 import sh.ahmd.wallflower.ui.composer.ArrowPad
 import sh.ahmd.wallflower.ui.composer.Composer
-import sh.ahmd.wallflower.ui.composer.Recalled
 import sh.ahmd.wallflower.ui.composer.Typing
 import sh.ahmd.wallflower.ui.files.FilesPage
 import sh.ahmd.wallflower.ui.files.ViewerHost
 import sh.ahmd.wallflower.files.forMessage
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableLongStateOf
-import sh.ahmd.wallflower.screen.Prompt
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.DisposableEffect
+import sh.ahmd.wallflower.session.reached
 
 /** Where the user is: the session's terminals, or the computer's sessions while the phone's in none ([Terminal] either way), or a page over them. */
 private sealed interface Screen {
@@ -351,90 +340,21 @@ private fun TerminalScreen(
     val held = screen.line?.text
     LaunchedEffect(pane?.id, held, mobileView) { if (mobileView && pane != null) session.takenBack(pane.id, held) }
     var nudged by remember(pane?.id) { mutableLongStateOf(0L) }
-    // A message asked back by a command (/rewind) is found in what it opens, up to where the user confirms.
-    var seeking by remember(pane?.id) { mutableStateOf<Seeking?>(null) }
-    var editing by remember(pane?.id) { mutableStateOf<String?>(null) } // the message walked to, to edit
-    LaunchedEffect(seeking) {
-        delay(if (seeking?.back == true) SEEKS_BACK_MS else SEEKS_MS) // since the last keys
-        seeking = null
-    }
-    LaunchedEffect(screen.prompt, seeking) {
-        val s = seeking ?: return@LaunchedEffect
-        val p = screen.prompt ?: return@LaunchedEffect
-        if (p == s.from) return@LaunchedEffect // what the last keys went from: they haven't shown yet
-        val list = s.list
-        when (val walk = actions?.program?.walk(p, s.said)) {
-            null -> Unit // something between
-            is Walk.Listed -> {
-                // Straight to where the conversation has it, and picked, which only asks; once back from asking about another, close by.
-                if (list != null && !s.back) return@LaunchedEffect // on the way to what a pick asks
-                val at = nearby(s.newer, walk.last).firstOrNull { it !in s.tried }
-                if (at == null) {
-                    seeking = null // the list hasn't it: the user picks
-                    return@LaunchedEffect
-                }
-                actions.keys(walk.moves(at - walk.back) + walk.pick)
-                seeking = s.copy(list = list ?: walk, tried = s.tried + at, from = p, back = false)
-            }
-            is Walk.Picked -> {
-                if (list == null || s.back) return@LaunchedEffect // not one this asked, or on the way back
-                if (walk.on) {
-                    editing = s.id
-                    seeking = null
-                    return@LaunchedEffect
-                }
-                // Not it (the list may count a message differently): back to the list, keys alone, since
-                // what comes right after Esc can be taken with it (alt and a key), and then Enter would answer this.
-                actions.keys(walk.back)
-                seeking = if (nearby(s.newer, list.last).any { it !in s.tried }) s.copy(from = p, back = true) else null
-            }
-        }
-    }
+    // A message asked back by a command (/rewind) is found in what it opens, up to where the user confirms; another pane's carries nothing over.
+    val scope = rememberCoroutineScope()
+    val seeker = remember(pane?.id) { Seeker(scope) }
+    DisposableEffect(seeker) { onDispose(seeker::reset) }
+    LaunchedEffect(screen.prompt, seeker.seeking) { seeker.prompt(screen.prompt, actions) }
+    // What a prompt did shows in the line it leaves, a moment after it goes, whoever answered it: a rewind restored at the computer, say.
+    LaunchedEffect(screen.prompt, held) { seeker.settle(screen.prompt, held, screen.line, actions) }
     // A mode picked is stepped to a key at a time, each step as far as the screen shows it went, and no further round than where it started.
     var moding by remember(pane?.id) { mutableStateOf<String?>(null) }
-    val cycle = actions?.program?.takeIf { it.nextMode != null }?.let(Cycles::of)
-    LaunchedEffect(screen.mode, cycle) { screen.mode?.let { cycle?.saw(it) } }
+    val modes = remember(screen) { ModeWalk(screen) }
+    LaunchedEffect(screen.mode, actions) { modes.saw(actions) }
     LaunchedEffect(moding) {
         val to = moding ?: return@LaunchedEffect
-        val keys = actions?.program?.nextMode
-        val from = screen.mode
-        if (keys != null && from != null && cycle != null) {
-            var at: Mode = from
-            for (i in 0 until MODE_STEPS) {
-                // Only at its line: a menu, or what's aside of it, would take the key as its own (shift+tab allows edits, in some).
-                if (at.name == to || screen.line == null || screen.aside != null) break
-                actions.keys(keys)
-                // Not moved: something's over its line, which takes the key.
-                val next = withTimeoutOrNull(MODE_STEP_MS) { snapshotFlow { screen.mode }.first { it != null && it != at } } ?: break
-                cycle.stepped(at, next)
-                at = next
-                if (at == from) {
-                    cycle.missed(to) // round, and it wasn't there
-                    break
-                }
-                if (at.name != to) haptics.repeat()
-            }
-            if (at.name == to) haptics.confirm() else haptics.reject()
-        }
+        modes.walk(to, actions, onStep = haptics::repeat)?.let { if (it) haptics.confirm() else haptics.reject() }
         moding = null
-    }
-
-    // What a prompt did shows in the line it leaves, a moment after it goes, whoever answered it: a rewind restored at the computer, say.
-    var asked by remember(pane?.id) { mutableStateOf<Prompt?>(null) }
-    var gone by remember(pane?.id) { mutableLongStateOf(0L) }
-    LaunchedEffect(screen.prompt, held) {
-        val p = screen.prompt
-        val was = asked
-        when {
-            p != null -> { asked = p; gone = 0L }
-            was == null -> Unit
-            gone == 0L -> gone = System.currentTimeMillis()
-        }
-        if (p == null && was != null && held != null && System.currentTimeMillis() - gone < SETTLES_MS) {
-            actions?.settled(was, screen.line, editing)
-            asked = null
-            editing = null
-        }
     }
 
     Column(
@@ -452,7 +372,7 @@ private fun TerminalScreen(
         CloseDialog(closing, windows)
 
         val machine = host.called
-        val address = if (host.dev) "development transport" else "${host.user}@${host.address}:${host.port}"
+        val address = host.reached
         TabBar(
             windows = windows,
             selected = window?.id,
@@ -472,48 +392,10 @@ private fun TerminalScreen(
         )
 
         // Down a moment, as across a network change, it isn't worth saying; down longer, what was shown dims beneath how it's coming back.
-        val down = status == Status.Connecting || status is Status.Disconnected
-        var saysDown by remember { mutableStateOf(false) }
-        LaunchedEffect(down) {
-            if (down) delay(DOWN_UNSAID_MS)
-            saysDown = down
-        }
-        val reconnecting = saysDown && state != null
-        val lastDown = rememberLast(status.takeIf { down })
-        AnimatedVisibility(
-            reconnecting,
-            enter = fadeIn(Motion.effect()) + expandVertically(Motion.spatial()),
-            exit = fadeOut(Motion.effect()) + shrinkVertically(Motion.spatial()),
-        ) {
-            lastDown?.let { Reconnecting(it, machine, session::retry) }
-        }
+        val reconnecting = rememberSaysDown(status) && state != null
+        Reconnecting(reconnecting, status, machine, session::retry)
         val shown by animateFloatAsState(if (reconnecting) 0.45f else 1f, Motion.effect(), label = "down")
-
-        val blocked = (status as? Status.NeedsUser)?.blocked
-        // Connecting is the moment to ask for the fingerprint, so ask right away.
-        LaunchedEffect(blocked) {
-            if (blocked is Blocked.KeyLocked) unlock { ok -> if (ok) session.retry() }
-        }
-        val lastBlocked = rememberLast(blocked)
-        AnimatedVisibility(
-            blocked != null,
-            enter = fadeIn(Motion.effect()) + expandVertically(Motion.spatial()),
-            exit = fadeOut(Motion.effect()) + shrinkVertically(Motion.spatial()),
-        ) {
-            lastBlocked?.let {
-                BlockedCard(
-                    blocked = it,
-                    machine = machine,
-                    unlockSeconds = model.unlockSeconds.value,
-                    authorizeCommand = model::authorizeCommand,
-                    onUnlock = { unlock { ok -> if (ok) session.retry() } },
-                    onTrust = { k -> model.hostKeys.trust(k); session.retry() },
-                    onForget = { k -> model.hostKeys.forget(k.host); session.retry() },
-                    onRetry = session::retry,
-                    onSetup = onSettings,
-                )
-            }
-        }
+        Blocking(status, machine, model, session, unlock, onSetup = onSettings)
 
         val overview = rememberOverview()
         LaunchedEffect(window == null) {
@@ -524,7 +406,6 @@ private fun TerminalScreen(
         }
         BackHandler(enabled = overview.open) { overview.hide(into = pane?.id) }
         var view by remember { mutableStateOf<TerminalView?>(null) } // the shown pane's
-        var recalled by remember(pane?.id) { mutableStateOf<Recalled?>(null) } // the message last asked back to edit
         val typing = remember { Typing() }
         val pad = remember { ArrowPad() }
         var paneBounds by remember { mutableStateOf(Rect.Zero) }
@@ -533,36 +414,35 @@ private fun TerminalScreen(
         val settleHeight by rememberSettleHeight { areaHeight }
 
         @Composable
-        fun Page(p: Pane?, current: Boolean, swipe: Swipe?) = PanePage(
-            actions = remember(session, p, bar) { p?.let(::actionsOf) },
-            terminal = p?.let { terminals[it.id] },
-            reading = p?.takeIf { it.id in mobileViews }?.let { readings[it.id] ?: Reading() },
-            current = current,
-            swipe = swipe,
-            settleHeight = settleHeight,
-            covered = overview.covering,
-            prompt = screen.prompt,
-            line = { screen.line },
-            status = screen.status,
-            asked = screen.asked,
-            aside = screen.aside,
-            answer = screen.answer,
-            mode = screen.mode?.let { m -> cycle?.from(m)?.let { m to it } },
-            onMode = { moding = it },
-            nudged = nudged,
-            seeking = seeking != null,
-            onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
-            onView = { view = it },
-            onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
-            onPrompt = { seeking = null }, // the user's own hand on it
-            held = editing,
-            onRecalled = { e, listed ->
-                recalled = Recalled(e.text, System.nanoTime())
-                val newer = readings[p?.id]?.shown.orEmpty().dropWhile { it.id != e.id }.drop(1)
-                if (listed) seeking = Seeking(e.id, e.text, newer = newer.count { it is Entry.Said && it.by == Party.User })
-            },
-            tab = window?.label(),
-        )
+        fun Page(p: Pane?, current: Boolean, swipe: Swipe?) {
+            val here = remember(session, p, bar) { p?.let(::actionsOf) }
+            PanePage(
+                actions = here,
+                terminal = p?.let { terminals[it.id] },
+                reading = p?.takeIf { it.id in mobileViews }?.let { readings[it.id] ?: Reading() },
+                current = current,
+                swipe = swipe,
+                settleHeight = settleHeight,
+                covered = overview.covering,
+                prompt = screen.prompt,
+                line = { screen.line },
+                status = screen.status,
+                asked = screen.asked,
+                aside = screen.aside,
+                answer = screen.answer,
+                mode = screen.mode?.let { m -> modes.modes(actions).takeIf { it.isNotEmpty() }?.let { m to it } },
+                onMode = { moding = it },
+                nudged = nudged,
+                seeking = seeker.seeking != null,
+                onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
+                onView = { view = it },
+                onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
+                onPrompt = seeker::handled, // the user's own hand on it
+                held = seeker.editing,
+                onEdit = { e, reading -> here?.let { seeker.edit(e, it, reading, screen.line) } },
+                tab = window?.label(),
+            )
+        }
 
         // The panes take what the composer leaves; the cards cover both. While the
         // pane zooms it's drawn over the cards, and once they've settled, under them.
@@ -655,7 +535,7 @@ private fun TerminalScreen(
                             program = pane.command,
                             keys = pressing.only(profile.keys),
                             connected = status is Status.Connected,
-                            line = screen.line.takeIf { seeking == null }, // what's typed to ask a message back isn't the user's
+                            line = screen.line.takeIf { seeker.seeking == null }, // what's typed to ask a message back isn't the user's
                             attachments = Attachments(
                                 uploads = remember(uploads, pane.id) { uploads.filter { it.pane == pane.id } },
                                 dir = uploadDir,
@@ -678,7 +558,7 @@ private fun TerminalScreen(
                             returnKeys = actions.returnKeys,
                             commands = actions.program.commands,
                             onAcceptSuggestion = actions.acceptSuggestion,
-                            recalled = recalled,
+                            recalled = seeker.recalled,
                             stoppable = actions.busy,
                             working = activity?.let { it == Activity.Working } ?: actions.busy,
                             queues = activity == Activity.Working && actions.program.queues,
@@ -772,46 +652,3 @@ private fun TerminalScreen(
         }
     }
 }
-
-/** How many steps a mode picked is gone round to at most, and how long each may take to show. */
-private const val MODE_STEPS = 8
-private const val MODE_STEP_MS = 2_000L
-
-/** How long the connection is down before the screen says so. */
-internal const val DOWN_UNSAID_MS = 1_500L
-
-/** How long a message asked back is looked for in what its command opens, from the last keys sent. */
-private const val SEEKS_MS = 10_000L
-
-/** Or back in its list from another's confirmation: the list can't be read while Claude says the wheel sends arrows, for some seconds. */
-private const val SEEKS_BACK_MS = 20_000L
-
-/**
- * A message asked back, looked for in the list its command opens: [id] and
- * what it [said], with [newer] of the user's messages after it. The [list]
- * as it opened; the places in it picked to see what they ask, the latest
- * last ([tried]); the prompt the last keys went [from]; and whether they went
- * [back] to the list, from what picking another asked.
- */
-private data class Seeking(
-    val id: String,
-    val said: String,
-    val newer: Int,
-    val list: Walk.Listed? = null,
-    val tried: List<Int> = emptyList(),
-    val from: Prompt? = null,
-    val back: Boolean = false,
-)
-
-/** Keys that move the list's cursor [by] messages back (forward, if negative). */
-private fun Walk.Listed.moves(by: Int): List<String> = List(abs(by)) { if (by > 0) up else down }.flatten()
-
-/** Where to look for a message [at] in a list going [last] back: there, then a step either side, then two, and so on, up to [NEARBY]. */
-internal fun nearby(at: Int, last: Int): List<Int> =
-    (0..NEARBY).flatMap { d -> if (d == 0) listOf(at) else listOf(at - d, at + d) }.filter { it in 0..last }
-
-/** How far from where the conversation has a message the list it's asked back from is looked through. */
-private const val NEARBY = 3
-
-/** How soon after a prompt goes the line it leaves says what answering it did. */
-private const val SETTLES_MS = 3_000L

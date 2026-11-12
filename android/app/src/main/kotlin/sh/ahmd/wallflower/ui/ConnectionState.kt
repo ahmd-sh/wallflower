@@ -1,6 +1,7 @@
 package sh.ahmd.wallflower.ui
 
 import android.os.SystemClock
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -10,6 +11,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -29,8 +34,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,9 +55,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.R
 import sh.ahmd.wallflower.session.Blocked
 import sh.ahmd.wallflower.session.HardwareKey
+import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Status
 
 // The connection, as the session's screen shows it while it isn't up.
@@ -66,6 +75,9 @@ internal fun statusColor(status: Status): Color = when (status) {
 
 /** Trying to connect this moment, rather than connected or waiting (to try again, or for the user). */
 private val Status.attempting: Boolean get() = this == Status.Connecting || (this is Status.Disconnected && trying)
+
+/** Down: trying to connect, or waiting to try again. */
+internal val Status.down: Boolean get() = this == Status.Connecting || this is Status.Disconnected
 
 /** Waiting to try again, which a retry cuts short. */
 private val Status.waiting: Boolean get() = this is Status.Disconnected && !trying
@@ -156,7 +168,7 @@ internal fun statusLine(status: Status, session: String?): String = when (status
  * down, what might be wrong.
  */
 @Composable
-internal fun Reconnecting(status: Status, machine: String, onRetry: () -> Unit) {
+private fun ReconnectingCard(status: Status, machine: String, onRetry: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -175,6 +187,65 @@ internal fun Reconnecting(status: Status, machine: String, onRetry: () -> Unit) 
         RetryNow(status, onRetry)
     }
 }
+
+/** Whether to say the connection's down: down a moment, as across a network change, it isn't worth saying. */
+@Composable
+internal fun rememberSaysDown(status: Status): Boolean {
+    val down = status.down
+    var says by remember { mutableStateOf(false) }
+    LaunchedEffect(down) {
+        if (down) delay(DOWN_UNSAID_MS)
+        says = down
+    }
+    return says
+}
+
+/** [ReconnectingCard] while [shown], saying how it went the last time it was down as it goes. */
+@Composable
+internal fun Reconnecting(shown: Boolean, status: Status, machine: String, onRetry: () -> Unit) {
+    val last = rememberLast(status.takeIf { it.down })
+    AnimatedVisibility(shown, enter = fadeIn(Motion.effect()) + expandVertically(Motion.spatial()), exit = fadeOut(Motion.effect()) + shrinkVertically(Motion.spatial())) {
+        last?.let { ReconnectingCard(it, machine, onRetry) }
+    }
+}
+
+/**
+ * What the connection to [machine] waits on the user for, if it does, as a
+ * card that comes and goes ([BlockedCard]): a locked key is asked for at
+ * once, as connecting is the moment to ask for the fingerprint.
+ */
+@Composable
+internal fun Blocking(
+    status: Status,
+    machine: String,
+    model: AppModel,
+    session: Session,
+    unlock: (onDone: (Boolean) -> Unit) -> Unit,
+    onSetup: () -> Unit,
+) {
+    val blocked = (status as? Status.NeedsUser)?.blocked
+    val unlocked = { unlock { ok -> if (ok) session.retry() } }
+    LaunchedEffect(blocked) { if (blocked is Blocked.KeyLocked) unlocked() }
+    val last = rememberLast(blocked)
+    AnimatedVisibility(blocked != null, enter = fadeIn(Motion.effect()) + expandVertically(Motion.spatial()), exit = fadeOut(Motion.effect()) + shrinkVertically(Motion.spatial())) {
+        last?.let {
+            BlockedCard(
+                blocked = it,
+                machine = machine,
+                unlockSeconds = model.unlockSeconds.value,
+                authorizeCommand = model::authorizeCommand,
+                onUnlock = unlocked,
+                onTrust = { k -> model.hostKeys.trust(k); session.retry() },
+                onForget = { k -> model.hostKeys.forget(k.host); session.retry() },
+                onRetry = session::retry,
+                onSetup = onSetup,
+            )
+        }
+    }
+}
+
+/** How long the connection is down before the screen says so. */
+private const val DOWN_UNSAID_MS = 1_500L
 
 /**
  * What shows before there's anything of the computer's to: the flower, swaying

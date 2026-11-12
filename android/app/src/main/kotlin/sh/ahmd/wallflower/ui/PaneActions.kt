@@ -18,6 +18,21 @@ import sh.ahmd.wallflower.screen.Prompt
 import sh.ahmd.wallflower.session.Session
 
 /**
+ * A pane's program, and what's done to it on the way somewhere ([Seeker],
+ * [ModeWalk]): keys pressed, a message asked back, a prompt gone.
+ * [PaneActions]; a test's own, in tests.
+ */
+internal interface PaneHand {
+    val program: Program
+
+    fun keys(keys: List<String>, bindings: Boolean = false)
+
+    fun recall(message: Entry.Said, reading: Reading, line: InputLine?): Recall?
+
+    fun settled(prompt: Prompt, line: InputLine?, held: String? = null)
+}
+
+/**
  * What the user can do to a pane, in its program's terms: [clearKeys] empty
  * a row of its input line (the user's, or the program's), [stopKeys] stop it,
  * and where the keyboard types straight in, [sendKeys] are the send button's
@@ -26,13 +41,15 @@ import sh.ahmd.wallflower.session.Session
 internal class PaneActions(
     private val session: Session,
     val pane: Pane,
-    val program: Program,
+    override val program: Program,
     private val clearKeys: List<String>,
     private val stopKeys: List<String>,
     val sendKeys: List<String>,
     val returnKeys: List<String>,
-) {
-    fun keys(keys: List<String>, bindings: Boolean = false) = session.keys(pane.id, keys, bindings)
+) : PaneHand {
+    override fun keys(keys: List<String>, bindings: Boolean) {
+        session.keys(pane.id, keys, bindings)
+    }
 
     /** A scroll wheel's notch: its bytes for an app that tracks the mouse, else an arrow. */
     fun wheel(up: Boolean, bytes: ByteArray?) = if (bytes != null) session.bytes(pane.id, bytes) else keys(listOf(if (up) "Up" else "Down"))
@@ -61,7 +78,7 @@ internal class PaneActions(
      * if the program can: how, if it's on its way. [line]: what the line holds
      * now, which a command sent for it replaces.
      */
-    fun recall(message: Entry.Said, reading: Reading, line: InputLine?): Recall? {
+    override fun recall(message: Entry.Said, reading: Reading, line: InputLine?): Recall? {
         val latest = reading.entries.lastOrNull { it is Entry.Said && it.by == Party.User }?.id == message.id
         return when (val r = program.recall(latest, activityOf(pane) == Activity.Working)) {
             is Recall.Keys -> {
@@ -130,7 +147,7 @@ internal class PaneActions(
     fun picked(prompt: Prompt, option: Prompt.Option, held: String? = null) = affect(program.picked(prompt, option), held)
 
     /** A prompt the pane offered has gone, answered here or at the computer, leaving its input [line] as it is. */
-    fun settled(prompt: Prompt, line: InputLine?, held: String? = null) = affect(program.settled(prompt, line), held)
+    override fun settled(prompt: Prompt, line: InputLine?, held: String?) = affect(program.settled(prompt, line), held)
 
     /** What picking did; [held]: the message the user held to edit, if that's what it was for. */
     private fun affect(effect: Effect?, held: String?) {

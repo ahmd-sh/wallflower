@@ -52,6 +52,8 @@ import sh.ahmd.wallflower.prefs.Scheme
 import sh.ahmd.wallflower.program.Programs
 import sh.ahmd.wallflower.protocol.VERSION as PROTOCOL_VERSION
 import sh.ahmd.wallflower.session.Host
+import sh.ahmd.wallflower.session.called
+import sh.ahmd.wallflower.session.reached
 
 /** A profile of the key bar, by where it sits. */
 sealed interface ProfileRef {
@@ -87,7 +89,7 @@ fun SettingsScreen(
     val look by settings.look.flow.collectAsStateWithLifecycle()
     val scheme by settings.scheme.flow.collectAsStateWithLifecycle()
     Page("settings", onBack) {
-        if (host != null) PageRow(host.machine ?: "your computer", if (host.dev) "development transport" else "${host.user}@${host.address}:${host.port}", onEditHost)
+        if (host != null) PageRow(host.called, host.reached, onEditHost)
         PageRow("look", "${scheme.label} · ${if (look == Look.Terminal) "terminal" else "bricolage"} font", onLook)
         val focused = bar.refFor(program, programId)
         val now = (focused as? ProfileRef.At)?.let { bar.profiles[it.index].name } ?: bar.default.name

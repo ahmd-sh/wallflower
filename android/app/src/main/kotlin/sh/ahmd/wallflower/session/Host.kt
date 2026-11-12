@@ -50,3 +50,6 @@ data class Host(
 
 /** What to call the computer: its name, once its gateway has said it. */
 val Host?.called: String get() = this?.machine ?: "your computer"
+
+/** How the computer's reached, as it's shown: user@address:port, or the development transport. */
+val Host.reached: String get() = if (dev) "development transport" else "$user@$address:$port"
