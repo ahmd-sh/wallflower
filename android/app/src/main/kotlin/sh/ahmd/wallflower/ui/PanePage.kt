@@ -20,6 +20,7 @@ import sh.ahmd.wallflower.program.Mode
 import sh.ahmd.wallflower.program.Recall
 import sh.ahmd.wallflower.ui.files.LocalViewer
 import sh.ahmd.wallflower.ui.files.Viewed
+import sh.ahmd.wallflower.ui.mobile.MobileView
 import sh.ahmd.wallflower.read.Entry
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.activityOf

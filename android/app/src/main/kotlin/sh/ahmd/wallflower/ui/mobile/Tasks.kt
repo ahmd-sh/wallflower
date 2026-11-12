@@ -1,4 +1,4 @@
-package sh.ahmd.wallflower.ui
+package sh.ahmd.wallflower.ui.mobile
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -30,6 +30,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.program.Aside
+import sh.ahmd.wallflower.ui.Palette
+import sh.ahmd.wallflower.ui.Type
+import sh.ahmd.wallflower.ui.haptics
 
 /**
  * The program's own list of its tasks, in a mobile view's place while it
