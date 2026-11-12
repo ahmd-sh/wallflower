@@ -1,11 +1,6 @@
 package sh.ahmd.wallflower.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.mutableFloatStateOf
@@ -48,15 +43,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.protocol.MuxSessions
 import sh.ahmd.wallflower.protocol.SessionInfo
-import sh.ahmd.wallflower.session.Blocked
 import sh.ahmd.wallflower.session.Host
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Status
 import sh.ahmd.wallflower.session.called
+import sh.ahmd.wallflower.session.reached
 
 /** A session in a multiplexer, as the page lists it. */
 private data class Listed(val mux: String, val info: SessionInfo)
@@ -86,7 +80,7 @@ internal fun HomeScreen(
     val left by session.left.collectAsStateWithLifecycle()
     LaunchedEffect(session) { session.start() }
     val machine = host.called
-    val address = if (host.dev) "development transport" else "${host.user}@${host.address}:${host.port}"
+    val address = host.reached
 
     var naming by remember { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf<Listed?>(null) }
@@ -132,17 +126,7 @@ internal fun HomeScreen(
         )
     }
 
-    val blocked = (status as? Status.NeedsUser)?.blocked
-    LaunchedEffect(blocked) {
-        if (blocked is Blocked.KeyLocked) unlock { ok -> if (ok) session.retry() }
-    }
-    // Down a moment, as across a network change, it isn't worth saying.
-    val down = status == Status.Connecting || status is Status.Disconnected
-    var saysDown by remember { mutableStateOf(false) }
-    LaunchedEffect(down) {
-        if (down) delay(DOWN_UNSAID_MS)
-        saysDown = down
-    }
+    val saysDown = rememberSaysDown(status)
 
     Column(Modifier.fillMaxSize().background(Palette.bg0).systemBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 10.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -152,22 +136,7 @@ internal fun HomeScreen(
             }
             ConnectionButton(status, machine, address, null, session::retry, null, onSettings, onExit, onFiles)
         }
-        val lastBlocked = rememberLast(blocked)
-        AnimatedVisibility(blocked != null, enter = fadeIn(Motion.effect()) + expandVertically(Motion.spatial()), exit = fadeOut(Motion.effect()) + shrinkVertically(Motion.spatial())) {
-            lastBlocked?.let {
-                BlockedCard(
-                    blocked = it,
-                    machine = machine,
-                    unlockSeconds = model.unlockSeconds.value,
-                    authorizeCommand = model::authorizeCommand,
-                    onUnlock = { unlock { ok -> if (ok) session.retry() } },
-                    onTrust = { k -> model.hostKeys.trust(k); session.retry() },
-                    onForget = { k -> model.hostKeys.forget(k.host); session.retry() },
-                    onRetry = session::retry,
-                    onSetup = onSettings,
-                )
-            }
-        }
+        Blocking(status, machine, model, session, unlock, onSetup = onSettings)
         val muxes = list?.muxes
         if (muxes == null) {
             Box(Modifier.weight(1f)) {
@@ -179,11 +148,9 @@ internal fun HomeScreen(
             }
             return@Column
         }
-        val lastDown = rememberLast(status.takeIf { down })
-        AnimatedVisibility(saysDown, enter = fadeIn(Motion.effect()) + expandVertically(Motion.spatial()), exit = fadeOut(Motion.effect()) + shrinkVertically(Motion.spatial())) {
-            lastDown?.let { Reconnecting(it, machine, session::retry) }
-        }
-        val shown by animateFloatAsState(if (saysDown || blocked != null) 0.45f else 1f, Motion.effect(), label = "down")
+        // Down a moment, as across a network change, it isn't worth saying; down longer, the sessions dim beneath how it's coming back, or what it waits for.
+        Reconnecting(saysDown, status, machine, session::retry)
+        val shown by animateFloatAsState(if (saysDown || status is Status.NeedsUser) 0.45f else 1f, Motion.effect(), label = "down")
         Column(
             Modifier
                 .weight(1f)

@@ -6,11 +6,9 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -44,7 +42,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.program.Programs
@@ -53,7 +50,6 @@ import sh.ahmd.wallflower.protocol.Window
 import sh.ahmd.wallflower.read.Activity
 import sh.ahmd.wallflower.read.Reading
 import sh.ahmd.wallflower.read.activityOf
-import sh.ahmd.wallflower.session.Blocked
 import sh.ahmd.wallflower.session.Host
 import sh.ahmd.wallflower.session.Session
 import sh.ahmd.wallflower.session.Status
@@ -73,6 +69,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.DisposableEffect
+import sh.ahmd.wallflower.session.reached
 
 /** Where the user is: the session's terminals, or the computer's sessions while the phone's in none ([Terminal] either way), or a page over them. */
 private sealed interface Screen {
@@ -371,7 +368,7 @@ private fun TerminalScreen(
         CloseDialog(closing, windows)
 
         val machine = host.called
-        val address = if (host.dev) "development transport" else "${host.user}@${host.address}:${host.port}"
+        val address = host.reached
         TabBar(
             windows = windows,
             selected = window?.id,
@@ -391,48 +388,10 @@ private fun TerminalScreen(
         )
 
         // Down a moment, as across a network change, it isn't worth saying; down longer, what was shown dims beneath how it's coming back.
-        val down = status == Status.Connecting || status is Status.Disconnected
-        var saysDown by remember { mutableStateOf(false) }
-        LaunchedEffect(down) {
-            if (down) delay(DOWN_UNSAID_MS)
-            saysDown = down
-        }
-        val reconnecting = saysDown && state != null
-        val lastDown = rememberLast(status.takeIf { down })
-        AnimatedVisibility(
-            reconnecting,
-            enter = fadeIn(Motion.effect()) + expandVertically(Motion.spatial()),
-            exit = fadeOut(Motion.effect()) + shrinkVertically(Motion.spatial()),
-        ) {
-            lastDown?.let { Reconnecting(it, machine, session::retry) }
-        }
+        val reconnecting = rememberSaysDown(status) && state != null
+        Reconnecting(reconnecting, status, machine, session::retry)
         val shown by animateFloatAsState(if (reconnecting) 0.45f else 1f, Motion.effect(), label = "down")
-
-        val blocked = (status as? Status.NeedsUser)?.blocked
-        // Connecting is the moment to ask for the fingerprint, so ask right away.
-        LaunchedEffect(blocked) {
-            if (blocked is Blocked.KeyLocked) unlock { ok -> if (ok) session.retry() }
-        }
-        val lastBlocked = rememberLast(blocked)
-        AnimatedVisibility(
-            blocked != null,
-            enter = fadeIn(Motion.effect()) + expandVertically(Motion.spatial()),
-            exit = fadeOut(Motion.effect()) + shrinkVertically(Motion.spatial()),
-        ) {
-            lastBlocked?.let {
-                BlockedCard(
-                    blocked = it,
-                    machine = machine,
-                    unlockSeconds = model.unlockSeconds.value,
-                    authorizeCommand = model::authorizeCommand,
-                    onUnlock = { unlock { ok -> if (ok) session.retry() } },
-                    onTrust = { k -> model.hostKeys.trust(k); session.retry() },
-                    onForget = { k -> model.hostKeys.forget(k.host); session.retry() },
-                    onRetry = session::retry,
-                    onSetup = onSettings,
-                )
-            }
-        }
+        Blocking(status, machine, model, session, unlock, onSetup = onSettings)
 
         val overview = rememberOverview()
         LaunchedEffect(window == null) {
@@ -688,6 +647,3 @@ private fun TerminalScreen(
         }
     }
 }
-
-/** How long the connection is down before the screen says so. */
-internal const val DOWN_UNSAID_MS = 1_500L
