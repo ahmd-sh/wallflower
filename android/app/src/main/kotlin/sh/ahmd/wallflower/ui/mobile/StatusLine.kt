@@ -1,10 +1,5 @@
 package sh.ahmd.wallflower.ui.mobile
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -19,11 +14,6 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -42,29 +32,13 @@ internal fun Working(since: Long, doing: String?) {
             delay(1_000 - System.currentTimeMillis() % 1_000)
         }
     }
-    val shine = if (live) {
-        rememberInfiniteTransition(label = "working").animateFloat(-0.5f, 1.5f, infiniteRepeatable(tween(1_600, easing = LinearEasing)), label = "shine")
-    } else {
-        null
-    }
-    val colors = Palette
+    val shine = sheenAt(live)
     Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Running(Modifier)
         Text(
             (doing?.lowercase() ?: "working") + (if (since > 0) " · " + duration(seconds) else ""),
             style = Type.label,
-            modifier = Modifier
-                .padding(start = 8.dp)
-                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                .drawWithContent {
-                    drawContent()
-                    // A light passing along it.
-                    val x = (shine?.value ?: -0.5f) * size.width
-                    drawRect(
-                        Brush.horizontalGradient(listOf(colors.grey, colors.purple, colors.grey), startX = x - size.width / 3, endX = x + size.width / 3),
-                        blendMode = BlendMode.SrcIn,
-                    )
-                },
+            modifier = Modifier.padding(start = 8.dp).sheen(shine, Palette.grey, Palette.purple),
         )
     }
 }

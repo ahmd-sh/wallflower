@@ -7,7 +7,9 @@ struct Working: View {
     let since: Int64
     let doing: String?
     @Environment(\.palette) private var palette
+    @Environment(\.look) private var look
     @Environment(\.mobileViewLive) private var live
+    @Environment(\.accessibilityReduceMotion) private var still
 
     var body: some View {
         // The words change once a second; the light passing along them moves on its own, without laying them out again.
@@ -19,33 +21,14 @@ struct Working: View {
                     .words(.label)
                     .foregroundColor(palette.grey)
                     .overlay {
-                        if live {
-                            Text(label)
-                                .words(.label)
-                                .foregroundColor(palette.purple)
-                                .mask(Sheen())
+                        if live && !still {
+                            Sheen { Text(label).font(look.font(.label)).foregroundColor(palette.purple) }
+                                .accessibilityHidden(true)
                         }
                     }
                     .padding(.leading, 8)
             }
             .padding(.vertical, 2)
-        }
-    }
-}
-
-/** A band of light that passes along what it masks, over and over. */
-private struct Sheen: View {
-    @State private var at: CGFloat = -0.5
-
-    var body: some View {
-        GeometryReader { g in
-            LinearGradient(colors: [.clear, .black, .clear], startPoint: .leading, endPoint: .trailing)
-                .frame(width: g.size.width * 2 / 3)
-                .offset(x: at * g.size.width - g.size.width / 3)
-        }
-        .onAppear {
-            guard !UserDefaults.standard.bool(forKey: "wfStill") else { return } // still for UI tests, which wait for the app to come to rest
-            withAnimation(.linear(duration: 1.6).repeatForever(autoreverses: false)) { at = 1.5 }
         }
     }
 }
