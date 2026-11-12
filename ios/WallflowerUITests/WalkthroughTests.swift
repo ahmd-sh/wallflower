@@ -68,12 +68,62 @@ final class WalkthroughTests: XCTestCase {
         sleep(2)
         shot("shortcuts-page")
 
-        // Back, then pressed and slid onto the first (a shell's clear), it goes and they shut.
+        // Back, then tapped open and the first (a shell's clear) tapped, it goes and they shut.
         at(0.065, 0.098).tap()
         sleep(2)
-        at(0.085, 0.92).press(forDuration: 0.3, thenDragTo: at(0.156, 0.727))
+        at(0.085, 0.92).tap()
+        sleep(1)
+        at(0.156, 0.727).tap()
         sleep(2)
-        shot("shortcut-slid")
+        shot("shortcut-tapped")
+    }
+
+    /**
+     * The arrows key: tapped, its pad comes up above it, and stays while
+     * it's typed on; dragged by its bar, it stays where it's let go; the
+     * key brings it back, then puts it away; its × puts it away too. The
+     * bar scrolls from the key without opening it. (Tab 1, `cat -v`, so
+     * what's sent shows.)
+     */
+    func testArrowPad() {
+        app.launch()
+        allowNotifications()
+        sleep(6)
+        let arrows = app.buttons["arrows, enter, backspace"]
+        XCTAssert(arrows.waitForExistence(timeout: 4))
+        arrows.tap()
+        sleep(1)
+        shot("pad-open")
+        let up = app.buttons["up"]
+        XCTAssert(up.waitForExistence(timeout: 2))
+        up.tap()
+        app.buttons["left"].tap()
+        sleep(1)
+        XCTAssert(up.exists, "the pad stays up while it's typed on")
+        let close = app.buttons["put the arrows away"]
+        let home = close.frame
+        up.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -0.33)).press(forDuration: 0.05, thenDragTo: at(0.5, 0.3), withVelocity: .slow, thenHoldForDuration: 0.3)
+        sleep(1)
+        shot("pad-moved")
+        XCTAssertLessThan(close.frame.midY, home.midY - 100, "dragged up, it stays there")
+        arrows.tap()
+        sleep(1)
+        shot("pad-back")
+        XCTAssertEqual(close.frame.midY, home.midY, accuracy: 4, "the key brings it back")
+        arrows.tap()
+        sleep(1)
+        XCTAssertFalse(up.exists, "and then puts it away")
+        arrows.tap()
+        sleep(1)
+        close.tap()
+        sleep(1)
+        XCTAssertFalse(up.exists, "its × puts it away")
+        let before = arrows.frame
+        arrows.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 0.05, thenDragTo: at(0.02, 0.92), withVelocity: .fast, thenHoldForDuration: 0.2)
+        sleep(1)
+        shot("bar-scrolled")
+        XCTAssertNotEqual(arrows.frame.minX, before.minX, "the bar scrolled")
+        XCTAssertFalse(up.exists, "without opening the pad")
     }
 
     func testWalkthrough() {

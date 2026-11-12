@@ -33,6 +33,7 @@ struct TerminalScreen: View {
     @State private var screen = PaneScreen()
     @State private var sticky = StickyKeys()
     @State private var handle = TerminalHandle()
+    @State private var pad = ArrowPad()
     @State private var position: CGFloat = 0
     @State private var saysDown = false
     @State private var renaming: MuxWindow?
@@ -47,6 +48,12 @@ struct TerminalScreen: View {
     @State private var moding: String?
 
     var body: some View {
+        screenContent
+            .overlay { ArrowPadUp(pad: pad, onKey: press) }
+            .coordinateSpace(.named(ArrowPad.space))
+    }
+
+    @ViewBuilder private var screenContent: some View {
         let place = session.place
         let state = session.state.flatMap { $0.session == place?.session ? $0 : nil } // not the last session's, on the way into another
         let windows = state?.windows ?? []
@@ -218,6 +225,12 @@ struct TerminalScreen: View {
         }
     }
 
+    /** A key from the bar, or the arrows' pad. */
+    private func press(_ key: BarKey) {
+        typed = key.keys.last != "Enter"
+        sticky.press(key)
+    }
+
     private var address: String { host.dev ? "development transport" : "\(host.user)@\(host.address):\(host.port)" }
 
     private func opening(_ place: Place?) -> String {
@@ -334,10 +347,7 @@ struct TerminalScreen: View {
                 if let line = screen.line { actions.clear(line, unseen: mobile) }
                 screen.forgetLine()
             } : nil,
-            onKey: { key in
-                typed = key.keys.last != "Enter"
-                sticky.press(key)
-            },
+            onKey: press,
             typing: !mobile,
             typingActive: typingActive,
             onHideKeyboard: { handle.hideKeyboard() },
@@ -376,6 +386,7 @@ struct TerminalScreen: View {
                 actions.stop()
             },
             onEditKeys: onEditKeys,
+            pad: pad,
             shortcuts: profile.shortcuts(for: actions.program),
             onShortcut: { key in
                 // What a menu's waiting on would take a shortcut's text as picks (a hotkey's letter), and its Enter or shift+tab as an answer.
@@ -413,6 +424,7 @@ struct TerminalScreen: View {
         if r.arg("nokeyboard") != nil { handle.hideKeyboard() }
         if r.arg("split") != nil, let pane { session.split(pane) }
         if r.arg("newtab") != nil { session.newWindow() }
+        if r.arg("arrows") != nil { pad.press(KeyBar.arrows) }
     }
 
     // MARK: Modes

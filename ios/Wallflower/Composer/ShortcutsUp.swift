@@ -2,33 +2,21 @@ import ScreenReading
 import SwiftUI
 import WallflowerDesign
 
-/** Whether the shortcuts are up, and where each is, so the finger that opened them can slide onto one ([over]) and let go to [pick] it. */
+/** Whether the shortcuts are up. */
 @Observable
 final class ShortcutsMenu {
     var open = false
-    var over: Int?
-    var places: [Int: CGRect] = [:]
-    var pick: (Int) -> Void = { _ in }
 
-    func show() {
-        places = [:]
-        withAnimation(Motion.bounce) { open = true }
-    }
+    func show() { withAnimation(Motion.bounce) { open = true } }
 
-    func close() {
-        withAnimation(Motion.effect) { open = false }
-        over = nil
-        places = [:]
-    }
+    func close() { withAnimation(Motion.effect) { open = false } }
 }
 
 /**
  * While [menu] is open, the pane's [shortcuts] over the bar, on a panel of
  * their own, then a pill to add one. Three rows of them at most: more go on
- * pages to swipe between. Slid onto from the key that opened them and let
- * go of, one goes and they shut; let go of on the key, they stay up for a
- * tap on one, till a tap anywhere else. What the one slid onto sends shows
- * above them.
+ * pages to swipe between. One tapped goes and they shut; a tap anywhere
+ * else puts them away.
  */
 struct ShortcutsUp: View {
     @Environment(\.palette) private var palette
@@ -46,13 +34,6 @@ struct ShortcutsUp: View {
         let pages = paged(widths, width: width, gap: Self.gap, rows: Self.rows)
         let rows = pages.map(\.count).max() ?? 1
         VStack(alignment: .leading, spacing: Self.gap) {
-            if let i = menu.over, i < shortcuts.count {
-                Text(KeyBar.name(of: shortcuts[i]))
-                    .words(.label)
-                    .foregroundColor(palette.grey)
-                    .lineLimit(1)
-                    .padding(.horizontal, 6)
-            }
             let height = Self.height * CGFloat(rows) + Self.gap * CGFloat(rows - 1)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
@@ -74,7 +55,6 @@ struct ShortcutsUp: View {
             .scrollPosition(id: $shown)
             .frame(height: height)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-            .onChange(of: shown) { menu.places = [:] }
             if pages.count > 1 {
                 HStack(spacing: 6) {
                     ForEach(pages.indices, id: \.self) { p in
@@ -93,14 +73,11 @@ struct ShortcutsUp: View {
             // A tap anywhere else puts them away.
             Color.black.opacity(0.001).frame(width: 4000, height: 4000).onTapGesture { menu.close() }
         )
-        .onAppear { menu.pick = pick }
-        .onChange(of: shortcuts) { menu.pick = pick }
     }
 
     /** Item [i] on page [p]: a shortcut, or after them the pill to add one. */
     @ViewBuilder
     private func item(_ i: Int, on p: Int) -> some View {
-        let lit = menu.over == i
         Group {
             if i < shortcuts.count {
                 Button { pick(i) } label: {
@@ -108,25 +85,23 @@ struct ShortcutsUp: View {
                         .lineLimit(1)
                         .padding(.horizontal, Self.side)
                         .frame(height: Self.height)
-                        .background(Capsule().fill(lit ? palette.bg3 : palette.bg2))
+                        .background(Capsule().fill(palette.bg2))
                         .contentShape(Capsule())
                 }
             } else {
                 Button { pick(i) } label: {
                     HStack(spacing: 6) {
-                        GlyphIcon(.plus, lit ? palette.fg : palette.grey, size: 14)
-                        Text(Self.add).words(.label).foregroundColor(lit ? palette.fg : palette.grey).lineLimit(1)
+                        GlyphIcon(.plus, palette.grey, size: 14)
+                        Text(Self.add).words(.label).foregroundColor(palette.grey).lineLimit(1)
                     }
                     .padding(.horizontal, Self.side)
                     .frame(height: Self.height)
-                    .background(Capsule().fill(lit ? palette.bg2 : .clear))
                     .overlay(Capsule().strokeBorder(palette.dim, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
                     .contentShape(Capsule())
                 }
             }
         }
         .buttonStyle(Pressable())
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { if menu.open && p == page { menu.places[i] = $0 } } // not while it goes
     }
 
     private func pick(_ i: Int) {

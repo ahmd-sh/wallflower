@@ -29,7 +29,9 @@ import WallflowerDesign
  *
  * The shortcuts key offers the pane's [shortcuts]: one picked goes to
  * [onShortcut], but text alone, with no Enter to send it, starts the draft
- * as a command does (or goes at its end, if it isn't one).
+ * as a command does (or goes at its end, if it isn't one). The arrows
+ * key brings up their [pad], which stays put for as long as it's up, here
+ * and for the next pane, while it's been moved or the bar has the key.
  *
  * With [typing], the keyboard types straight into the pane instead, as a
  * terminal's does: no box, no +, just the key bar and the button ([onEnter],
@@ -72,6 +74,7 @@ struct Composer: View {
     let onEnter: () -> Void
     let onStop: () -> Void
     let onEditKeys: () -> Void
+    let pad: ArrowPad
     var shortcuts: [BarKey] = []
     var onShortcut: (BarKey) -> Void = { _ in }
     var onAddShortcut: () -> Void = {}
@@ -105,7 +108,7 @@ struct Composer: View {
                     .buttonStyle(Pressable())
                     .padding(.trailing, 6)
                 }
-                KeyRow(keys: keys, armed: sticky.armed, menu: shortcutsMenu, onKey: onKey, onEdit: onEditKeys)
+                KeyRow(keys: keys, armed: sticky.armed, menu: shortcutsMenu, pad: pad, onKey: onKey, onEdit: onEditKeys)
                 SendButton(action: action, connected: connected, label: action == .run && sendKeys != ["Enter"] ? sendKeys : nil, onSend: { enter in
                     if onSend(text, enter) {
                         text = ""
@@ -132,6 +135,10 @@ struct Composer: View {
         .padding(.top, 4)
         .padding(.bottom, 8)
         .animation(Motion.spatial, value: typing)
+        .onChange(of: keys.contains { $0.cluster }, initial: true) { _, clustered in
+            // Above a key that's gone, it goes too; moved, it stays.
+            if !clustered && pad.at == nil { pad.close() }
+        }
         .task(id: sent) {
             guard sent else { return }
             try? await Task.sleep(for: .seconds(3)) // just sent, it can be stopped before the program is heard to be working
