@@ -34,7 +34,7 @@ struct TerminalScreen: View {
     @State private var sticky = StickyKeys()
     @State private var handle = TerminalHandle()
     @State private var pad = ArrowPad()
-    @State private var position: CGFloat = 0
+    @State private var position = PanePosition()
     @State private var saysDown = false
     @State private var renaming: MuxWindow?
     @State private var newName = ""
@@ -165,6 +165,10 @@ struct TerminalScreen: View {
             if status.isKeyLocked && phase == .active { model.unlock() }
         }
         .onChange(of: "\(pane?.command ?? "")|\(pane?.program ?? "")", initial: true) { _, _ in onProgram(pane?.command, pane?.program) }
+        .onChange(of: phase) { _, p in
+            // Back in the app, what's on screen has been seen, as Android has it.
+            if p == .active, let id = pane?.id, model.opening == nil { model.seen(id) }
+        }
         .onChange(of: pane?.id, initial: true) { _, id in
             if let id, phase == .active, model.opening == nil { model.seen(id) }
             typed = false
@@ -258,7 +262,7 @@ struct TerminalScreen: View {
     @ViewBuilder
     private func panes(windows: [MuxWindow], window: MuxWindow?, pane: Pane?, bar: KeyBar, mobileViews: Set<String>) -> some View {
         if let window, let pane {
-            PanePager(panes: window.panes.sorted { $0.index < $1.index }, shown: pane, onShow: { session.show(window, $0) }, onPosition: { position = $0 }, onNew: { session.split(pane) }) { p, current, swipe in
+            PanePager(panes: window.panes.sorted { $0.index < $1.index }, shown: pane, onShow: { session.show(window, $0) }, onPosition: { position.at = $0 }, onNew: { session.split(pane) }) { p, current, swipe in
                 page(p, current: current, swipe: swipe, bar: bar, mobileViews: mobileViews, tab: window.label())
             }
             .id(window.id)
@@ -277,7 +281,7 @@ struct TerminalScreen: View {
             reading: mobile ? (session.readings[p!.id] ?? Reading()) : nil,
             current: current,
             swipe: swipe,
-            covered: false,
+            covered: overview,
             prompt: current ? screen.prompt : nil,
             line: { screen.line },
             status: current ? screen.status : nil,

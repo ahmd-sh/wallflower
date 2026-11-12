@@ -51,7 +51,7 @@ struct TabBar: View {
                     .padding(.horizontal, 4)
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-                .onChange(of: selected) { _, id in
+                .onChange(of: selected, initial: true) { _, id in
                     guard let id else { return }
                     withAnimation(Motion.spatial) { proxy.scrollTo(id, anchor: .center) }
                 }

@@ -32,7 +32,7 @@ struct ViewToggle: View {
 struct PaneDots: View {
     @Environment(\.palette) private var palette
     let count: Int
-    let position: CGFloat
+    let position: PanePosition
     let action: () -> Void
 
     var body: some View {
@@ -45,7 +45,7 @@ struct PaneDots: View {
                 for i in 0..<count {
                     ctx.fill(Path(roundedRect: CGRect(x: CGFloat(i) * step, y: 0, width: dot, height: dot), cornerRadius: dot / 2), with: .color(palette.bg3))
                 }
-                var pos = position.truncatingRemainder(dividingBy: n)
+                var pos = position.at.truncatingRemainder(dividingBy: n)
                 if pos < 0 { pos += n }
                 let i = min(max(Int(floor(pos)), 0), count - 1)
                 let f = pos - floor(pos)
@@ -66,6 +66,12 @@ struct PaneDots: View {
         }
         .buttonStyle(Pressable())
         .padding(8)
-        .animation(Motion.spatial, value: position)
+        .animation(Motion.spatial, value: position.at)
     }
+}
+
+/** Where a window's panes are as they move, as an index between them: only the dots follow it, frame by frame, not the screen they're on. */
+@Observable
+final class PanePosition {
+    var at: CGFloat = 0
 }
