@@ -129,17 +129,12 @@ final class AppModel {
     private func connect(_ h: Host) {
         session?.stop()
         let transport: Transport = h.dev ? TCPTransport(host: h.address.isEmpty ? "127.0.0.1" : h.address, port: h.port == 22 ? 41777 : h.port) : SSHTransport(host: h, key: key, hostKeys: hostKeys)
-        let d = UserDefaults.standard
-        let cols = d.integer(forKey: "grid_cols")
-        let grid = cols > 0 ? (cols, max(d.integer(forKey: "grid_rows"), 10)) : (80, 24)
+        let grid = settings.grid ?? (80, 24)
         let s = Session(transport: transport, mux: h.mux, session: h.session, hidden: hidden, grid: grid)
         s.setAway(away)
         s.onBack = { [weak self] place in self?.update { $0.mux = place?.mux ?? $0.mux; $0.session = place?.session } }
         s.onMachine = { [weak self] name in self?.update { $0.machine = name } }
-        s.onSize = { cols, rows in
-            d.set(cols, forKey: "grid_cols")
-            d.set(rows, forKey: "grid_rows")
-        }
+        s.onSize = { [weak self] cols, rows in self?.settings.grid = (cols, rows) }
         s.onNotification = { [weak self] n in self?.notified(n) }
         s.onUndelivered = { [weak self] u in
             self?.drafts.restore(u.pane, u.text)

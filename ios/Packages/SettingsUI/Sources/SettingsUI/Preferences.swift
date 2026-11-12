@@ -34,6 +34,21 @@ public final class Preferences {
      */
     public var keepConnected: Bool { didSet { defaults.set(keepConnected, forKey: Key.keepConnected) } }
 
+    /** Whether the files page lists hidden files too. */
+    public var hiddenFiles: Bool { didSet { defaults.set(hiddenFiles, forKey: Key.hiddenFiles) } }
+
+    /** The terminal grid the phone last had (cols, rows), to start the next connection at; nil before it's had one. */
+    public var grid: (cols: Int, rows: Int)? {
+        get {
+            let cols = defaults.integer(forKey: Key.gridCols)
+            return cols > 0 ? (cols, max(defaults.integer(forKey: Key.gridRows), 10)) : nil
+        }
+        set {
+            defaults.set(newValue?.cols ?? 0, forKey: Key.gridCols)
+            defaults.set(newValue?.rows ?? 0, forKey: Key.gridRows)
+        }
+    }
+
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         look = defaults.string(forKey: Key.look).flatMap(Look.init(rawValue:)) ?? .grotesque
@@ -44,6 +59,7 @@ public final class Preferences {
         mobileView = defaults.object(forKey: Key.mobileView) as? Bool ?? false
         liveActivity = defaults.object(forKey: Key.liveActivity) as? Bool ?? true
         keepConnected = defaults.object(forKey: Key.keepConnected) as? Bool ?? true
+        hiddenFiles = defaults.bool(forKey: Key.hiddenFiles)
     }
 
     private enum Key {
@@ -55,6 +71,9 @@ public final class Preferences {
         static let mobileView = "mobile_view"
         static let liveActivity = "live_activity"
         static let keepConnected = "keep_connected"
+        static let hiddenFiles = "filesShowHidden"
+        static let gridCols = "grid_cols"
+        static let gridRows = "grid_rows"
     }
 }
 

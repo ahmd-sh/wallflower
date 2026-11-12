@@ -132,7 +132,7 @@ struct RootView: View {
             }
             .animation(Motion.spatial, value: page)
             .fullScreenCover(item: Binding(get: { model.files }, set: { model.files = $0 })) { at in
-                FilesPage(at: at, session: session, onAdd: at.pane.map { pane in { path in add(path, to: pane) } }, onClose: { model.files = nil })
+                FilesPage(at: at, session: session, settings: model.settings, onAdd: at.pane.map { pane in { path in add(path, to: pane) } }, onClose: { model.files = nil })
                     .environment(\.palette, palette)
                     .environment(\.look, model.settings.look)
                     .environment(\.haptics, model.haptics)
