@@ -137,15 +137,17 @@ them at once takes it all as a paste, Enter and all.
 
 `mux` in `attached` is the multiplexer the session is in: its `name`
 (`tmux`), its `version`, and `can`, what it can do beyond what every one
-does: `bindings`, keys through its own key bindings. A client offers only
+does: `bindings`, keys through its own key bindings; `super`, keys with
+super held (`D-`, see Keys), as Rex can and tmux can't. A client offers only
 what the multiplexer can.
 
 Each of `muxes` in `sessions` is a multiplexer's `name`, whether it's
 `running`, its `sessions` in its own order (`id`, `name`, `windows`), or the
 `error` listing them, and `can`, what can be done with its sessions: `new`
 (start one, and the multiplexer with it if it isn't running: tmux can, Rex's
-server is Rex's to start), `rename`, `kill`. A client knows none of them by
-name: it offers what each says it can.
+server is Rex's to start), `rename`, `kill`; and `super`, as in `attached`,
+for a client to offer such keys before it's attached. A client knows none of
+them by name: it offers what each says it can.
 
 A window is `id`, `index`, `name`, `active` and `panes`. A pane is:
 
@@ -230,7 +232,8 @@ Keys go by wallflower's names, which are tmux's whatever the multiplexer:
 `Enter`, `Escape`, `Tab`, `BTab` (shift-tab), `BSpace`, `Space`, `Up`,
 `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`, `IC`
 (insert), `DC` (delete) and `F1` to `F12`, each with any of `C-` (ctrl),
-`M-` (alt) and `S-` (shift) before it: `C-c`, `M-Enter`, `S-Up`. Anything
+`M-` (alt) and `S-` (shift) before it: `C-c`, `M-Enter`, `S-Up`; and `D-`
+(super, the Mac's command key) where the multiplexer `can` `super`. Anything
 else in `keys` is typed as it is, so `["Escape", ":w", "Enter"]` saves in
 vim.
 
