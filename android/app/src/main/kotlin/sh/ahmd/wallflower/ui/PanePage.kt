@@ -17,7 +17,6 @@ import sh.ahmd.wallflower.markdown.ImagePaths
 import sh.ahmd.wallflower.program.Asked
 import sh.ahmd.wallflower.program.Aside
 import sh.ahmd.wallflower.program.Mode
-import sh.ahmd.wallflower.program.Recall
 import sh.ahmd.wallflower.ui.files.LocalViewer
 import sh.ahmd.wallflower.ui.files.Viewed
 import sh.ahmd.wallflower.read.Entry
@@ -38,8 +37,8 @@ import sh.ahmd.wallflower.terminal.TerminalView
  * what it shows [aside] of its line (with what's been read of an
  * [answer]), and its [mode] (with those it goes round), which picked goes to
  * [onMode]; it can compact (with its [line]), and animates; its terminal view goes to [onView]. A tap on the terminal
- * goes to [onTap]. While a message asked back is looked for ([seeking]), what it's looked for in isn't asked. A message asked back to edit goes to the program, and
- * [onRecalled] once it's on its way, [listed] if it's to be found in what the program lists. Keys from the prompt's card go to
+ * goes to [onTap]. While a message asked back is looked for ([seeking]), what it's looked for in isn't asked. A message asked back to edit goes to
+ * [onEdit], with the reading it's from. Keys from the prompt's card go to
  * [onPrompt] too. The conversation's title shows unless
  * the [tab] says it already.
  */
@@ -65,7 +64,7 @@ internal fun PanePage(
     onGridSize: (cols: Int, rows: Int, ahead: Boolean) -> Unit,
     onView: (TerminalView) -> Unit,
     onTap: (() -> Unit)?,
-    onRecalled: (Entry.Said, listed: Boolean) -> Unit = { _, _ -> },
+    onEdit: (Entry.Said, Reading) -> Unit = { _, _ -> },
     onPrompt: () -> Unit = {},
     held: String? = null,
     tab: String? = null,
@@ -123,7 +122,7 @@ internal fun PanePage(
             },
             onCompact = if (current && compact != null) ({ compact(line()) }) else null,
             // Not while the program asks something, or a message is being found: what asks it back would answer that.
-            onEdit = if (current && prompt == null && !seeking) ({ e -> actions.recall(e, shown, line())?.let { onRecalled(e, it is Recall.Command) } }) else null,
+            onEdit = if (current && prompt == null && !seeking) ({ e -> onEdit(e, shown) }) else null,
             title = shown.title?.takeIf { it != tab },
             live = current,
         ) }

@@ -60,6 +60,7 @@ dependencies {
     implementation(libs.code.scanner)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit4)
+    testImplementation(libs.kotlinx.coroutines.test)
     constraints {
         implementation(libs.androidx.fragment) // Play services' is too old for the activity result APIs
     }
