@@ -52,7 +52,9 @@ struct RootView: View {
             .tint(colors.orange)
             .preferredColorScheme(colors.light ? .light : .dark)
             .onChange(of: model.settings.haptics, initial: true) { _, on in model.haptics.on = on }
+            #if DEBUG
             .onChange(of: model.rehearsal.count) { _, _ in rehearse() }
+            #endif
             .onOpenURL(perform: open)
             .alert(link.map { "pair with \($0.called)?" } ?? "", isPresented: Binding(get: { link != nil }, set: { if !$0 { link = nil } }), presenting: link) { p in
                 Button("pair") {
@@ -219,6 +221,7 @@ struct RootView: View {
         }
     }
 
+    #if DEBUG
     private func rehearse() {
         let r = model.rehearsal
         if r.arg("settings") != nil { go(.settings) }
@@ -233,6 +236,7 @@ struct RootView: View {
         if r.arg("sessions") != nil { model.session?.detach() }
         if let f = r.arg("files") { model.files = FilesAt(start: f.isEmpty ? "~" : f, pane: nil) }
     }
+    #endif
 
     private var palette: Colors { model.settings.scheme.colors(dark: scheme == .dark) }
 

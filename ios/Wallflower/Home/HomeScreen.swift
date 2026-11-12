@@ -16,7 +16,6 @@ import Wire
 struct HomeScreen: View {
     @Environment(\.palette) private var palette
     @Environment(\.look) private var look
-    @Environment(\.scenePhase) private var phase
     let session: Session
     let host: Host
     let model: AppModel
@@ -32,7 +31,7 @@ struct HomeScreen: View {
     var body: some View {
         let status = session.status
         let machine = host.called
-        let address = host.dev ? "development transport" : "\(host.user)@\(host.address):\(host.port)"
+        let address = host.reach
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -48,17 +47,7 @@ struct HomeScreen: View {
             .padding(.leading, 20)
             .padding(.top, 10)
             .padding(.bottom, 4)
-            if case .needsUser(let blocked) = status {
-                BlockedCard(
-                    blocked: blocked, machine: machine, unlockSeconds: model.unlockSeconds, authorizeCommand: model.authorizeCommand,
-                    onUnlock: { model.unlock() },
-                    onTrust: { h, k in model.hostKeys.trust(host: h, key: k); session.retry() },
-                    onForget: { h in model.hostKeys.forget(host: h); session.retry() },
-                    onRetry: { session.retry() },
-                    onSetup: onSettings
-                )
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            Blocking(session: session, model: model, machine: machine, onSetup: onSettings)
             if let muxes = session.sessions?.muxes {
                 if saysDown {
                     Reconnecting(status: status, machine: machine, onRetry: { session.retry() })
@@ -97,6 +86,8 @@ struct HomeScreen: View {
         .animation(Motion.spatial, value: saysDown)
         .animation(Motion.spatial, value: status.isBlocked)
         .onAppear { session.start() }
+        .modifier(ConnectionWatch(status: status, model: model, saysDown: $saysDown))
+        #if DEBUG
         .onChange(of: model.rehearsal.count) { _, _ in
             if model.rehearsal.arg("trust") != nil, case .needsUser(.unknownHost(let h, let k)) = session.status {
                 model.hostKeys.trust(host: h, key: k)
@@ -107,16 +98,7 @@ struct HomeScreen: View {
                 session.switchTo(mux: m.name, session: s.id)
             }
         }
-        .task(id: status.isDown) {
-            // Down a moment, as across a network change, it isn't worth saying.
-            let down = status.isDown
-            if down { try? await Task.sleep(for: .seconds(1.5)) }
-            guard !Task.isCancelled else { return }
-            saysDown = down
-        }
-        .task(id: status.isKeyLocked) {
-            if status.isKeyLocked && phase == .active { model.unlock() }
-        }
+        #endif
         .alert(naming.map { "new \($0) session" } ?? "", isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
             TextField("name (optional)", text: $name)
             Button("start") {
