@@ -114,7 +114,8 @@ class CodexTest {
         assertNull(Codex.line(s))
         assertNull(Codex.prompt(s))
         val t = Codex.aside(s) as Aside.Tasks
-        assertEquals(listOf("All" to 25, "Needs you" to 1, "Working" to 0), t.filters.map { it.name to it.count })
+        // Those that don't fit are there too, how many they hold unknown.
+        assertEquals(listOf("All" to 25, "Needs you" to 1, "Working" to 0, "Ready" to null, "Inactive" to null), t.filters.map { it.name to it.count })
         assertEquals("All", t.filters.single { it.current }.name)
         assertEquals(listOf("Pinned" to "1", "/Users/sam/dev/wallflower" to "24"), t.groups.map { it.name to it.count })
         assertEquals(listOf("second task"), t.groups[0].tasks.map { it.name })
@@ -137,6 +138,7 @@ class CodexTest {
         assertEquals(listOf("Down", "Down", "Enter"), t.opening(5))
         assertEquals(listOf("Enter"), t.opening(t.tasks.indexOfFirst { it.current }))
         assertEquals(listOf("Tab", "Tab"), t.showing(2))
+        assertEquals(listOf("Tab", "Tab", "Tab", "Tab"), t.showing(4)) // out of sight
         assertEquals(emptyList<String>(), t.showing(0))
     }
 
@@ -159,9 +161,11 @@ class CodexTest {
         assertEquals(emptyList<Aside.Tasks.Group>(), none.groups)
         assertEquals("Working", none.filters.single { it.current }.name)
         val ready = Codex.aside(agents("-filtered")) as Aside.Tasks
-        assertEquals(listOf("Working", "Ready", "Inactive"), ready.filters.map { it.name })
+        assertEquals(listOf("All" to null, "Needs you" to null, "Working" to 0, "Ready" to 1, "Inactive" to 23), ready.filters.map { it.name to it.count })
         assertEquals("Ready", ready.filters.single { it.current }.name)
-        assertEquals(listOf("BTab"), ready.showing(0))
+        assertEquals(listOf("BTab"), ready.showing(2))
+        assertEquals(listOf("BTab", "BTab", "BTab"), ready.showing(0)) // out of sight
+        assertEquals(listOf("Tab"), ready.showing(4))
     }
 
     @Test

@@ -4,7 +4,8 @@ import WallflowerDesign
 
 /**
  * The program's own list of its tasks, in a mobile view's place while it
- * shows it: its filters to pick from, its tasks in their groups to open
+ * shows it: its filters to pick from (all of them, though it may show only
+ * some, with how many each holds where it does), its tasks in their groups to open
  * one, the one under its cursor lit, and a way back and to a new one. What's
  * out of sight above or below is a page away. Something sent while it's up
  * waits, as what's typed would go to it: it says so a moment ([nudged]). Each is keys to the program
@@ -38,7 +39,7 @@ struct TasksPage: View {
             Flow(spacing: 6) {
                 ForEach(Array(tasks.filters.enumerated()), id: \.offset) { i, f in
                     Button { send(tasks.showing(i)) } label: {
-                        Text("\(f.name.lowercased()) \(f.count)")
+                        Text(f.name.lowercased() + (f.count.map { " \($0)" } ?? ""))
                             .words(.label)
                             .foregroundColor(f.current ? palette.fg : palette.grey)
                             .padding(.horizontal, 12)
