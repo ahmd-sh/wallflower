@@ -157,102 +157,104 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
         screen = Screen.Terminal
     }
     // Pages draw over the terminal, which keeps its place underneath; the viewer over them.
-    CompositionLocalProvider(LocalPressing provides pressing) { Box(Modifier.fillMaxSize()) {
-        FloatingHost {
-            key(current) {
-                Crossfade(place == null, animationSpec = Motion.effect(), label = "home") { home ->
-                    if (home) {
-                        LaunchedEffect(Unit) { program = null; programId = null }
-                        HomeScreen(
-                            current, computer, model, unlock,
-                            onSettings = { screen = Screen.Settings },
-                            onExit = onExit,
-                            onFiles = if (canFiles) ({ screen = Screen.Files("~", null) }) else null,
-                        )
-                    } else {
-                        TerminalScreen(
-                            current,
-                            computer,
-                            model,
-                            unlock,
-                            onProgram = { command, id -> program = command; programId = id },
-                            onSessions = current::detach,
-                            onSettings = { screen = Screen.Settings },
-                            onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
-                            onAddShortcut = { screen = Screen.Shortcuts(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
-                            onExit = onExit,
-                            onFiles = if (canFiles) ({ start, pane -> screen = Screen.Files(start, pane) }) else null,
-                        )
+    CompositionLocalProvider(LocalPressing provides pressing) {
+        Box(Modifier.fillMaxSize()) {
+            FloatingHost {
+                key(current) {
+                    Crossfade(place == null, animationSpec = Motion.effect(), label = "home") { home ->
+                        if (home) {
+                            LaunchedEffect(Unit) { program = null; programId = null }
+                            HomeScreen(
+                                current, computer, model, unlock,
+                                onSettings = { screen = Screen.Settings },
+                                onExit = onExit,
+                                onFiles = if (canFiles) ({ screen = Screen.Files("~", null) }) else null,
+                            )
+                        } else {
+                            TerminalScreen(
+                                current,
+                                computer,
+                                model,
+                                unlock,
+                                onProgram = { command, id -> program = command; programId = id },
+                                onSessions = current::detach,
+                                onSettings = { screen = Screen.Settings },
+                                onEditKeys = { screen = Screen.Profile(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
+                                onAddShortcut = { screen = Screen.Shortcuts(model.keyBar.bar.value.refFor(program, programId), Screen.Terminal) },
+                                onExit = onExit,
+                                onFiles = if (canFiles) ({ start, pane -> screen = Screen.Files(start, pane) }) else null,
+                            )
+                        }
                     }
                 }
             }
-        }
-        BackHandler(enabled = screen != Screen.Terminal) { screen = screen.previous() }
-        // A page further in slides in from the right over the last; back, it slides away again.
-        AnimatedContent(
-            targetState = screen,
-            modifier = Modifier.fillMaxSize(),
-            transitionSpec = {
-                val deeper = targetState.depth - initialState.depth
-                when {
-                    deeper > 0 -> (slideInHorizontally(Motion.spatial()) { it / 4 } + fadeIn(Motion.effect())) togetherWith
-                        (slideOutHorizontally(Motion.spatial()) { -it / 10 } + fadeOut(Motion.effect()))
-                    deeper < 0 -> ((slideInHorizontally(Motion.spatial()) { -it / 10 } + fadeIn(Motion.effect())) togetherWith
-                        (slideOutHorizontally(Motion.spatial()) { it / 4 } + fadeOut(Motion.effect()))).apply { targetContentZIndex = -1f }
-                    else -> fadeIn(Motion.effect()) togetherWith fadeOut(Motion.effect())
+            BackHandler(enabled = screen != Screen.Terminal) { screen = screen.previous() }
+            // A page further in slides in from the right over the last; back, it slides away again.
+            AnimatedContent(
+                targetState = screen,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    val deeper = targetState.depth - initialState.depth
+                    when {
+                        deeper > 0 -> (slideInHorizontally(Motion.spatial()) { it / 4 } + fadeIn(Motion.effect())) togetherWith
+                            (slideOutHorizontally(Motion.spatial()) { -it / 10 } + fadeOut(Motion.effect()))
+                        deeper < 0 -> ((slideInHorizontally(Motion.spatial()) { -it / 10 } + fadeIn(Motion.effect())) togetherWith
+                            (slideOutHorizontally(Motion.spatial()) { it / 4 } + fadeOut(Motion.effect()))).apply { targetContentZIndex = -1f }
+                        else -> fadeIn(Motion.effect()) togetherWith fadeOut(Motion.effect())
+                    }
+                },
+                label = "page",
+            ) { s ->
+                when (s) {
+                    Screen.Terminal -> Unit
+                    Screen.Settings -> SettingsScreen(
+                        host = host,
+                        store = model.keyBar,
+                        settings = model.settings,
+                        program = program,
+                        programId = programId,
+                        gateway = mux?.let { m -> "${m.name} ${m.version}" + (computer.machine?.let { " on $it" } ?: "") },
+                        onBack = { screen = Screen.Terminal },
+                        onEditHost = { screen = Screen.Setup },
+                        onLook = { screen = Screen.Look },
+                        onKeyBars = { screen = Screen.KeyBars },
+                    )
+                    Screen.Setup -> setup { screen = Screen.Settings }
+                    Screen.Look -> LookScreen(model.settings, onBack = { screen = Screen.Settings })
+                    Screen.KeyBars -> KeyBarsScreen(model.keyBar, program, programId, onBack = { screen = Screen.Settings }) {
+                        screen = Screen.Profile(it, Screen.KeyBars)
+                    }
+                    is Screen.Profile -> ProfileScreen(
+                        store = model.keyBar,
+                        ref = s.ref,
+                        program = program,
+                        programId = programId,
+                        onBack = { screen = s.back },
+                        onOpen = { screen = s.copy(ref = it) },
+                        onShortcuts = { screen = Screen.Shortcuts(s.ref, s) },
+                    )
+                    is Screen.Shortcuts -> ShortcutsScreen(
+                        store = model.keyBar,
+                        ref = s.ref,
+                        program = program,
+                        programId = programId,
+                        onBack = { screen = s.back },
+                        onOpen = { screen = s.copy(ref = it) },
+                    )
+                    is Screen.Files -> FilesPage(
+                        session = current,
+                        start = s.start,
+                        pane = s.pane,
+                        hidden = model.settings.hiddenFiles,
+                        fetches = model.fetches,
+                        onAdd = s.pane?.let { pane -> { path -> add(pane, path) } },
+                        onClose = { screen = Screen.Terminal },
+                    )
                 }
-            },
-            label = "page",
-        ) { s ->
-            when (s) {
-                Screen.Terminal -> Unit
-                Screen.Settings -> SettingsScreen(
-                    host = host,
-                    store = model.keyBar,
-                    settings = model.settings,
-                    program = program,
-                    programId = programId,
-                    gateway = mux?.let { m -> "${m.name} ${m.version}" + (computer.machine?.let { " on $it" } ?: "") },
-                    onBack = { screen = Screen.Terminal },
-                    onEditHost = { screen = Screen.Setup },
-                    onLook = { screen = Screen.Look },
-                    onKeyBars = { screen = Screen.KeyBars },
-                )
-                Screen.Setup -> setup { screen = Screen.Settings }
-                Screen.Look -> LookScreen(model.settings, onBack = { screen = Screen.Settings })
-                Screen.KeyBars -> KeyBarsScreen(model.keyBar, program, programId, onBack = { screen = Screen.Settings }) {
-                    screen = Screen.Profile(it, Screen.KeyBars)
-                }
-                is Screen.Profile -> ProfileScreen(
-                    store = model.keyBar,
-                    ref = s.ref,
-                    program = program,
-                    programId = programId,
-                    onBack = { screen = s.back },
-                    onOpen = { screen = s.copy(ref = it) },
-                    onShortcuts = { screen = Screen.Shortcuts(s.ref, s) },
-                )
-                is Screen.Shortcuts -> ShortcutsScreen(
-                    store = model.keyBar,
-                    ref = s.ref,
-                    program = program,
-                    programId = programId,
-                    onBack = { screen = s.back },
-                    onOpen = { screen = s.copy(ref = it) },
-                )
-                is Screen.Files -> FilesPage(
-                    session = current,
-                    start = s.start,
-                    pane = s.pane,
-                    hidden = model.settings.hiddenFiles,
-                    fetches = model.fetches,
-                    onAdd = s.pane?.let { pane -> { path -> add(pane, path) } },
-                    onClose = { screen = Screen.Terminal },
-                )
             }
+            ViewerHost(viewer, current, model.fetches, onAdd = add)
         }
-        ViewerHost(viewer, current, model.fetches, onAdd = add)
-    } }
+    }
 }
 
 /**
