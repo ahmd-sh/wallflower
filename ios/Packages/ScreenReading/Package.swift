@@ -7,7 +7,7 @@ let package = Package(
     products: [.library(name: "ScreenReading", targets: ["ScreenReading"])],
     targets: [
         .target(name: "ScreenReading"),
-        .testTarget(name: "ScreenReadingTests", dependencies: ["ScreenReading"], resources: [.copy("Resources")]),
+        .testTarget(name: "ScreenReadingTests", dependencies: ["ScreenReading"]),
     ],
     swiftLanguageModes: [.v5]
 )

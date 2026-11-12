@@ -1,9 +1,11 @@
 import Foundation
 import ScreenReading
 
-/// A screen from tmux's capture-pane -e: text, with greys (256-color 240-250, or 8) muted, backgrounds highlighted, and dim faint.
+/// A screen from tmux's capture-pane -e, in testdata/screens (Android's tests read them too): text, with greys (256-color 240-250, or 8) muted, backgrounds highlighted, and dim faint.
 func captured(_ name: String, _ cols: Int) -> Screen {
-    let url = Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Resources")!
+    var url = URL(fileURLWithPath: #filePath)
+    for _ in 0..<6 { url.deleteLastPathComponent() }
+    url = url.appendingPathComponent("testdata/screens").appendingPathComponent(name)
     var whole = try! String(contentsOf: url, encoding: .utf8)
     while whole.hasSuffix("\n") { whole.removeLast() }
     let rows = whole.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
