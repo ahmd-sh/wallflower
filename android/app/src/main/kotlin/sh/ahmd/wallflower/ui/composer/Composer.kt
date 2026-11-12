@@ -86,7 +86,9 @@ import sh.ahmd.wallflower.ui.haptics
  *
  * The shortcuts key offers the pane's [shortcuts]: one picked goes to
  * [onShortcut], but text alone, with no Enter to send it, starts the draft
- * as a command does (or goes in at the cursor, if it isn't one).
+ * as a command does (or goes in at the cursor, if it isn't one). The
+ * arrows key brings up their [pad], which stays put for as long as it's up,
+ * here and for the next pane, while it's been moved or the bar has the key.
  *
  * With [typing], the keyboard types straight into the pane instead, as a
  * terminal's does ([onType], other keys to [onKey] by name, its return key
@@ -114,6 +116,7 @@ internal fun Composer(
     onEnter: () -> Unit,
     onStop: () -> Unit,
     onEditKeys: () -> Unit,
+    pad: ArrowPad,
     shortcuts: List<BarKey> = emptyList(),
     onShortcut: (BarKey) -> Unit = {},
     onAddShortcut: () -> Unit = {},
@@ -214,6 +217,9 @@ internal fun Composer(
             sent = false
         }
     }
+    val clustered = keys.any { it.cluster }
+    LaunchedEffect(clustered) { if (!clustered && pad.at == null) pad.close() }
+    ArrowPadUp(pad, sticky::press)
     val whole = remember(paths) { paths?.let(::WholeUploads) }
     val empty by remember(state) { derivedStateOf { state.text.isEmpty() } } // not every keystroke
     // From a pane written for to one typed into, or back, the keyboard stays up for the next.
@@ -311,6 +317,7 @@ internal fun Composer(
                 keys,
                 sticky.armed,
                 shortcuts,
+                pad,
                 onKey = sticky::press,
                 onShortcut = { key ->
                     sticky.drop()

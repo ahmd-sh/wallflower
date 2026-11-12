@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -222,6 +223,36 @@ internal fun Modifier.opens(menu: Opener, enabled: Boolean = true, onOpen: () ->
                 menu.open = true
                 follow(menu, down.id, down.position, anchor)
             }
+        }
+}
+
+/**
+ * On what opens [menu] with a tap, in something that scrolls: tapped, it
+ * opens ([onOpen] first), or shuts if it's open; a press that moves is
+ * the scroll's.
+ */
+@Composable
+internal fun Modifier.toggles(menu: Opener, onOpen: () -> Unit = {}): Modifier {
+    val opening by rememberUpdatedState(onOpen)
+    val toggle = { shutting: Boolean ->
+        if (shutting) {
+            menu.open = false
+        } else {
+            opening()
+            menu.open = true
+        }
+    }
+    return this
+        .semantics {
+            role = Role.Button
+            onClick {
+                toggle(menu.open)
+                true
+            }
+        }
+        .pointerInput(menu) {
+            var shutting = false
+            detectTapGestures(onPress = { shutting = menu.shutting() }, onTap = { toggle(shutting) })
         }
 }
 

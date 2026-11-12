@@ -71,6 +71,7 @@ import sh.ahmd.wallflower.session.label
 import sh.ahmd.wallflower.session.shownPane
 import sh.ahmd.wallflower.terminal.TerminalView
 import sh.ahmd.wallflower.ui.composer.Attachments
+import sh.ahmd.wallflower.ui.composer.ArrowPad
 import sh.ahmd.wallflower.ui.composer.Composer
 import sh.ahmd.wallflower.ui.composer.Recalled
 import sh.ahmd.wallflower.ui.composer.Typing
@@ -521,6 +522,7 @@ private fun TerminalScreen(
         var view by remember { mutableStateOf<TerminalView?>(null) } // the shown pane's
         var recalled by remember(pane?.id) { mutableStateOf<Recalled?>(null) } // the message last asked back to edit
         val typing = remember { Typing() }
+        val pad = remember { ArrowPad() }
         var paneBounds by remember { mutableStateOf(Rect.Zero) }
         var position by remember { mutableFloatStateOf(0f) }
         var areaHeight by remember { mutableIntStateOf(0) }
@@ -702,6 +704,7 @@ private fun TerminalScreen(
                             },
                             onStop = actions::stop,
                             onEditKeys = onEditKeys,
+                            pad = pad,
                             shortcuts = profile.shortcutsFor(actions.program),
                             onShortcut = shortcut@{
                                 // What a menu's waiting on would take a shortcut's text as picks (a hotkey's letter), and its Enter or shift+tab as an answer.

@@ -42,7 +42,8 @@ import kotlin.math.roundToInt
  * popup's, so they can see what's beneath them: [content] is drawn into a
  * [backdrop] as well as on screen, for them to blur ([frosted]). One thing
  * floats at a time ([FloatAbove]); a touch outside it puts it away and goes
- * on to what's under it.
+ * on to what's under it. One more can be kept up ([Keep]), whatever's
+ * touched, beneath what floats.
  */
 @Composable
 internal fun FloatingHost(content: @Composable () -> Unit) {
@@ -71,6 +72,7 @@ private fun Hosting(host: Floating, content: @Composable () -> Unit) {
                 drawLayer(host.backdrop)
             },
         ) { content() }
+        host.kept?.let { Box(Modifier.fillMaxSize()) { it.content() } }
         host.shown?.let { shown ->
             Box(
                 Modifier
@@ -91,6 +93,7 @@ private fun Hosting(host: Floating, content: @Composable () -> Unit) {
 @Stable
 internal class Floating(val backdrop: GraphicsLayer) {
     var shown by mutableStateOf<Shown?>(null)
+    var kept by mutableStateOf<Kept?>(null)
     var at: LayoutCoordinates? = null
     var bounds = Rect.Zero
 }
@@ -98,6 +101,11 @@ internal class Floating(val backdrop: GraphicsLayer) {
 /** What floats: [content], [gap] above [anchor] (in the window), and what a touch outside it does. */
 internal class Shown(anchor: Rect, val gap: Dp, val onDismiss: () -> Unit, content: @Composable () -> Unit) {
     var anchor by mutableStateOf(anchor)
+    var content by mutableStateOf(content)
+}
+
+/** What's kept up: [content], which places itself over the host. */
+internal class Kept(content: @Composable () -> Unit) {
     var content by mutableStateOf(content)
 }
 
@@ -116,6 +124,18 @@ internal fun FloatAbove(anchor: Rect, gap: Dp, onDismiss: () -> Unit, content: @
     DisposableEffect(host, shown) {
         host.shown = shown
         onDispose { if (host.shown === shown) host.shown = null }
+    }
+}
+
+/** [content] kept up over the host while this is composed, whatever's touched; it places itself, in the host's bounds. */
+@Composable
+internal fun Keep(content: @Composable () -> Unit) {
+    val host = LocalFloating.current
+    val kept = remember { Kept(content) }
+    SideEffect { kept.content = content }
+    DisposableEffect(host, kept) {
+        host.kept = kept
+        onDispose { if (host.kept === kept) host.kept = null }
     }
 }
 

@@ -1,23 +1,10 @@
 package sh.ahmd.wallflower.ui.composer
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import sh.ahmd.wallflower.ui.FloatAbove
-import sh.ahmd.wallflower.ui.frosted
-import sh.ahmd.wallflower.ui.Mono
-import sh.ahmd.wallflower.ui.choice
-import sh.ahmd.wallflower.ui.opens
 import sh.ahmd.wallflower.ui.rememberOpener
-import sh.ahmd.wallflower.ui.glyphs
+import sh.ahmd.wallflower.ui.toggles
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -64,15 +51,16 @@ import sh.ahmd.wallflower.ui.onLetGo
 
 /**
  * The key bar: its keys, scrolling sideways, then a pencil to edit them.
- * Held, each says what it is; the shortcuts key, pressed, offers the
+ * Held, each says what it is; the shortcuts key, tapped, offers the
  * pane's [shortcuts], and one picked goes to [onShortcut], or a new one
- * to add ([onAddShortcut]).
+ * to add ([onAddShortcut]); the arrows key brings up their [pad].
  */
 @Composable
 internal fun KeyRow(
     keys: List<BarKey>,
     armed: BarKey?,
     shortcuts: List<BarKey>,
+    pad: ArrowPad,
     onKey: (BarKey) -> Unit,
     onShortcut: (BarKey) -> Unit,
     onEdit: () -> Unit,
@@ -103,7 +91,7 @@ internal fun KeyRow(
     ) {
         items(keys) {
             when {
-                it.cluster -> ClusterChip(it, onKey)
+                it.cluster -> ClusterChip(it, pad)
                 it.shortcuts -> ShortcutsChip(it, shortcuts, onShortcut, onAddShortcut)
                 else -> KeyChip(it, armed == it, onKey)
             }
@@ -168,7 +156,7 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
     }
 }
 
-/** Pressed, the pane's shortcuts come up over it, to slide onto or tap; see [ShortcutsUp]. */
+/** Tapped, the pane's shortcuts come up over it; see [ShortcutsUp]. */
 @Composable
 private fun ShortcutsChip(key: BarKey, shortcuts: List<BarKey>, onShortcut: (BarKey) -> Unit, onAdd: () -> Unit) {
     val haptics = haptics()
@@ -180,100 +168,29 @@ private fun ShortcutsChip(key: BarKey, shortcuts: List<BarKey>, onShortcut: (Bar
             on = false,
             pressed = menu.open,
             modifier = Modifier.height(36.dp).onGloballyPositioned { chip = it.boundsInWindow() },
-            input = Modifier.opens(menu) { haptics.tick() },
+            input = Modifier.toggles(menu) { haptics.tick() },
         )
         ShortcutsUp(menu, chip, shortcuts, onShortcut, onAdd)
     }
 }
 
-/**
- * Keys gathered in one ([BarKey.cluster]): pressed, they bubble up above
- * it, ⏎ ↑ ⌫ over ← ↓ →, frosted so what's behind them shows. Slid onto
- * and let go of, one goes and they close; tapped, they stay up to press,
- * the arrows repeating while held, till a tap anywhere else, or on this
- * key again.
- */
+/** Keys gathered in one ([BarKey.cluster]): tapped, they come up on their [pad], above it. */
 @Composable
-private fun ClusterChip(key: BarKey, onKey: (BarKey) -> Unit) {
+private fun ClusterChip(key: BarKey, pad: ArrowPad) {
     val haptics = haptics()
-    val keys = rememberOpener()
-    var chip by remember { mutableStateOf(Rect.Zero) }
-    fun send(i: Int, again: Boolean = false) {
-        val k = key.keys.getOrNull(i) ?: return
-        if (again) haptics.repeat() else haptics.key()
-        onKey(BarKey(KeyBar.labelOf(listOf(k)), listOf(k)))
-    }
-    Box {
-        Pill(
-            faceOf(key),
-            on = false,
-            pressed = keys.open,
-            modifier = Modifier.height(36.dp).onGloballyPositioned { chip = it.boundsInWindow() },
-            input = Modifier.opens(keys) { haptics.tick() },
-        )
-        if (keys.open) {
-            FloatAbove(chip, gap = 16.dp, onDismiss = keys::dismiss) { // clear of the composer's edge
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    for (row in PLACES) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            for (i in row) {
-                                val name = key.keys.getOrNull(i)
-                                if (i < 0 || name == null) {
-                                    Spacer(Modifier.size(PLACE))
-                                } else {
-                                    Place(name, lit = keys.over == i, Modifier.choice(keys, i) { send(i) }) { again -> send(i, again) }
-                                }
-                            }
-                        }
-                    }
-                }
+    Pill(
+        faceOf(key),
+        on = false,
+        pressed = pad.open,
+        modifier = Modifier.height(36.dp).onGloballyPositioned { pad.home = it.boundsInWindow() },
+        input = Modifier.pointerInput(key) {
+            detectTapGestures {
+                haptics.tick()
+                pad.press(key)
             }
-        }
-    }
+        },
+    )
 }
-
-/** A key of a cluster: it sends on tap, and the arrows repeat while held. */
-@Composable
-private fun Place(name: String, lit: Boolean, modifier: Modifier, onPress: (again: Boolean) -> Unit) {
-    val scope = rememberCoroutineScope()
-    val press by rememberUpdatedState(onPress)
-    var pressed by remember { mutableStateOf(false) }
-    val repeats = name in KeyBar.repeating
-    val ink = Palette.fg
-    Box(
-        modifier
-            .size(PLACE)
-            .clip(RoundedCornerShape(12.dp))
-            .frosted(8.dp)
-            .background(if (lit || pressed) Palette.bg3.copy(alpha = 0.85f) else Palette.bg2.copy(alpha = 0.45f))
-            .pointerInput(name) {
-                detectTapGestures(onPress = {
-                    pressed = true
-                    var held = false
-                    val hold = if (!repeats) null else scope.launch {
-                        delay(REPEAT_AFTER_MS)
-                        held = true
-                        press(false)
-                        while (isActive) {
-                            delay(REPEAT_EVERY_MS)
-                            press(true)
-                        }
-                    }
-                    val released = tryAwaitRelease()
-                    hold?.cancel()
-                    pressed = false
-                    if (released && !held) press(false)
-                })
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(faceOf(listOf(name)), color = ink, fontFamily = Mono, fontSize = 18.sp, inlineContent = glyphs(ink))
-    }
-}
-
-/** Where a cluster's keys go, row by row, by their place in it ([BarKey]): top left, up, top right; left, down, right. */
-private val PLACES = listOf(listOf(2, 0, 5), listOf(1, 4, 3))
-private val PLACE = 46.dp
 
 /** The pencil that opens the bar's keys for editing. */
 @Composable
@@ -299,5 +216,5 @@ private fun EditKeys(onEdit: () -> Unit) {
     }
 }
 
-private const val REPEAT_AFTER_MS = 400L
-private const val REPEAT_EVERY_MS = 50L
+internal const val REPEAT_AFTER_MS = 400L
+internal const val REPEAT_EVERY_MS = 50L

@@ -42,7 +42,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import sh.ahmd.wallflower.BarKey
-import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.ui.FloatAbove
 import sh.ahmd.wallflower.ui.Glyph
 import sh.ahmd.wallflower.ui.GlyphIcon
@@ -50,7 +49,6 @@ import sh.ahmd.wallflower.ui.Mono
 import sh.ahmd.wallflower.ui.Opener
 import sh.ahmd.wallflower.ui.Palette
 import sh.ahmd.wallflower.ui.Type
-import sh.ahmd.wallflower.ui.choice
 import sh.ahmd.wallflower.ui.faceOf
 import sh.ahmd.wallflower.ui.glyphPlaceholders
 import sh.ahmd.wallflower.ui.glyphs
@@ -59,9 +57,8 @@ import sh.ahmd.wallflower.ui.haptics
 /**
  * While [menu] is open, the pane's [shortcuts] over the bar, on a panel of
  * their own, then a pill to add one. Three rows of them at most: more go on
- * pages to swipe between. Slid onto from the key that opened them and let
- * go of, one goes and they shut; let go of on the key, they stay up for a
- * tap on one. What the one slid onto sends shows above them.
+ * pages to swipe between. One tapped goes and they shut; a tap anywhere
+ * else puts them away.
  */
 @Composable
 internal fun ShortcutsUp(menu: Opener, anchor: Rect, shortcuts: List<BarKey>, onShortcut: (BarKey) -> Unit, onAdd: () -> Unit) {
@@ -87,9 +84,6 @@ internal fun ShortcutsUp(menu: Opener, anchor: Rect, shortcuts: List<BarKey>, on
                 .padding(PAD),
             verticalArrangement = Arrangement.spacedBy(GAP),
         ) {
-            shortcuts.getOrNull(menu.over)?.let {
-                Text(KeyBar.nameOf(it), color = Palette.grey, style = Type.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 6.dp))
-            }
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val measurer = rememberTextMeasurer()
                 val density = LocalDensity.current
@@ -115,9 +109,9 @@ internal fun ShortcutsUp(menu: Opener, anchor: Rect, shortcuts: List<BarKey>, on
                                     for (i in row) {
                                         val s = shortcuts.getOrNull(i)
                                         if (s == null) {
-                                            AddShortcut(menu.over == i, Modifier.choice(menu, i, ::add), ::add)
+                                            AddShortcut(::add)
                                         } else {
-                                            ShortcutPlace(menu.over == i, Modifier.choice(menu, i) { pick(s) }, { pick(s) }) {
+                                            ShortcutPlace({ pick(s) }) {
                                                 Text(faceOf(s), color = Palette.fg, fontFamily = Mono, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, inlineContent = glyphs(Palette.fg))
                                             }
                                         }
@@ -164,9 +158,9 @@ internal fun paged(widths: List<Int>, width: Int, gap: Int, rows: Int): List<Lis
     return pages
 }
 
-/** A shortcut on the panel: lit while slid onto or pressed, and [onTap] tapped; [muted], it has no fill till then. */
+/** A shortcut on the panel: lit while pressed, and [onTap] tapped; [muted], it has no fill till then. */
 @Composable
-private fun ShortcutPlace(lit: Boolean, modifier: Modifier, onTap: () -> Unit, muted: Boolean = false, content: @Composable () -> Unit) {
+private fun ShortcutPlace(onTap: () -> Unit, modifier: Modifier = Modifier, muted: Boolean = false, content: @Composable () -> Unit) {
     val tap by rememberUpdatedState(onTap)
     var pressed by remember { mutableStateOf(false) }
     Box(
@@ -175,7 +169,7 @@ private fun ShortcutPlace(lit: Boolean, modifier: Modifier, onTap: () -> Unit, m
             .clip(CircleShape)
             .background(
                 when {
-                    lit || pressed -> Palette.bg3
+                    pressed -> Palette.bg3
                     muted -> Color.Transparent
                     else -> Palette.bg2
                 },
@@ -197,12 +191,12 @@ private fun ShortcutPlace(lit: Boolean, modifier: Modifier, onTap: () -> Unit, m
 
 /** The pill after the shortcuts that adds one: muted, its edge dashed. */
 @Composable
-private fun AddShortcut(lit: Boolean, modifier: Modifier, onTap: () -> Unit) {
-    val ink = if (lit) Palette.fg else Palette.grey
+private fun AddShortcut(onTap: () -> Unit) {
+    val ink = Palette.grey
     val edge = Palette.dim
     ShortcutPlace(
-        lit,
-        modifier.drawWithContent {
+        onTap,
+        Modifier.drawWithContent {
             drawContent()
             val w = 1.dp.toPx()
             drawRoundRect(
@@ -213,7 +207,6 @@ private fun AddShortcut(lit: Boolean, modifier: Modifier, onTap: () -> Unit) {
                 style = Stroke(w, pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx()))),
             )
         },
-        onTap,
         muted = true,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
