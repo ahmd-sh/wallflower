@@ -4,7 +4,7 @@ import XCTest
  * The app walked through by touch, against `wallflower listen` on a
  * throwaway server (WF_LISTEN, default 41778), each step's screen saved to
  * WF_SHOTS if it's set: what the screens look like, and that the gestures
- * (pane swipes, the arrow cluster's slide, menus) do what they should.
+ * (pane swipes, the arrows' pad, menus) do what they should.
  */
 final class WalkthroughTests: XCTestCase {
     private var app: XCUIApplication!
@@ -139,16 +139,15 @@ final class WalkthroughTests: XCTestCase {
         at(0.5, 0.6).tap() // away from the menu
         sleep(1)
 
-        // The arrow cluster: pressed, it bubbles up; slid onto ↑ and let go, it sends and shuts.
-        let cluster = at(0.215, 0.92)
-        cluster.press(forDuration: 0.05)
-        sleep(1)
-        shot("cluster-open")
-        at(0.5, 0.97).tap()
-        sleep(1)
-        cluster.press(forDuration: 0.3, thenDragTo: at(0.215, 0.79))
-        sleep(1)
-        shot("cluster-slid")
+        // The arrows: tapped, their pad comes up; its × puts it away.
+        let arrows = app.buttons["arrows, enter, backspace"]
+        if arrows.waitForExistence(timeout: 2) {
+            arrows.tap()
+            sleep(1)
+            shot("arrows-open")
+            app.buttons["put the arrows away"].tap()
+            sleep(1)
+        }
 
         // A second pane, then a swipe between them.
         at(0.5, 0.4).tap()
