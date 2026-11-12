@@ -296,6 +296,7 @@ public struct PageHeader<Trailing: View>: View {
                     GlyphIcon(.left, palette.fg, size: 16).padding(10).contentShape(Rectangle())
                 }
                 .buttonStyle(Pressable())
+                .accessibilityLabel("back")
             }
             Text(title).font(look.font(.title, weight: look == .grotesque ? .semibold : .bold)).foregroundColor(palette.fg)
             Spacer()

@@ -9,7 +9,9 @@ struct KeyFace: View {
     let color: Color
     var size: CGFloat = 13
 
-    var body: some View { faceText(faceOf(key), size: size, color: color).lineLimit(1).fixedSize() }
+    var body: some View {
+        faceText(faceOf(key), size: size, color: color).lineLimit(1).fixedSize().accessibilityLabel(key.hasOwnLabel ? KeyBar.name(of: key.keys) : key.label)
+    }
 }
 
 /** [keys] with icons for those that have one, and the rest as the bar names them (esc, alt, ⌘, which keyboards mark differently). */

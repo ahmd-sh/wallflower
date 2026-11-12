@@ -61,13 +61,14 @@ final class AppModel {
         ensure()
     }
 
-    /** In development, a gateway named on the command line (`-wfDev 41778`), over plain TCP. */
+    /** In development, a gateway named on the command line (`-wfDev 41778`, and `-wfMux rex` for a Rex session), over plain TCP. */
     private static func launchHost() -> Host? {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "-wfDev"), i + 1 < args.count, let port = Int(args[i + 1]) {
             let session = args.firstIndex(of: "-wfSession").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
-            return Host(address: "127.0.0.1", port: port, user: "dev", mux: "tmux", session: session, dev: true)
+            let mux = args.firstIndex(of: "-wfMux").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? "tmux"
+            return Host(address: "127.0.0.1", port: port, user: "dev", mux: mux, session: session, dev: true)
         }
         // Over ssh to a server of the developer's (`-wfSSH 22022 -wfUser me`), the key made if need be and left where it can be read off.
         if let i = args.firstIndex(of: "-wfSSH"), i + 1 < args.count, let port = Int(args[i + 1]) {

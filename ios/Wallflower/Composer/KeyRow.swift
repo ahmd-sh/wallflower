@@ -167,6 +167,9 @@ private struct EditKeys: View {
             .contentShape(Circle())
             .overlay { if held { HeldName(name: "edit keys") } }
             .onTapGesture { onEdit() }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("edit keys")
+            .accessibilityAddTraits(.isButton)
             .onLongPressGesture(minimumDuration: 0.5, pressing: { p in if !p { withAnimation(Motion.effect) { held = false } } }) {
                 haptics.hold()
                 withAnimation(Motion.effect) { held = true }
