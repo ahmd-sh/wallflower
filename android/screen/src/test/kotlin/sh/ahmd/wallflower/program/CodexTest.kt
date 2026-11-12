@@ -104,4 +104,81 @@ class CodexTest {
         assertEquals(Codex, Programs.of("codex"))
         assertEquals(listOf("Escape"), Codex.keyBar.stop)
     }
+
+    /** The agent command center, at 42 columns. */
+    private fun agents(name: String = "") = captured("codex-agents$name.ansi", 42)
+
+    @Test
+    fun itsAgentsAreItsOwnListOfTasksInGroups() {
+        val s = agents()
+        assertNull(Codex.line(s))
+        assertNull(Codex.prompt(s))
+        val t = Codex.aside(s) as Aside.Tasks
+        assertEquals(listOf("All" to 25, "Needs you" to 1, "Working" to 0), t.filters.map { it.name to it.count })
+        assertEquals("All", t.filters.single { it.current }.name)
+        assertEquals(listOf("Pinned" to "1", "/Users/sam/dev/wallflower" to "24"), t.groups.map { it.name to it.count })
+        assertEquals(listOf("second task"), t.groups[0].tasks.map { it.name })
+        val tasks = t.tasks
+        assertEquals("Untitled task", tasks[1].name)
+        assertEquals("Error: task number 22 with a fai…", tasks[2].name)
+        assertEquals("task number 21 with a fairly lon…", tasks.single { it.current }.name)
+        assertEquals(Aside.Tasks.Mark.Idle, tasks[1].mark)
+        assertEquals(Aside.Tasks.Mark.Lit, tasks[2].mark) // ●, with something needing the user: it, or one out of sight
+        assertEquals(false, t.above)
+        assertEquals(true, t.below)
+        assertNull(t.says)
+        assertEquals(listOf("Escape"), t.leave)
+    }
+
+    @Test
+    fun aTaskIsOpenedByMovingTheCursorToIt() {
+        val t = Codex.aside(agents()) as Aside.Tasks
+        assertEquals(listOf("Up", "Up", "Up", "Enter"), t.opening(0)) // past the group's heading and the row between
+        assertEquals(listOf("Down", "Down", "Enter"), t.opening(5))
+        assertEquals(listOf("Enter"), t.opening(t.tasks.indexOfFirst { it.current }))
+        assertEquals(listOf("Tab", "Tab"), t.showing(2))
+        assertEquals(emptyList<String>(), t.showing(0))
+    }
+
+    @Test
+    fun itsMarksSayWhatEachTaskIsDoingAsFarAsTheyCan() {
+        val marks = (Codex.aside(agents("-marks")) as Aside.Tasks).tasks.associate { it.name to it.mark }
+        assertEquals(Aside.Tasks.Mark.NeedsYou, marks["build fix"])
+        assertEquals(Aside.Tasks.Mark.Lit, marks["docs pass"])
+        val working = (Codex.aside(agents("-working")) as Aside.Tasks).tasks.associate { it.name to it.mark }
+        assertEquals(Aside.Tasks.Mark.Lit, working["fix the build"]) // working, or needing the user: both are
+        val needs = (Codex.aside(agents("-needs-you")) as Aside.Tasks).tasks.single()
+        assertEquals(Aside.Tasks.Mark.NeedsYou, needs.mark) // what the filter holds
+        assertEquals("/Users/…/dev/wallflower" to "1 of 24", (Codex.aside(agents("-needs-you")) as Aside.Tasks).groups.single().let { it.name to it.count })
+    }
+
+    @Test
+    fun filteredItCanSayThereAreNoneOrShowOtherFilters() {
+        val none = Codex.aside(agents("-none")) as Aside.Tasks
+        assertEquals("No matching tasks", none.says)
+        assertEquals(emptyList<Aside.Tasks.Group>(), none.groups)
+        assertEquals("Working", none.filters.single { it.current }.name)
+        val ready = Codex.aside(agents("-filtered")) as Aside.Tasks
+        assertEquals(listOf("Working", "Ready", "Inactive"), ready.filters.map { it.name })
+        assertEquals("Ready", ready.filters.single { it.current }.name)
+        assertEquals(listOf("BTab"), ready.showing(0))
+    }
+
+    @Test
+    fun scrolledThereIsMoreAboveAndItsGroupsHeadingIsOutOfSight() {
+        val t = Codex.aside(agents("-scrolled")) as Aside.Tasks
+        assertEquals(true, t.above)
+        assertEquals(false, t.below)
+        assertEquals("", t.groups.single().name)
+        assertEquals("task number 19 with a fairly lon…", t.tasks.first().name)
+        assertEquals("say hi", t.tasks.last().name)
+        assertEquals("say hi", t.tasks.single { it.current }.name)
+    }
+
+    @Test
+    fun itsKeysAreAViewOfItsOwn() {
+        assertEquals(Aside.View("agents' keys", listOf("Escape")), Codex.aside(agents("-help")))
+        assertNull(Codex.aside(screen("idle")))
+        assertNull(Codex.aside(screen("trust")))
+    }
 }

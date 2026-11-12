@@ -226,6 +226,61 @@ sealed interface Aside {
             return out.toString().trim('\n')
         }
     }
+
+    /**
+     * The program's own list of its tasks, its conversations, to open one
+     * from, as Codex's agent command center: what it's [named], the
+     * [filters] it shows (each with how many it holds; one is current), and
+     * the [groups] of tasks it shows, one under its cursor. There may be
+     * more [above] and [below] than shows; with none, what it [says]
+     * instead. [up] and [down] move its cursor, [open] opens the task under
+     * it, [next] and [previous] go between filters, [pageUp] and [pageDown]
+     * scroll, and [new] starts a task.
+     */
+    data class Tasks(
+        val named: String,
+        val filters: List<Filter>,
+        val groups: List<Group>,
+        val above: Boolean,
+        val below: Boolean,
+        val says: String?,
+        override val leave: List<String>,
+        val up: List<String>,
+        val down: List<String>,
+        val open: List<String>,
+        val next: List<String>,
+        val previous: List<String>,
+        val pageUp: List<String>,
+        val pageDown: List<String>,
+        val new: List<String>,
+    ) : Aside {
+        data class Filter(val name: String, val count: Int, val current: Boolean)
+
+        data class Group(val name: String, val count: String, val tasks: List<Task>)
+
+        data class Task(val name: String, val mark: Mark, val current: Boolean)
+
+        /** What a task's mark says of it: it needs the user, it's working, something's new in it since it was looked at, one of those (which can't be told apart), or nothing. */
+        enum class Mark { NeedsYou, Working, Updated, Lit, Idle }
+
+        val tasks: List<Task> get() = groups.flatMap { it.tasks }
+
+        /** The keys that move the cursor to the [at]th task and open it. */
+        fun opening(at: Int): List<String> {
+            val all = tasks
+            if (at !in all.indices) return emptyList()
+            return moves(at - all.indexOfFirst { it.current }.coerceAtLeast(0), down, up) + open
+        }
+
+        /** The keys that go to the [at]th filter. */
+        fun showing(at: Int): List<String> {
+            val from = filters.indexOfFirst { it.current }.takeIf { it >= 0 } ?: return emptyList()
+            if (at !in filters.indices) return emptyList()
+            return moves(at - from, next, previous)
+        }
+
+        private fun moves(by: Int, forward: List<String>, back: List<String>) = List(kotlin.math.abs(by)) { if (by > 0) forward else back }.flatten()
+    }
 }
 
 /** A mode a program says it's in: its [name], the [mark] it shows with it (empty if it's not been seen), and the [hue] it's shown in. */

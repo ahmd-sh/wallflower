@@ -34,10 +34,12 @@ object Codex : Program {
     )
 
     /**
-     * A few, to show what a shortcut can be: a key, commands run as sent,
-     * and /side, which starts what's sent, the question to ask aside.
+     * A few, to show what a shortcut can be: keys (← from its empty
+     * composer brings up its agents), commands run as sent, and /side,
+     * which starts what's sent, the question to ask aside.
      */
     override val shortcuts = listOf(
+        Shortcut(listOf("Left"), "agents"),
         Shortcut(listOf("F4"), "activity"),
         Shortcut(listOf("/model", "Enter")),
         Shortcut(listOf("/diff", "Enter")),
@@ -124,7 +126,7 @@ object Codex : Program {
      * to trust, which Enter confirms, and 2 leaves at once.
      */
     override fun prompt(screen: Screen): Prompt? {
-        if (composer(screen) != null) return null
+        if (composer(screen) != null || center(screen) != null) return null
         val p = Prompt.read(screen) ?: return null
         val from = p.lines.indexOfLast { it.text.trimStart().let { t -> t.startsWith("•") || t.startsWith("↪") } } + 1
         val lines = p.lines.drop(from).dropWhile { it.text.isBlank() }
@@ -173,6 +175,117 @@ object Codex : Program {
     }
 
     private val needs = Regex("""^\s*\[[^\]]*]\s*Action Required(\s*\|\s*|$)""")
+
+    /**
+     * Its agent command center (← from an empty composer), its own screen:
+     * a heading, the filters, a rule, then its tasks under " Tasks", in
+     * groups (faint: "~/dev/wallflower  24", "Pinned  1"), each task its
+     * mark and name, the cursor's row "› " and lit; "↑" and "↓" where more
+     * is out of sight; its keys at the foot. A filter's count is its own;
+     * the current one isn't faint, and "‹" or "›" stand for more of them.
+     * Of the marks, ! needs the user and ○ is nothing new; ● is working
+     * (green) or needs the user or is new since it was looked at (blue),
+     * told apart by the filter, or by nothing working or needing the user.
+     * Its keys (?) show over the filters, in the tasks' place.
+     */
+    override fun aside(screen: Screen): Aside? {
+        val s = screen
+        val top = center(s) ?: return null
+        val filters = filters(s, top + 1)
+        var foot = s.rows - 1
+        while (foot > top && text(s, foot, 0).isBlank()) foot--
+        if (!keys.containsMatchIn(text(s, foot, 0))) foot++
+        val current = filters.firstOrNull { it.current }?.name
+        val working = filters.firstOrNull { it.name == "Working" }?.count
+        val needing = filters.firstOrNull { it.name == "Needs you" }?.count
+        // Its keys, over the filters: a view of its own on its own.
+        if (text(s, top + 3, 0).trim() == "Task shortcuts") return Aside.View("agents' keys", listOf("Escape"))
+        val groups = ArrayList<Aside.Tasks.Group>()
+        var name: String? = null
+        var count = ""
+        var tasks = ArrayList<Aside.Tasks.Task>()
+        var above = false
+        var below = false
+        var says: String? = null
+        fun close() {
+            if (name != null || tasks.isNotEmpty()) groups += Aside.Tasks.Group(name.orEmpty(), count, tasks)
+            name = null
+            count = ""
+            tasks = ArrayList()
+        }
+        for (y in top + 3 until foot) {
+            val row = text(s, y, 0)
+            if (row.isBlank()) continue
+            val at = row.indexOfFirst { !it.isWhitespace() }
+            val rest = row.substring(at)
+            when {
+                rest.startsWith("↑") -> above = true
+                rest.startsWith("↓") -> below = true
+                s.faint(at, y) && at <= 2 && heading.matches(rest) -> {
+                    close()
+                    val parts = rest.split(Regex("""\s{2,}"""), limit = 2)
+                    name = parts[0]
+                    count = parts[1]
+                }
+                s.faint(at, y) && at > 2 -> Unit // " Tasks"
+                else -> task.find(row)?.let { m ->
+                    val mark = when (m.groupValues[2]) {
+                        "!" -> Aside.Tasks.Mark.NeedsYou
+                        "○" -> Aside.Tasks.Mark.Idle
+                        else -> when {
+                            current == "Working" -> Aside.Tasks.Mark.Working
+                            current == "Needs you" -> Aside.Tasks.Mark.NeedsYou
+                            working == 0 && needing == 0 -> Aside.Tasks.Mark.Updated
+                            else -> Aside.Tasks.Mark.Lit
+                        }
+                    }
+                    tasks += Aside.Tasks.Task(m.groupValues[3], mark, m.groupValues[1].isNotEmpty())
+                } ?: run { if (groups.isEmpty() && tasks.isEmpty()) says = rest }
+            }
+        }
+        close()
+        return Aside.Tasks(
+            named = "agents",
+            filters = filters,
+            groups = groups,
+            above = above,
+            below = below,
+            says = says.takeIf { groups.isEmpty() },
+            leave = listOf("Escape"),
+            up = listOf("Up"),
+            down = listOf("Down"),
+            open = listOf("Enter"),
+            next = listOf("Tab"),
+            previous = listOf("BTab"),
+            pageUp = listOf("PageUp"),
+            pageDown = listOf("PageDown"),
+            new = listOf("n"),
+        )
+    }
+
+    /** The agent command center's heading row, near the top, if it's up. */
+    private fun center(s: Screen): Int? = (0 until minOf(3, s.rows - 3)).firstOrNull { text(s, it, 0).trimStart().startsWith("Agent command center") }
+
+    /** The filters on row [y]: each a name, then how many, apart from the next; the one current isn't faint. */
+    private fun filters(s: Screen, y: Int): List<Aside.Tasks.Filter> {
+        val row = StringBuilder()
+        val at = ArrayList<Int>()
+        for (x in 0 until s.cols) {
+            if (s.spacer(x, y)) continue
+            val t = s.text(x, y).ifEmpty { " " }
+            row.append(t)
+            repeat(t.length) { at += x }
+        }
+        return filter.findAll(row).map { m -> Aside.Tasks.Filter(m.groupValues[1], m.groupValues[2].toInt(), !s.faint(at[m.range.first], y)) }.toList()
+    }
+
+    private val filter = Regex("""(\p{L}[\p{L} ]*?) (\d+)(?= |$)""")
+
+    private val task = Regex("""^\s*(›)?\s*([^\p{L}\p{N}\s])\s(.+?)\s*$""")
+
+    private val keys = Regex("""\besc back\b""")
+
+    private val heading = Regex("""\S.*?\s{2,}\d.*""")
 
     private fun text(s: Screen, y: Int, from: Int): String {
         val b = StringBuilder()

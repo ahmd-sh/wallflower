@@ -92,4 +92,82 @@ final class CodexTests: XCTestCase {
         XCTAssertTrue(Programs.of("codex") === codex)
         XCTAssertEqual(["Escape"], codex.keyBar?.stop)
     }
+
+    /// The agent command center, at 42 columns.
+    private func agents(_ name: String = "") -> Aside.Tasks? {
+        if case .tasks(let t) = codex.aside(captured("codex-agents\(name).ansi", 42)) { return t }
+        return nil
+    }
+
+    func testItsAgentsAreItsOwnListOfTasksInGroups() {
+        let s = captured("codex-agents.ansi", 42)
+        XCTAssertNil(codex.line(s))
+        XCTAssertNil(codex.prompt(s))
+        let t = agents()!
+        XCTAssertEqual(["All", "Needs you", "Working"], t.filters.map(\.name))
+        XCTAssertEqual([25, 1, 0], t.filters.map(\.count))
+        XCTAssertEqual(["All"], t.filters.filter(\.current).map(\.name))
+        XCTAssertEqual(["Pinned", "/Users/sam/dev/wallflower"], t.groups.map(\.name))
+        XCTAssertEqual(["1", "24"], t.groups.map(\.count))
+        XCTAssertEqual(["second task"], t.groups[0].tasks.map(\.name))
+        let tasks = t.tasks
+        XCTAssertEqual("Untitled task", tasks[1].name)
+        XCTAssertEqual("Error: task number 22 with a fai…", tasks[2].name)
+        XCTAssertEqual(["task number 21 with a fairly lon…"], tasks.filter(\.current).map(\.name))
+        XCTAssertEqual(.idle, tasks[1].mark)
+        XCTAssertEqual(.lit, tasks[2].mark) // ●, with something needing the user: it, or one out of sight
+        XCTAssertFalse(t.above)
+        XCTAssertTrue(t.below)
+        XCTAssertNil(t.says)
+        XCTAssertEqual(["Escape"], t.leave)
+    }
+
+    func testATaskIsOpenedByMovingTheCursorToIt() {
+        let t = agents()!
+        XCTAssertEqual(["Up", "Up", "Up", "Enter"], t.opening(0)) // past the group's heading and the row between
+        XCTAssertEqual(["Down", "Down", "Enter"], t.opening(5))
+        XCTAssertEqual(["Enter"], t.opening(t.tasks.firstIndex { $0.current }!))
+        XCTAssertEqual(["Tab", "Tab"], t.showing(2))
+        XCTAssertEqual([], t.showing(0))
+    }
+
+    func testItsMarksSayWhatEachTaskIsDoingAsFarAsTheyCan() {
+        let marks = Dictionary(uniqueKeysWithValues: agents("-marks")!.tasks.map { ($0.name, $0.mark) })
+        XCTAssertEqual(.needsYou, marks["build fix"])
+        XCTAssertEqual(.lit, marks["docs pass"])
+        let working = Dictionary(uniqueKeysWithValues: agents("-working")!.tasks.map { ($0.name, $0.mark) })
+        XCTAssertEqual(.lit, working["fix the build"]) // working, or needing the user: both are
+        let needs = agents("-needs-you")!
+        XCTAssertEqual([.needsYou], needs.tasks.map(\.mark)) // what the filter holds
+        XCTAssertEqual("/Users/…/dev/wallflower", needs.groups.first?.name)
+        XCTAssertEqual("1 of 24", needs.groups.first?.count)
+    }
+
+    func testFilteredItCanSayThereAreNoneOrShowOtherFilters() {
+        let none = agents("-none")!
+        XCTAssertEqual("No matching tasks", none.says)
+        XCTAssertTrue(none.groups.isEmpty)
+        XCTAssertEqual(["Working"], none.filters.filter(\.current).map(\.name))
+        let ready = agents("-filtered")!
+        XCTAssertEqual(["Working", "Ready", "Inactive"], ready.filters.map(\.name))
+        XCTAssertEqual(["Ready"], ready.filters.filter(\.current).map(\.name))
+        XCTAssertEqual(["BTab"], ready.showing(0))
+    }
+
+    func testScrolledThereIsMoreAboveAndItsGroupsHeadingIsOutOfSight() {
+        let t = agents("-scrolled")!
+        XCTAssertTrue(t.above)
+        XCTAssertFalse(t.below)
+        XCTAssertEqual([""], t.groups.map(\.name))
+        XCTAssertEqual("task number 19 with a fairly lon…", t.tasks.first?.name)
+        XCTAssertEqual("say hi", t.tasks.last?.name)
+        XCTAssertEqual(["say hi"], t.tasks.filter(\.current).map(\.name))
+    }
+
+    func testItsKeysAreAViewOfItsOwn() {
+        XCTAssertEqual(.view(Aside.View(name: "agents' keys", leave: ["Escape"])), codex.aside(captured("codex-agents-help.ansi", 42)))
+        XCTAssertNil(codex.aside(screen("idle")))
+        XCTAssertNil(codex.aside(screen("trust")))
+    }
 }
+

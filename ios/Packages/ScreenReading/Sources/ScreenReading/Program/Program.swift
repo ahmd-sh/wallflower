@@ -263,10 +263,13 @@ public enum Aside: Hashable, Sendable {
 
     case answer(Answer)
 
+    case tasks(Tasks)
+
     public var leave: [String] {
         switch self {
         case .view(let v): v.leave
         case .answer(let a): a.leave
+        case .tasks(let t): t.leave
         }
     }
 
@@ -349,6 +352,108 @@ public enum Aside: Hashable, Sendable {
         private func contains(_ all: [String], _ part: [String]) -> Bool {
             guard part.count <= all.count else { return false }
             return (0...(all.count - part.count)).contains { Array(all[$0..<($0 + part.count)]) == part }
+        }
+    }
+
+    /// The program's own list of its tasks, its conversations, to open one
+    /// from, as Codex's agent command center: what it's `named`, the
+    /// `filters` it shows (each with how many it holds; one is current), and
+    /// the `groups` of tasks it shows, one under its cursor. There may be
+    /// more `above` and `below` than shows; with none, what it `says`
+    /// instead. `up` and `down` move its cursor, `open` opens the task under
+    /// it, `next` and `previous` go between filters, `pageUp` and `pageDown`
+    /// scroll, and `new` starts a task.
+    public struct Tasks: Hashable, Sendable {
+        public var named: String
+        public var filters: [Filter]
+        public var groups: [Group]
+        public var above: Bool
+        public var below: Bool
+        public var says: String?
+        public var leave: [String]
+        public var up: [String]
+        public var down: [String]
+        public var open: [String]
+        public var next: [String]
+        public var previous: [String]
+        public var pageUp: [String]
+        public var pageDown: [String]
+        public var new: [String]
+
+        public struct Filter: Hashable, Sendable {
+            public var name: String
+            public var count: Int
+            public var current: Bool
+
+            public init(name: String, count: Int, current: Bool) {
+                self.name = name
+                self.count = count
+                self.current = current
+            }
+        }
+
+        public struct Group: Hashable, Sendable {
+            public var name: String
+            public var count: String
+            public var tasks: [Task]
+
+            public init(name: String, count: String, tasks: [Task]) {
+                self.name = name
+                self.count = count
+                self.tasks = tasks
+            }
+        }
+
+        public struct Task: Hashable, Sendable {
+            public var name: String
+            public var mark: Mark
+            public var current: Bool
+
+            public init(name: String, mark: Mark, current: Bool) {
+                self.name = name
+                self.mark = mark
+                self.current = current
+            }
+        }
+
+        /// What a task's mark says of it: it needs the user, it's working, something's new in it since it was looked at, one of those (which can't be told apart), or nothing.
+        public enum Mark: Hashable, Sendable { case needsYou, working, updated, lit, idle }
+
+        public init(named: String, filters: [Filter], groups: [Group], above: Bool, below: Bool, says: String?, leave: [String], up: [String], down: [String], open: [String], next: [String], previous: [String], pageUp: [String], pageDown: [String], new: [String]) {
+            self.named = named
+            self.filters = filters
+            self.groups = groups
+            self.above = above
+            self.below = below
+            self.says = says
+            self.leave = leave
+            self.up = up
+            self.down = down
+            self.open = open
+            self.next = next
+            self.previous = previous
+            self.pageUp = pageUp
+            self.pageDown = pageDown
+            self.new = new
+        }
+
+        public var tasks: [Task] { groups.flatMap(\.tasks) }
+
+        /// The keys that move the cursor to the `at`th task and open it.
+        public func opening(_ at: Int) -> [String] {
+            let all = tasks
+            guard all.indices.contains(at) else { return [] }
+            return moves(at - (all.firstIndex { $0.current } ?? 0), down, up) + open
+        }
+
+        /// The keys that go to the `at`th filter.
+        public func showing(_ at: Int) -> [String] {
+            guard let from = filters.firstIndex(where: { $0.current }), filters.indices.contains(at) else { return [] }
+            return moves(at - from, next, previous)
+        }
+
+        private func moves(_ by: Int, _ forward: [String], _ back: [String]) -> [String] {
+            Array(repeating: by > 0 ? forward : back, count: abs(by)).flatMap { $0 }
         }
     }
 }
