@@ -108,6 +108,9 @@ public struct MobileView: View {
         self.onSwipeEnd = onSwipeEnd
     }
 
+    /** The program's list of its tasks, if that's what it shows aside. */
+    private var tasks: Aside.Tasks? { if case .tasks(let t) = aside { t } else { nil } }
+
     /** A prompt while the program says it's busy is one left on the screen, or a list that looks like one. */
     private var asking: Prompt? { activity != .working ? prompt : nil }
 
@@ -128,11 +131,14 @@ public struct MobileView: View {
         let items = ReadModel.items(reading.shown)
         let status = self.status
         // Nothing said yet, a conversation can still have something at its foot: an answer aside, a menu, what's queued.
-        let phase: Phase = !reading.loaded ? .reading
+        let phase: Phase = tasks != nil ? .tasks
+            : !reading.loaded ? .reading
             : items.isEmpty && aside == nil && status == nil && reading.queued.isEmpty ? .empty : .shown
         ZStack(alignment: .topLeading) {
             Group {
                 switch phase {
+                // The program's list of its tasks takes the conversation's place, as it does the program's screen.
+                case .tasks: if let tasks { TasksPage(tasks: tasks, onKeys: onKeys) }
                 case .reading: Hint(text: "reading…")
                 case .empty:
                     // The mode can be picked before the first message.
@@ -171,7 +177,7 @@ public struct MobileView: View {
             }
             .transition(.opacity)
             .animation(Motion.effect, value: phase)
-            if let title {
+            if let title, phase != .tasks { // the list says what it is
                 Capped(width: 240) {
                     Text(title)
                         .words(.label)
@@ -218,7 +224,7 @@ public struct MobileView: View {
     }
 }
 
-private enum Phase { case reading, empty, shown }
+private enum Phase { case tasks, reading, empty, shown }
 
 /** What's below the conversation: a menu to answer, the program working, or waiting on something unread. */
 private enum Status { case asking, working, waiting, seeking }
@@ -368,7 +374,7 @@ private struct Conversation: View {
                     FooterView(footer: footer).frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 // What's aside of the program's line takes its place, at the foot.
-                if let aside {
+                if let aside, aside.card {
                     AsideCard(aside: aside, answer: answer, nudged: nudged, onKeys: onKeys)
                         .id(asideKey(aside))
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { feelAside.laidOut($0, haptics) }
@@ -1150,7 +1156,13 @@ private func asideKey(_ aside: Aside) -> String {
     switch aside {
     case .view(let v): "view " + v.name
     case .answer(let a): "answer " + a.question
+    case .tasks(let t): "tasks " + t.named
     }
+}
+
+private extension Aside {
+    /** Whether it goes at the conversation's foot, on a card, rather than in its place (a list of tasks). */
+    var card: Bool { if case .tasks = self { false } else { true } }
 }
 
 /**
@@ -1235,6 +1247,8 @@ private struct AsideCard: View {
             .padding(.vertical, 8)
             .background(palette.bg1)
             .clipShape(RoundedRectangle(cornerRadius: 18))
+        case .tasks:
+            EmptyView() // a page of its own (TasksPage)
         case .answer(let a):
             ZStack(alignment: .topTrailing) {
                 VStack(alignment: .leading, spacing: 6) {
