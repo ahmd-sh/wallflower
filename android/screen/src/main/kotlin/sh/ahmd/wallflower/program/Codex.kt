@@ -182,7 +182,8 @@ object Codex : Program {
      * groups (faint: "~/dev/wallflower  24", "Pinned  1"), each task its
      * mark and name, the cursor's row "› " and lit; "↑" and "↓" where more
      * is out of sight; its keys at the foot. A filter's count is its own;
-     * the current one isn't faint, and "‹" or "›" stand for more of them.
+     * the current one isn't faint, and "‹" or "›" stand for more of them:
+     * it shows those that fit, and the rest are said too, a Tab or two away.
      * Of the marks, ! needs the user and ○ is nothing new; ● is working
      * (green) or needs the user or is new since it was looked at (blue),
      * told apart by the filter, or by nothing working or needing the user.
@@ -191,13 +192,13 @@ object Codex : Program {
     override fun aside(screen: Screen): Aside? {
         val s = screen
         val top = center(s) ?: return null
-        val filters = filters(s, top + 1)
+        val seen = filters(s, top + 1)
         var foot = s.rows - 1
         while (foot > top && text(s, foot, 0).isBlank()) foot--
         if (!keys.containsMatchIn(text(s, foot, 0))) foot++
-        val current = filters.firstOrNull { it.current }?.name
-        val working = filters.firstOrNull { it.name == "Working" }?.count
-        val needing = filters.firstOrNull { it.name == "Needs you" }?.count
+        val current = seen.firstOrNull { it.current }?.name
+        val working = seen.firstOrNull { it.name == "Working" }?.count
+        val needing = seen.firstOrNull { it.name == "Needs you" }?.count
         // Its keys, over the filters: a view of its own on its own.
         if (text(s, top + 3, 0).trim() == "Task shortcuts") return Aside.View("agents' keys", listOf("Escape"))
         val groups = ArrayList<Aside.Tasks.Group>()
@@ -246,7 +247,7 @@ object Codex : Program {
         close()
         return Aside.Tasks(
             named = "agents",
-            filters = filters,
+            filters = every(seen),
             groups = groups,
             above = above,
             below = below,
@@ -278,6 +279,19 @@ object Codex : Program {
         }
         return filter.findAll(row).map { m -> Aside.Tasks.Filter(m.groupValues[1], m.groupValues[2].toInt(), !s.faint(at[m.range.first], y)) }.toList()
     }
+
+    /**
+     * Its filters, in its order, from [seen], those it shows: the ones out of
+     * sight, how many they hold unknown. As they are if they aren't a run of
+     * these, as another version's may not be.
+     */
+    private fun every(seen: List<Aside.Tasks.Filter>): List<Aside.Tasks.Filter> {
+        val at = seen.map { allFilters.indexOf(it.name) }
+        if (at.isEmpty() || at[0] < 0 || at.withIndex().any { (i, n) -> n != at[0] + i }) return seen
+        return allFilters.map { name -> seen.firstOrNull { it.name == name } ?: Aside.Tasks.Filter(name, null, false) }
+    }
+
+    private val allFilters = listOf("All", "Needs you", "Working", "Ready", "Inactive")
 
     private val filter = Regex("""(\p{L}[\p{L} ]*?) (\d+)(?= |$)""")
 

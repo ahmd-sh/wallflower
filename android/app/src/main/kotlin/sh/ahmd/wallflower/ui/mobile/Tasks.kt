@@ -1,4 +1,4 @@
-package sh.ahmd.wallflower.ui
+package sh.ahmd.wallflower.ui.mobile
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -30,10 +30,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.program.Aside
+import sh.ahmd.wallflower.ui.Palette
+import sh.ahmd.wallflower.ui.Type
+import sh.ahmd.wallflower.ui.haptics
 
 /**
  * The program's own list of its tasks, in a mobile view's place while it
- * shows it: its filters to pick from, its tasks in their groups to open
+ * shows it: its filters to pick from (all of them, though it may show only
+ * some, with how many each holds where it does), its tasks in their groups to open
  * one, the one under its cursor lit, and a way back and to a new one. What's
  * out of sight above or below is a page away. Something sent while it's up
  * waits, as what's typed would go to it: it says so a moment ([nudged]). Each is keys to the program
@@ -67,7 +71,7 @@ internal fun TasksPage(tasks: Aside.Tasks, onKeys: (List<String>) -> Unit, nudge
         ) {
             tasks.filters.forEachIndexed { i, f ->
                 Text(
-                    "${f.name.lowercase()} ${f.count}",
+                    f.name.lowercase() + f.count?.let { " $it" }.orEmpty(),
                     color = if (f.current) Palette.fg else Palette.grey,
                     style = Type.label,
                     modifier = Modifier

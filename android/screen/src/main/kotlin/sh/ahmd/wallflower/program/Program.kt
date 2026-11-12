@@ -229,8 +229,8 @@ sealed interface Aside {
 
     /**
      * The program's own list of its tasks, its conversations, to open one
-     * from, as Codex's agent command center: what it's [named], the
-     * [filters] it shows (each with how many it holds; one is current), and
+     * from, as Codex's agent command center: what it's [named], its
+     * [filters] (each with how many it holds, if it shows; one is current), and
      * the [groups] of tasks it shows, one under its cursor. There may be
      * more [above] and [below] than shows; with none, what it [says]
      * instead. [up] and [down] move its cursor, [open] opens the task under
@@ -254,7 +254,8 @@ sealed interface Aside {
         val pageDown: List<String>,
         val new: List<String>,
     ) : Aside {
-        data class Filter(val name: String, val count: Int, val current: Boolean)
+        /** A filter, with how many it holds, if that's shown. */
+        data class Filter(val name: String, val count: Int?, val current: Boolean)
 
         data class Group(val name: String, val count: String, val tasks: List<Task>)
 

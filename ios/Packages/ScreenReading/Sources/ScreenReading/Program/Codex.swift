@@ -169,7 +169,8 @@ public final class Codex: Program {
     /// groups (faint: "~/dev/wallflower  24", "Pinned  1"), each task its
     /// mark and name, the cursor's row "› " and lit; "↑" and "↓" where more
     /// is out of sight; its keys at the foot. A filter's count is its own;
-    /// the current one isn't faint, and "‹" or "›" stand for more of them.
+    /// the current one isn't faint, and "‹" or "›" stand for more of them:
+    /// it shows those that fit, and the rest are said too, a Tab or two away.
     /// Of the marks, ! needs the user and ○ is nothing new; ● is working
     /// (green) or needs the user or is new since it was looked at (blue),
     /// told apart by the filter, or by nothing working or needing the user.
@@ -177,10 +178,10 @@ public final class Codex: Program {
     public func aside(_ screen: Screen) -> Aside? {
         let s = screen
         guard let top = center(s) else { return nil }
-        let filters = filters(s, top + 1)
-        let current = filters.first { $0.current }?.name
-        let working = filters.first { $0.name == "Working" }?.count
-        let needing = filters.first { $0.name == "Needs you" }?.count
+        let seen = filters(s, top + 1)
+        let current = seen.first { $0.current }?.name
+        let working = seen.first { $0.name == "Working" }?.count
+        let needing = seen.first { $0.name == "Needs you" }?.count
         // Its keys, over the filters: a view of its own on its own.
         if top + 3 < s.rows && text(s, top + 3, 0).trimmed() == "Task shortcuts" { return .view(Aside.View(name: "agents' keys", leave: ["Escape"])) }
         var foot = s.rows - 1
@@ -233,7 +234,7 @@ public final class Codex: Program {
         close()
         return .tasks(Aside.Tasks(
             named: "agents",
-            filters: filters,
+            filters: Codex.every(seen),
             groups: groups,
             above: above,
             below: below,
@@ -268,6 +269,17 @@ public final class Codex: Program {
             Aside.Tasks.Filter(name: m.groupValue(1), count: Int(m.groupValue(2)) ?? 0, current: !s.isFaint(at[m.range.lowerBound], y))
         }
     }
+
+    /// Its filters, in its order, from `seen`, those it shows: the ones out of
+    /// sight, how many they hold unknown. As they are if they aren't a run of
+    /// these, as another version's may not be.
+    private static func every(_ seen: [Aside.Tasks.Filter]) -> [Aside.Tasks.Filter] {
+        let at = seen.map { allFilters.firstIndex(of: $0.name) ?? -1 }
+        guard let first = at.first, first >= 0, at.enumerated().allSatisfy({ i, n in n == first + i }) else { return seen }
+        return allFilters.map { name in seen.first { $0.name == name } ?? Aside.Tasks.Filter(name: name, count: nil, current: false) }
+    }
+
+    private static let allFilters = ["All", "Needs you", "Working", "Ready", "Inactive"]
 
     private static let filter = Pattern("(\\p{L}[\\p{L} ]*?) (\\d+)(?= |$)")
 

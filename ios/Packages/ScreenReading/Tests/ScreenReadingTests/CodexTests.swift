@@ -104,8 +104,9 @@ final class CodexTests: XCTestCase {
         XCTAssertNil(codex.line(s))
         XCTAssertNil(codex.prompt(s))
         let t = agents()!
-        XCTAssertEqual(["All", "Needs you", "Working"], t.filters.map(\.name))
-        XCTAssertEqual([25, 1, 0], t.filters.map(\.count))
+        // Those that don't fit are there too, how many they hold unknown.
+        XCTAssertEqual(["All", "Needs you", "Working", "Ready", "Inactive"], t.filters.map(\.name))
+        XCTAssertEqual([25, 1, 0, nil, nil], t.filters.map(\.count))
         XCTAssertEqual(["All"], t.filters.filter(\.current).map(\.name))
         XCTAssertEqual(["Pinned", "/Users/sam/dev/wallflower"], t.groups.map(\.name))
         XCTAssertEqual(["1", "24"], t.groups.map(\.count))
@@ -128,6 +129,7 @@ final class CodexTests: XCTestCase {
         XCTAssertEqual(["Down", "Down", "Enter"], t.opening(5))
         XCTAssertEqual(["Enter"], t.opening(t.tasks.firstIndex { $0.current }!))
         XCTAssertEqual(["Tab", "Tab"], t.showing(2))
+        XCTAssertEqual(["Tab", "Tab", "Tab", "Tab"], t.showing(4)) // out of sight
         XCTAssertEqual([], t.showing(0))
     }
 
@@ -149,9 +151,12 @@ final class CodexTests: XCTestCase {
         XCTAssertTrue(none.groups.isEmpty)
         XCTAssertEqual(["Working"], none.filters.filter(\.current).map(\.name))
         let ready = agents("-filtered")!
-        XCTAssertEqual(["Working", "Ready", "Inactive"], ready.filters.map(\.name))
+        XCTAssertEqual(["All", "Needs you", "Working", "Ready", "Inactive"], ready.filters.map(\.name))
+        XCTAssertEqual([nil, nil, 0, 1, 23], ready.filters.map(\.count))
         XCTAssertEqual(["Ready"], ready.filters.filter(\.current).map(\.name))
-        XCTAssertEqual(["BTab"], ready.showing(0))
+        XCTAssertEqual(["BTab"], ready.showing(2))
+        XCTAssertEqual(["BTab", "BTab", "BTab"], ready.showing(0)) // out of sight
+        XCTAssertEqual(["Tab"], ready.showing(4))
     }
 
     func testScrolledThereIsMoreAboveAndItsGroupsHeadingIsOutOfSight() {
