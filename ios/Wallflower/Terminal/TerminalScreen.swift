@@ -336,10 +336,11 @@ struct TerminalScreen: View {
         let holding = mobile && screen.aside != nil ||
             mobile && activity == .waiting && (screen.prompt.map { p in !p.options.contains { $0.current && $0.muted && $0.scroll == 0 } } ?? false)
         let profile = bar.profile(for: pane.command, program: pane.program)
+        let pressing = Pressing(can: session.mux?.can ?? [])
         return Composer(
             text: Binding(get: { model.drafts.text(pane.id) }, set: { model.drafts.set(pane.id, $0) }),
             program: pane.command,
-            keys: profile.keys,
+            keys: pressing.only(profile.keys),
             connected: connected,
             line: seeker.seeking == nil ? screen.line : nil, // what's typed to ask a message back isn't the user's
             recalled: seeker.recalled,
@@ -392,7 +393,7 @@ struct TerminalScreen: View {
             },
             onEditKeys: onEditKeys,
             pad: pad,
-            shortcuts: profile.shortcuts(for: actions.program),
+            shortcuts: pressing.only(profile.shortcuts(for: actions.program)),
             onShortcut: { key in
                 // What a menu's waiting on would take a shortcut's text as picks (a hotkey's letter), and its Enter or shift+tab as an answer.
                 if holding {

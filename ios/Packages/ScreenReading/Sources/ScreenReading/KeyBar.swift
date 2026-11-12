@@ -194,8 +194,8 @@ public struct KeyBar: Codable, Hashable, Sendable {
     /// The pane's shortcuts, in one key; `shortcuts` by name.
     public static let shortcutsKey = BarKey(label: "shortcuts", keys: [], shortcuts: true)
 
-    /// The modifiers, held with the next key: ctrl, alt and shift.
-    public static let modifiers = ["C-", "M-", "S-"]
+    /// The modifiers, held with the next key: ctrl, alt, shift, and cmd (super), where it can be pressed (`Pressing`).
+    public static let modifiers = ["C-", "M-", "S-", "D-"]
 
     /// Keys every keyboard has, which a shortcut's keys are made of, besides text and the modifiers.
     public static let named = ["Escape", "Tab", "Enter", "BSpace", "Space", "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "DC"]
@@ -213,6 +213,7 @@ public struct KeyBar: Codable, Hashable, Sendable {
         BarKey(label: "ctrl", keys: ["C-"], sticky: true),
         BarKey(label: "alt", keys: ["M-"], sticky: true),
         BarKey(label: "shift", keys: ["S-"], sticky: true),
+        BarKey(label: "cmd", keys: ["D-"], sticky: true),
     ]
 
     /// `key` with `modifier` held: shift tab is back tab, and a shifted letter its capital.
@@ -249,7 +250,7 @@ public struct KeyBar: Codable, Hashable, Sendable {
         }.joined(separator: " ")
     }
 
-    /// The modifiers held with a key (C, M, S) and the key: C-M-Left is C, M and Left.
+    /// The modifiers held with a key (C, M, S, D) and the key: C-M-Left is C, M and Left.
     public static func held(_ key: String) -> (held: [Character], rest: String) {
         var rest = Array(key.utf16)
         var held: [Character] = []
@@ -260,14 +261,14 @@ public struct KeyBar: Codable, Hashable, Sendable {
         return (held, String(units: rest))
     }
 
-    private static let modifierLabels: [Character: String] = ["C": "^", "M": "alt+", "S": "⇧"]
+    private static let modifierLabels: [Character: String] = ["C": "^", "M": "alt+", "S": "⇧", "D": "⌘"]
     private static let labels = [
         "Enter": "⏎", "Escape": "esc", "Tab": "tab", "BTab": "⇧tab", "BSpace": "⌫", "Space": "space",
         "Up": "↑", "Down": "↓", "Left": "←", "Right": "→", "Home": "home", "End": "end",
         "PageUp": "pgup", "PageDown": "pgdn", "DC": "del", "IC": "ins", "prefix": "prefix",
     ]
     private static let said = [
-        "C-": "ctrl", "M-": "alt", "S-": "shift",
+        "C-": "ctrl", "M-": "alt", "S-": "shift", "D-": "cmd",
         "Enter": "enter", "Escape": "escape", "Tab": "tab", "BTab": "shift tab", "BSpace": "backspace", "Space": "space",
         "Up": "up", "Down": "down", "Left": "left", "Right": "right", "Home": "home", "End": "end",
         "PageUp": "page up", "PageDown": "page down", "DC": "delete", "IC": "insert", "prefix": "prefix",
@@ -333,7 +334,7 @@ public struct KeyBar: Codable, Hashable, Sendable {
 
     private static func keys(_ labels: String...) -> [BarKey] { labels.map { l in common.first { $0.label == l }! } }
 
-    /// A key by name, as the bar shows it: `arrows`, `shortcuts` and the sticky ones (`ctrl`, `alt`, `shift`) by theirs.
+    /// A key by name, as the bar shows it: `arrows`, `shortcuts` and the sticky ones (`ctrl`, `alt`, `shift`, `cmd`) by theirs.
     private static func key(_ name: String) -> BarKey {
         common.first { ($0.sticky || $0.cluster || $0.shortcuts) && $0.label == name }
             ?? common.first { !$0.sticky && !$0.cluster && $0.keys == [name] } ?? BarKey(label: label(of: [name]), keys: [name])
@@ -357,4 +358,28 @@ public struct KeyBar: Codable, Hashable, Sendable {
             version: KeyBar.version
         )
     }()
+}
+
+/// What the multiplexer behind the bar can press, as it says (its `can`):
+/// every one presses ctrl, alt and shift; super (`D-`, the Mac's command key,
+/// shown as cmd) only one that says so, as Rex does. tmux has no super.
+public struct Pressing: Hashable, Sendable {
+    /// Whether it presses super.
+    public var superKey: Bool
+
+    public init(can: [String]) { superKey = can.contains(Pressing.superCan) }
+
+    /// What a multiplexer says it can do when it presses super (Mux.can, MuxSessions.can).
+    public static let superCan = "super"
+
+    /// Whether all of `keys` can be pressed.
+    public func can(_ keys: [String]) -> Bool {
+        superKey || !keys.contains { $0 == "D-" || KeyBar.held($0).held.contains("D") }
+    }
+
+    /// Those of `keys` that can be pressed.
+    public func only(_ keys: [BarKey]) -> [BarKey] { keys.filter { can($0.keys) } }
+
+    /// The modifiers that can be held.
+    public var modifiers: [String] { KeyBar.modifiers.filter { can([$0]) } }
 }

@@ -123,6 +123,7 @@ struct RootView: View {
                 .id(ObjectIdentifier(session))
                 if let page {
                     pageView(page, host: host, session: session)
+                        .environment(\.pressing, Pressing(can: (session.sessions?.muxes.flatMap(\.can) ?? []) + (session.mux?.can ?? [])))
                         .offset(x: dragged)
                         .gesture(back)
                         .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .trailing).combined(with: .opacity)))

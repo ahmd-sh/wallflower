@@ -193,12 +193,13 @@ private struct ShortcutsEditor: View {
 
 /**
  * What a shortcut sends, [keys] by wallflower's names, made by tapping keys
- * and typing: a modifier (ctrl, alt, shift) waits for the next key, tapped
+ * and typing: a modifier (ctrl, alt, shift, cmd where it can be pressed) waits for the next key, tapped
  * or typed, and goes with it; what's typed otherwise is text, typed as it is.
  * The field edits the text at the end; a key tapped after it ends it.
  */
 struct KeysBuilder: View {
     @Environment(\.palette) private var palette
+    @Environment(\.pressing) private var pressing
     @Binding var keys: [String]
     @State private var held: [String] = []
 
@@ -230,7 +231,7 @@ struct KeysBuilder: View {
         .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 12).fill(palette.bg1))
         HStack(spacing: 6) {
-            ForEach(KeyBar.modifiers, id: \.self) { m in
+            ForEach(pressing.modifiers, id: \.self) { m in
                 Chip(KeyBar.label(of: [m]), selected: held.contains(m)) { if held.contains(m) { held.removeAll { $0 == m } } else { held.append(m) } }
             }
         }

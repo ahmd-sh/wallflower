@@ -92,22 +92,11 @@ private struct KeyChip: View {
 
     private func start() {
         hold?.cancel()
-        hold = Task {
-            try? await Task.sleep(for: .milliseconds(repeats ? 400 : 500))
-            guard !Task.isCancelled else { return }
+        hold = holding(repeats: repeats, onHeld: {
             spent = true
             withAnimation(Motion.effect) { held = true }
-            if !repeats {
-                haptics.hold()
-                return
-            }
-            fire(false)
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(50))
-                guard !Task.isCancelled else { return }
-                fire(true)
-            }
-        }
+            if !repeats { haptics.hold() }
+        }, fire: fire)
     }
 
     private func fire(_ again: Bool) {
@@ -182,6 +171,27 @@ private struct EditKeys: View {
                 haptics.hold()
                 withAnimation(Motion.effect) { held = true }
             }
+    }
+}
+
+/**
+ * A key held down: after a moment, [onHeld]; then, for one that [repeats],
+ * [fire] (again after the first) 20 times a second, till the task's
+ * cancelled, as letting go, a press cut short or the key going does.
+ */
+@MainActor
+func holding(repeats: Bool, onHeld: @escaping () -> Void, fire: @escaping (_ again: Bool) -> Void) -> Task<Void, Never> {
+    Task {
+        try? await Task.sleep(for: .milliseconds(repeats ? 400 : 500))
+        guard !Task.isCancelled else { return }
+        onHeld()
+        guard repeats else { return }
+        fire(false)
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            fire(true)
+        }
     }
 }
 

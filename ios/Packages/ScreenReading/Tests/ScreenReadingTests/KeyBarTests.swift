@@ -146,4 +146,21 @@ final class KeyBarTests: XCTestCase {
         XCTAssertEqual(off, try decode(KeyBar.self, String(decoding: JSONEncoder().encode(off), as: UTF8.self)).upgraded())
         XCTAssertEqual(KeyBar.defaults, KeyBar.defaults.upgraded())
     }
+
+    func testCmdIsOnlyWhereItCanBePressed() {
+        let cmd = KeyBar.common.first { $0.label == "cmd" }!
+        XCTAssertEqual(["D-"], cmd.keys)
+        XCTAssertTrue(cmd.sticky)
+        XCTAssertEqual("cmd + key", KeyBar.name(of: cmd))
+        XCTAssertEqual("⌘s", cmd.then(BarKey.typed("s")).keys.first.map { KeyBar.label(of: [$0]) })
+        XCTAssertEqual("cmd left", KeyBar.name(of: ["D-Left"]))
+
+        let tmux = Pressing(can: ["bindings"]), rex = Pressing(can: ["super"])
+        let keys = [cmd, BarKey(label: "save", keys: ["D-s"]), BarKey(label: "^c", keys: ["C-c"]), KeyBar.arrows]
+        XCTAssertEqual(["^c", "arrows"], tmux.only(keys).map(\.label))
+        XCTAssertEqual(keys, rex.only(keys))
+        XCTAssertEqual(["C-", "M-", "S-"], tmux.modifiers)
+        XCTAssertEqual(KeyBar.modifiers, rex.modifiers)
+        XCTAssertTrue(tmux.can(["Escape", ":w", "Enter"]))
+    }
 }

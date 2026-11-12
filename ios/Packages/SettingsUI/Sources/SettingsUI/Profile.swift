@@ -62,6 +62,7 @@ public struct ProfileScreen: View {
 
 private struct ProfileEditor: View {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.pressing) private var pressing
     let store: KeyBarStore
     let ref: ProfileRef
     let profile: KeyProfile
@@ -163,7 +164,7 @@ private struct ProfileEditor: View {
 
             Section("add")
             Paragraph("Your own keys, like ctrl with a letter or several in a row, are shortcuts: add them from the shortcuts key.")
-            KeyChoices(choices: KeyBar.common.map { k in KeyChoice(k, id: k, selected: false) { save { $0.keys.append(k) } } })
+            KeyChoices(choices: pressing.only(KeyBar.common).map { k in KeyChoice(k, id: k, selected: false) { save { $0.keys.append(k) } } })
 
             if case .at(let i) = ref {
                 Spacer().frame(height: 8)

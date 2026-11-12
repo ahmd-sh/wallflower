@@ -1,4 +1,5 @@
 import ScreenReading
+import SettingsUI
 import SwiftUI
 import WallflowerDesign
 
@@ -116,9 +117,7 @@ struct ShortcutsUp: View {
 
     /** How wide each item is: the shortcuts' faces, then the pill to add one (in the terminal's font, which is no narrower than the words'). */
     private var widths: [CGFloat] {
-        let font = Fonts.uiMono(14)
-        let text = { (s: String) in (s as NSString).size(withAttributes: [.font: font]).width.rounded(.up) }
-        return shortcuts.map { faceWidth($0, size: 14, text: text) + Self.side * 2 } + [text(Self.add) + 14 + 6 + Self.side * 2]
+        shortcuts.map { faceWidth(faceOf($0), size: 14) + Self.side * 2 } + [faceWidth([.text(Self.add)], size: 14) + 14 + 6 + Self.side * 2]
     }
 
     static let rows = 3
@@ -153,19 +152,4 @@ func paged(_ widths: [CGFloat], width: CGFloat, gap: CGFloat, rows: Int) -> [[[I
     if !row.isEmpty { page.append(row) }
     if !page.isEmpty { pages.append(page) }
     return pages
-}
-
-/** How wide [key]'s face is at [size], as KeyFace draws it, [text] measuring its words. */
-private func faceWidth(_ key: BarKey, size: CGFloat, text: (String) -> CGFloat) -> CGFloat {
-    let glyph = size * 1.15
-    if key.cluster || key.shortcuts { return glyph }
-    if !key.hasOwnLabel { return text(key.label) }
-    var total: CGFloat = 0
-    for (n, k) in key.keys.enumerated() {
-        if n > 0 { total += size * 0.3 }
-        let (held, rest) = KeyBar.held(k)
-        let parts = held.map { keyGlyphs["\($0)-"] != nil ? glyph : text(KeyBar.modifierLabel($0)) } + [keyGlyphs[rest] != nil ? glyph : text(KeyBar.label(of: [rest]))]
-        total += parts.reduce(0, +) + CGFloat(parts.count - 1)
-    }
-    return total
 }

@@ -167,17 +167,7 @@ private struct Place: View {
                         pressed = true
                         held = false
                         guard KeyBar.repeating.contains(name) else { return }
-                        hold = Task {
-                            try? await Task.sleep(for: .milliseconds(400))
-                            guard !Task.isCancelled else { return }
-                            held = true
-                            onPress(false)
-                            while !Task.isCancelled {
-                                try? await Task.sleep(for: .milliseconds(50))
-                                guard !Task.isCancelled else { return }
-                                onPress(true)
-                            }
-                        }
+                        hold = holding(repeats: true, onHeld: { held = true }, fire: onPress)
                     }
                     .onEnded { _ in
                         hold?.cancel()
