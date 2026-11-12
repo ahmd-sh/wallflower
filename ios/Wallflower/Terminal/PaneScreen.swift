@@ -43,7 +43,6 @@ final class PaneScreen {
             aside = nil
             answer = []
             mode = nil
-            asked = nil
         }
         self.program = program
         if asks != self.asks {

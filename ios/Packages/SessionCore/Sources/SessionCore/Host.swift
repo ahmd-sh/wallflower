@@ -38,6 +38,9 @@ public struct Host: Codable, Equatable, Sendable {
 
     /** What to call the computer: its name, once its gateway has said it. */
     public var called: String { machine ?? "your computer" }
+
+    /** Where it's reached, as said to the user: user@address:port. */
+    public var reach: String { dev ? "development transport" : "\(user)@\(address):\(port)" }
 }
 
 public extension Optional where Wrapped == Host {

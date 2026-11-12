@@ -31,9 +31,10 @@ struct TerminalHost: UIViewRepresentable {
     let swipe: Swipe?
     let onGridSize: (Int, Int) -> Void
     let onAppScroll: (Bool, Data?) -> Void
-    let onTap: (() -> Void)?
     let onTyped: (Typed) -> Void
     let onTypingChanged: (Bool) -> Void
+    /** Whether it takes touches; a picture of a pane (a card) leaves them to what holds it. */
+    var touchable = true
 
     func makeUIView(context: Context) -> TerminalView {
         let v = TerminalView(frame: .zero)
@@ -47,7 +48,7 @@ struct TerminalHost: UIViewRepresentable {
         v.paused = paused
         v.onGridSize = current ? onGridSize : nil
         v.onAppScroll = onAppScroll
-        v.onTap = onTap
+        v.isUserInteractionEnabled = touchable
         v.onTyped = onTyped
         v.onTypingChanged = onTypingChanged
         v.onHeld = { [haptics] in haptics.hold() }
@@ -105,7 +106,6 @@ struct PanePage: View {
     let handle: TerminalHandle
     let typing: Bool
     let onGridSize: (Int, Int) -> Void
-    let onTap: (() -> Void)?
     let onTyped: (Typed) -> Void
     let onTypingChanged: (Bool) -> Void
     let onEdit: (String, String) -> Void
@@ -119,7 +119,7 @@ struct PanePage: View {
                 terminal: terminal, theme: palette.terminal, paused: covered || reading != nil, current: current, typing: typing,
                 handle: handle, swipe: swipe, onGridSize: onGridSize,
                 onAppScroll: { up, wheel in actions?.wheel(up, wheel) },
-                onTap: onTap, onTyped: onTyped, onTypingChanged: onTypingChanged
+                onTyped: onTyped, onTypingChanged: onTypingChanged
             )
             .padding(.horizontal, 4)
             if let actions, let reading {

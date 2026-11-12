@@ -52,7 +52,9 @@ struct RootView: View {
             .tint(colors.orange)
             .preferredColorScheme(colors.light ? .light : .dark)
             .onChange(of: model.settings.haptics, initial: true) { _, on in model.haptics.on = on }
+            #if DEBUG
             .onChange(of: model.rehearsal.count) { _, _ in rehearse() }
+            #endif
             .onOpenURL(perform: open)
             .alert(link.map { "pair with \($0.called)?" } ?? "", isPresented: Binding(get: { link != nil }, set: { if !$0 { link = nil } }), presenting: link) { p in
                 Button("pair") {
@@ -125,7 +127,7 @@ struct RootView: View {
                     pageView(page, host: host, session: session)
                         .environment(\.pressing, Pressing(can: (session.sessions?.muxes.flatMap(\.can) ?? []) + (session.mux?.can ?? [])))
                         .offset(x: dragged)
-                        .gesture(back)
+                        .gesture(EdgeSwipe(onDrag: { dragged = $0 }, onEnd: back))
                         .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .trailing).combined(with: .opacity)))
                         .zIndex(Double(page.depth))
                         .id(pageKey(page))
@@ -133,7 +135,7 @@ struct RootView: View {
             }
             .animation(Motion.spatial, value: page)
             .fullScreenCover(item: Binding(get: { model.files }, set: { model.files = $0 })) { at in
-                FilesPage(at: at, session: session, onAdd: at.pane.map { pane in { path in add(path, to: pane) } }, onClose: { model.files = nil })
+                FilesPage(at: at, session: session, settings: model.settings, onAdd: at.pane.map { pane in { path in add(path, to: pane) } }, onClose: { model.files = nil })
                     .environment(\.palette, palette)
                     .environment(\.look, model.settings.look)
                     .environment(\.haptics, model.haptics)
@@ -152,27 +154,19 @@ struct RootView: View {
         }
     }
 
-    /** A swipe from the left edge goes back a page. */
-    private var back: some Gesture {
-        DragGesture(minimumDistance: 10, coordinateSpace: .global)
-            .onChanged { v in
-                guard v.startLocation.x < 28, v.translation.width > 0 else { return }
-                dragged = v.translation.width
+    /** A swipe from the left edge, let go [dx] across and still going [velocity] (pt/s), goes back a page if it's gone far, or is flung. */
+    private func back(_ dx: CGFloat, _ velocity: CGFloat) {
+        if dx > 100 || dx + velocity * 0.5 > 240 {
+            model.haptics.tick()
+            var t = Transaction(animation: Motion.spatial)
+            t.disablesAnimations = false
+            withTransaction(t) {
+                page = page?.previous
+                dragged = 0
             }
-            .onEnded { v in
-                guard v.startLocation.x < 28 else { return }
-                if v.translation.width > 100 || v.predictedEndTranslation.width > 240 {
-                    model.haptics.tick()
-                    var t = Transaction(animation: Motion.spatial)
-                    t.disablesAnimations = false
-                    withTransaction(t) {
-                        page = page?.previous
-                        dragged = 0
-                    }
-                } else {
-                    withAnimation(Motion.spatial) { dragged = 0 }
-                }
-            }
+        } else {
+            withAnimation(Motion.spatial) { dragged = 0 }
+        }
     }
 
     private func pageKey(_ p: Page) -> String {
@@ -228,6 +222,7 @@ struct RootView: View {
         }
     }
 
+    #if DEBUG
     private func rehearse() {
         let r = model.rehearsal
         if r.arg("settings") != nil { go(.settings) }
@@ -242,6 +237,7 @@ struct RootView: View {
         if r.arg("sessions") != nil { model.session?.detach() }
         if let f = r.arg("files") { model.files = FilesAt(start: f.isEmpty ? "~" : f, pane: nil) }
     }
+    #endif
 
     private var palette: Colors { model.settings.scheme.colors(dark: scheme == .dark) }
 
@@ -256,6 +252,28 @@ struct RootView: View {
     private func exit() {
         model.disconnect()
         model.haptics.confirm()
+    }
+}
+
+/** A swipe from the screen's left edge, as iOS's own back swipe: it starts nowhere else, so it doesn't fight the page's scrolling or dragging. */
+private struct EdgeSwipe: UIGestureRecognizerRepresentable {
+    let onDrag: (CGFloat) -> Void
+    let onEnd: (CGFloat, CGFloat) -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UIScreenEdgePanGestureRecognizer {
+        let g = UIScreenEdgePanGestureRecognizer()
+        g.edges = .left
+        return g
+    }
+
+    func handleUIGestureRecognizerAction(_ g: UIScreenEdgePanGestureRecognizer, context: Context) {
+        let dx = max(g.translation(in: g.view).x, 0)
+        switch g.state {
+        case .changed: onDrag(dx)
+        case .ended: onEnd(dx, g.velocity(in: g.view).x)
+        case .cancelled, .failed: onEnd(0, 0)
+        default: break
+        }
     }
 }
 

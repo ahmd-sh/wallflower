@@ -52,7 +52,7 @@ struct FileViewer: View {
     }
 
     @State private var phase: Phase = .fetching(got: 0, of: 0)
-    @State private var text: String?
+    @State private var text: Readable?
     @State private var sharer = Sharer()
     @State private var tries = 0
 
@@ -121,7 +121,7 @@ struct FileViewer: View {
             if kind.previewed {
                 QuickLookView(url: url).ignoresSafeArea(edges: .bottom)
             } else if let text {
-                Reader(text: text, markdown: kind == .markdown, cut: cut ? "the first \(sizeText(readLimit))" + (size.map { " of \(sizeText($0))" } ?? "") + " · share sends it whole" : nil)
+                Reader(text: text, cut: cut ? "the first \(sizeText(readLimit))" + (size.map { " of \(sizeText($0))" } ?? "") + " · share sends it whole" : nil)
             }
         case .unshown:
             Card(icon: kind.icon, color: kind.color(palette), name: viewed.name) {
@@ -131,7 +131,11 @@ struct FileViewer: View {
         case .failed(let why):
             Card(icon: kind.icon, color: palette.red, name: viewed.name) {
                 Text(why).words(.label).foregroundColor(palette.grey).multilineTextAlignment(.center).padding(.horizontal, 24)
-                WordButton("try again") { tries += 1 }.padding(.top, 6)
+                WordButton("try again") {
+                    phase = .fetching(got: 0, of: 0)
+                    tries += 1
+                }
+                .padding(.top, 6)
             }
         }
     }
@@ -142,7 +146,7 @@ struct FileViewer: View {
             guard let data = await session.picture(pane: pane, id: id) else { return fail("the picture's gone from the computer") }
             let url = Fetched.place(viewed.name)
             do {
-                try data.write(to: url)
+                try await Task.detached { try data.write(to: url) }.value
                 phase = .shown(url, .picture, cut: false)
             } catch {
                 fail("there's no room for it on the phone")
@@ -173,7 +177,8 @@ struct FileViewer: View {
 
     private func show(_ url: URL, _ kind: FileKind, cut: Bool) async {
         if kind.read {
-            text = await Task.detached { String(decoding: (try? Data(contentsOf: url)) ?? Data(), as: UTF8.self) }.value
+            let markdown = kind == .markdown
+            text = await Task.detached { Readable(String(decoding: (try? Data(contentsOf: url)) ?? Data(), as: UTF8.self), markdown: markdown) }.value
         } else if !QLPreviewController.canPreview(url as NSURL) {
             phase = .unshown(url)
             return
@@ -218,22 +223,37 @@ private struct Card<Below: View>: View {
     }
 }
 
-/** Text to read: markdown rendered, anything else in mono, a few hundred lines at a time so a long file scrolls smoothly; what's [cut] said at the end. */
+/** A file's text, as it's read: markdown whole, to render; anything else a few hundred lines a piece, split once, so a long file scrolls smoothly. */
+private enum Readable {
+    case markdown(String)
+    case lines([String])
+
+    init(_ text: String, markdown: Bool) {
+        if markdown {
+            self = .markdown(text)
+            return
+        }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        self = .lines(stride(from: 0, to: lines.count, by: 200).map { lines[$0 ..< min($0 + 200, lines.count)].joined(separator: "\n") })
+    }
+}
+
+/** Text to read: markdown rendered, anything else in mono, a piece at a time; what's [cut] said at the end. */
 private struct Reader: View {
     @Environment(\.palette) private var palette
-    let text: String
-    let markdown: Bool
+    let text: Readable
     let cut: String?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                if markdown {
+                switch text {
+                case .markdown(let text):
                     MarkdownText(text, breaks: false) // a document's lines wrap
-                } else {
+                case .lines(let chunks):
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(chunks.enumerated()), id: \.offset) { _, chunk in
-                            Text(chunk)
+                        ForEach(chunks.indices, id: \.self) { i in
+                            Text(chunks[i])
                                 .font(Fonts.mono(12))
                                 .lineSpacing(3)
                                 .foregroundColor(palette.fg)
@@ -250,11 +270,6 @@ private struct Reader: View {
             .padding(.vertical, 12)
         }
         .transition(.opacity)
-    }
-
-    private var chunks: [String] {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        return stride(from: 0, to: lines.count, by: 200).map { lines[$0 ..< min($0 + 200, lines.count)].joined(separator: "\n") }
     }
 }
 

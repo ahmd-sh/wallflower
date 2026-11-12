@@ -59,11 +59,10 @@ struct PaneOverview: View {
             }
             .padding(.leading, 12)
             // The pane as its own terminal draws it, shrunk to the card's width.
-            TerminalHost(terminal: terminals[p.id], theme: palette.terminal, paused: false, current: false, typing: false, handle: TerminalHandle(), swipe: nil, onGridSize: { _, _ in }, onAppScroll: { _, _ in }, onTap: nil, onTyped: { _ in }, onTypingChanged: { _ in })
+            TerminalHost(terminal: terminals[p.id], theme: palette.terminal, paused: false, current: false, typing: false, handle: TerminalHandle(), swipe: nil, onGridSize: { _, _ in }, onAppScroll: { _, _ in }, onTyped: { _ in }, onTypingChanged: { _ in }, touchable: false)
                 .padding(4)
                 .aspectRatio(0.75, contentMode: .fit)
                 .background(palette.bg0)
-                .allowsHitTesting(false)
         }
         .background(RoundedRectangle(cornerRadius: 14).fill(palette.bg1))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(on ? palette.orange : palette.bg1, lineWidth: 2))

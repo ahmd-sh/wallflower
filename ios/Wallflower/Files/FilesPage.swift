@@ -1,4 +1,5 @@
 import SessionCore
+import SettingsUI
 import SwiftUI
 import WallflowerDesign
 import Wire
@@ -66,6 +67,7 @@ struct FilesPage: View {
     @Environment(\.haptics) private var haptics
     let at: FilesAt
     let session: Session
+    let settings: Preferences
     let onAdd: ((String) -> Void)?
     let onClose: () -> Void
 
@@ -73,11 +75,11 @@ struct FilesPage: View {
     @State private var stack: [FilesRoute] = []
     @State private var ready = false
     @State private var sharer = Sharer()
-    @AppStorage("filesShowHidden") private var showHidden = false
 
-    init(at: FilesAt, session: Session, onAdd: ((String) -> Void)?, onClose: @escaping () -> Void) {
+    init(at: FilesAt, session: Session, settings: Preferences, onAdd: ((String) -> Void)?, onClose: @escaping () -> Void) {
         self.at = at
         self.session = session
+        self.settings = settings
         self.onAdd = onAdd
         self.onClose = onClose
         _model = State(initialValue: FilesModel(session: session))
@@ -114,7 +116,7 @@ struct FilesPage: View {
 
     private func folder(_ path: String) -> some View {
         Folder(
-            path: path, model: model, showHidden: $showHidden, depth: depth(of: path),
+            path: path, model: model, showHidden: Binding(get: { settings.hiddenFiles }, set: { settings.hiddenFiles = $0 }), depth: depth(of: path),
             onJump: { jump(to: $0) }, onClose: onClose, onAdd: onAdd,
             onShare: { p, e in sharer.share(p, size: e.size, mtime: e.mtime, session: session, haptics: haptics) }
         )

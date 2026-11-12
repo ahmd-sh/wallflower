@@ -58,7 +58,7 @@ public struct SettingsScreen: View {
         let bar = store.bar
         Page("settings", onBack: onBack) {
             if let host {
-                PageRow(host.called, host.dev ? "development transport" : "\(host.user)@\(host.address):\(host.port)", action: onEditHost)
+                PageRow(host.called, host.reach, action: onEditHost)
             }
             PageRow("look", "\(settings.scheme.label) · \(settings.look == .terminal ? "terminal" : "bricolage") font", action: onLook)
             PageRow("key bars", "\(bar.profiles.count + 1) · this pane's: \(bar.profile(at: bar.refFor(command: program, program: programId))?.name ?? bar.default.name)", action: onKeyBars)

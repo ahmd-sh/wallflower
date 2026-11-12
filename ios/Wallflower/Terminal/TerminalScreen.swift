@@ -65,7 +65,6 @@ struct TerminalScreen: View {
         let actions = pane.map { actionsOf($0, bar) }
         let activity = activityOf(pane)
         let status = session.status
-        let _ = route(actions, mobile: mobile)
 
         VStack(spacing: 0) {
             TabBar(
@@ -73,7 +72,7 @@ struct TerminalScreen: View {
                 selected: window?.id,
                 status: status,
                 machine: host.called,
-                address: address,
+                address: host.reach,
                 session: [state?.name, session.mux.map { "\($0.name) \($0.version)" }].compactMap { $0 }.joined(separator: " in ").nilIfEmpty,
                 onSelect: { session.view($0) },
                 onNew: { session.newWindow() },
@@ -89,24 +88,40 @@ struct TerminalScreen: View {
                 Reconnecting(status: status, machine: host.called, onRetry: { session.retry() })
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            if case .needsUser(let blocked) = status {
-                BlockedCard(
-                    blocked: blocked, machine: host.called, unlockSeconds: model.unlockSeconds, authorizeCommand: model.authorizeCommand,
-                    onUnlock: { model.unlock() },
-                    onTrust: { h, k in model.hostKeys.trust(host: h, key: k); session.retry() },
-                    onForget: { h in model.hostKeys.forget(host: h); session.retry() },
-                    onRetry: { session.retry() },
-                    onSetup: onSettings
-                )
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-            ZStack(alignment: .topTrailing) {
-                panes(windows: windows, window: window, pane: pane, bar: bar, mobileViews: mobileViews)
-                    .opacity(saysDown && state != nil ? 0.45 : 1)
-                if state == nil {
-                    Connecting(status: status, machine: host.called, address: address, onRetry: { session.retry() }, opening: opening(place))
-                        .transition(.opacity)
+            Blocking(session: session, model: model, machine: host.called, onSetup: onSettings)
+            // The overview lies over the panes and the composer both: what's under it isn't to be typed into.
+            ZStack {
+                VStack(spacing: 0) {
+                    ZStack(alignment: .topTrailing) {
+                        panes(windows: windows, window: window, pane: pane, bar: bar, mobileViews: mobileViews)
+                            .opacity(saysDown && state != nil ? 0.45 : 1)
+                        if state == nil {
+                            Connecting(status: status, machine: host.called, address: host.reach, onRetry: { session.retry() }, opening: opening(place))
+                                .transition(.opacity)
+                        }
+                        if let window, let pane, !overview {
+                            HStack(spacing: 0) {
+                                if pane.view {
+                                    ViewToggle(mobile: mobile) {
+                                        haptics.toggle(!mobile)
+                                        model.settings.mobileView = !mobile
+                                    }
+                                    .transition(.opacity.combined(with: .scale))
+                                }
+                                PaneDots(count: window.panes.count, position: position) {
+                                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) // the terminal's keyboard, or the composer's
+                                    withAnimation(Motion.spatial) { overview = true }
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: .infinity)
+                    if let pane, let actions {
+                        composer(pane: pane, actions: actions, mobile: mobile, activity: activity, bar: bar, connected: status == .connected)
+                            .environment(\.viewing, viewing(pane))
+                    }
                 }
+                .accessibilityHidden(overview)
                 if overview, let window {
                     PaneOverview(
                         window: window, shown: pane?.id, terminals: session.terminals,
@@ -120,6 +135,7 @@ struct TerminalScreen: View {
                         },
                         onClose: { close(window, $0) },
                         onFiles: session.canFiles ? { p in
+                            session.show(window, p)
                             withAnimation(Motion.spatial) { overview = false }
                             model.files = FilesAt(start: p.path.nilIfEmpty ?? "~", pane: p.id)
                         } : nil
@@ -127,43 +143,15 @@ struct TerminalScreen: View {
                     .transition(.scale(scale: 1.08).combined(with: .opacity))
                     .zIndex(2)
                 }
-                if let window, let pane, !overview {
-                    HStack(spacing: 0) {
-                        if pane.view {
-                            ViewToggle(mobile: mobile) {
-                                haptics.toggle(!mobile)
-                                model.settings.mobileView = !mobile
-                            }
-                            .transition(.opacity.combined(with: .scale))
-                        }
-                        PaneDots(count: window.panes.count, position: position) {
-                            handle.hideKeyboard()
-                            withAnimation(Motion.spatial) { overview = true }
-                        }
-                    }
-                }
             }
             .frame(maxHeight: .infinity)
-            if let pane, let actions {
-                composer(pane: pane, actions: actions, mobile: mobile, activity: activity, bar: bar, connected: status == .connected)
-                    .environment(\.viewing, viewing(pane))
-            }
         }
         .background(palette.bg0.ignoresSafeArea())
         .animation(Motion.spatial, value: saysDown)
         .animation(Motion.spatial, value: status.isBlocked)
         .animation(Motion.effect, value: state == nil)
-        .task(id: status.isDown) {
-            // Down a moment, as across a network change, it isn't worth saying.
-            let down = status.isDown
-            if down { try? await Task.sleep(for: .seconds(1.5)) }
-            guard !Task.isCancelled else { return }
-            saysDown = down
-        }
-        .task(id: status.isKeyLocked) {
-            // Connecting is the moment to ask for Face ID, so ask right away.
-            if status.isKeyLocked && phase == .active { model.unlock() }
-        }
+        .modifier(ConnectionWatch(status: status, model: model, saysDown: $saysDown))
+        .onChange(of: "\(pane?.id ?? "")|\(mobile)", initial: true) { _, _ in route(actions, mobile: mobile) }
         .onChange(of: "\(pane?.command ?? "")|\(pane?.program ?? "")", initial: true) { _, _ in onProgram(pane?.command, pane?.program) }
         .onChange(of: phase) { _, p in
             // Back in the app, what's on screen has been seen, as Android has it.
@@ -175,12 +163,10 @@ struct TerminalScreen: View {
             seeker.reset()
             moding = nil
         }
-        .onChange(of: screen.mode) { _, m in
-            if let m, let program = actions?.program, program.nextMode != nil { Cycles.of(program).saw(m) }
-        }
+        .onChange(of: screen.mode) { _, m in modeWalk.saw(m, actions?.program) }
         .task(id: moding) {
             guard let to = moding else { return }
-            await walk(to: to, actions: actions)
+            await modeWalk.walk(to: to, actions: actions)
             moding = nil
         }
         .onChange(of: screen.prompt) { _, p in
@@ -193,7 +179,9 @@ struct TerminalScreen: View {
         }
         .onChange(of: mobileViews) { _, v in session.read(v) }
         .onChange(of: window == nil) { _, gone in if gone { overview = false } }
+        #if DEBUG
         .onChange(of: model.rehearsal.count) { _, _ in rehearse(windows: windows, window: window, pane: pane, actions: actions, mobile: mobile) }
+        #endif
         .onAppear { session.read(mobileViews) }
         .onChange(of: model.opening) { _, _ in open() }
         .onChange(of: windows.map(\.id)) { _, _ in open() }
@@ -220,7 +208,7 @@ struct TerminalScreen: View {
         }
     }
 
-    /** Where the bar's keys go, sticky ones with the key after: the shown pane, as it is now. */
+    /** Where the bar's keys go, sticky ones with the key after: the shown pane, as it is now (they go by its id). */
     private func route(_ actions: PaneActions?, mobile: Bool) {
         sticky.onKey = { [handle] key in
             guard let actions else { return }
@@ -234,8 +222,6 @@ struct TerminalScreen: View {
         typed = key.keys.last != "Enter"
         sticky.press(key)
     }
-
-    private var address: String { host.dev ? "development transport" : "\(host.user)@\(host.address):\(host.port)" }
 
     private func opening(_ place: Place?) -> String {
         session.sessions?.muxes.first { $0.name == place?.mux }?.sessions.first { $0.id == place?.session }?.name ?? "the session"
@@ -262,7 +248,8 @@ struct TerminalScreen: View {
     @ViewBuilder
     private func panes(windows: [MuxWindow], window: MuxWindow?, pane: Pane?, bar: KeyBar, mobileViews: Set<String>) -> some View {
         if let window, let pane {
-            PanePager(panes: window.panes.sorted { $0.index < $1.index }, shown: pane, onShow: { session.show(window, $0) }, onPosition: { position.at = $0 }, onNew: { session.split(pane) }) { p, current, swipe in
+            // What a settled swipe shows goes to the window as it is then, whose active pane may have moved since.
+            PanePager(panes: window.panes.sorted { $0.index < $1.index }, shown: pane, onShow: { p in session.show(session.state?.windows.first { $0.id == window.id } ?? window, p) }, onPosition: { position.at = $0 }, onNew: { session.split(pane) }) { p, current, swipe in
                 page(p, current: current, swipe: swipe, bar: bar, mobileViews: mobileViews, tab: window.label())
             }
             .id(window.id)
@@ -289,7 +276,7 @@ struct TerminalScreen: View {
             aside: current ? screen.aside : nil,
             answer: screen.answer,
             mode: current ? screen.mode : nil,
-            modes: current ? modes(actions) : [],
+            modes: current ? modeWalk.modes(actions?.program) : [],
             onMode: { moding = $0 },
             nudged: nudged,
             held: seeker.editing,
@@ -301,7 +288,6 @@ struct TerminalScreen: View {
                 // iOS gives the view its new size as the keyboard starts to move, not frame by frame: tmux is told at once, and catches up while it slides.
                 session.resize(cols: cols, rows: rows, ahead: true)
             },
-            onTap: nil,
             onTyped: { t in
                 guard let actions else { return }
                 sticky.type(t, returnKeys: actions.returnKeys) { text in
@@ -409,6 +395,7 @@ struct TerminalScreen: View {
         )
     }
 
+    #if DEBUG
     private func rehearse(windows: [MuxWindow], window: MuxWindow?, pane: Pane?, actions: PaneActions?, mobile: Bool) {
         let r = model.rehearsal
         if let i = r.arg("tab").flatMap(Int.init), let w = windows.first(where: { $0.index == i }) { session.view(w) }
@@ -432,47 +419,9 @@ struct TerminalScreen: View {
         if r.arg("newtab") != nil { session.newWindow() }
         if r.arg("arrows") != nil { pad.press(KeyBar.arrows) }
     }
+    #endif
 
-    // MARK: Modes
-
-    /** The modes the pane's program goes round, from the one it's in, as far as they've been seen. */
-    private func modes(_ actions: PaneActions?) -> [Mode] {
-        guard let mode = screen.mode, let program = actions?.program, program.nextMode != nil else { return [] }
-        return Cycles.of(program).from(mode)
-    }
-
-    /** A mode picked is stepped to a key at a time, each step as far as the screen shows it went, and no further round than where it started. */
-    private func walk(to: String, actions: PaneActions?) async {
-        guard let actions, let keys = actions.program.nextMode, let from = screen.mode else { return }
-        let cycle = Cycles.of(actions.program)
-        var at = from
-        for _ in 0..<modeSteps {
-            // Only at its line: a menu, or what's aside of it, would take the key as its own (shift+tab allows edits, in some).
-            if at.name == to || screen.line == nil || screen.aside != nil { break }
-            actions.keys(keys)
-            // Not moved: something's over its line, which takes the key.
-            guard let next = await moved(from: at) else { break }
-            cycle.stepped(from: at, to: next)
-            at = next
-            if at == from {
-                cycle.missed(to) // round, and it wasn't there
-                break
-            }
-            if at.name != to { haptics.repeating() }
-        }
-        if Task.isCancelled { return }
-        if at.name == to { haptics.confirm() } else { haptics.reject() }
-    }
-
-    /** The mode once it's moved on from [at]; nil if it hasn't in a while. */
-    private func moved(from at: Mode) async -> Mode? {
-        let until = Date().addingTimeInterval(modeStepSeconds)
-        while Date() < until && !Task.isCancelled {
-            if let m = screen.mode, m != at { return m }
-            try? await Task.sleep(for: .milliseconds(40))
-        }
-        return nil
-    }
+    private var modeWalk: ModeWalk { ModeWalk(screen: screen, haptics: haptics) }
 
     /** A notification tapped shows its pane. */
     private func open() {
@@ -528,10 +477,6 @@ struct TerminalScreen: View {
         return "\(p!.command) in pane \(p!.index) will be killed."
     }
 }
-
-/** How many steps a mode picked is gone round to at most, and how long each may take to show. */
-private let modeSteps = 8
-private let modeStepSeconds: TimeInterval = 2
 
 /** Keeps the shown pane's screen read. */
 private struct Watch: ViewModifier {

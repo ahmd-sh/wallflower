@@ -13,8 +13,8 @@ import WallflowerDesign
  * Scrolling the primary screen moves the terminal's own viewport through
  * its scrollback and never sends anything; over a full-screen app it's a
  * wheel notch per row ([onAppScroll]). A sideways drag is for moving between
- * panes ([onSwipe], [onSwipeEnd]); a tap is [onTap]. While [typing], the
- * phone's keyboard types straight into the pane ([onTyped]).
+ * panes ([onSwipe], [onSwipeEnd]). While [typing], a tap brings up the
+ * phone's keyboard, which types straight into the pane ([onTyped]).
  */
 final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
     /** What it shows; while it's in a window, its output brings a frame. */
@@ -50,7 +50,6 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
     var onGridSize: ((Int, Int) -> Void)?
     /** Full-screen apps own their scrolling: a wheel notch per row ([wheel] its bytes), or an arrow key if the app doesn't track the mouse (nil). */
     var onAppScroll: ((Bool, Data?) -> Void)?
-    var onTap: (() -> Void)?
     /** A sideways drag, for moving between panes: how far it has gone, as it goes. */
     var onSwipe: ((CGFloat) -> Void)?
     /** The sideways drag let go: how far it went, and how fast (points a second; negative is leftwards). */
@@ -63,7 +62,7 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
     var onTypingChanged: ((Bool) -> Void)?
     /** Whether a tap brings up the keyboard to type straight into the pane. */
     var typingEnabled = false {
-        didSet { if !typingEnabled && isFirstResponder { resignFirstResponder() } }
+        didSet { if !typingEnabled && isFirstResponder { _ = resignFirstResponder() } }
     }
 
     /** Paused, it stops pulling frames (it's covered); it catches up when resumed. */
@@ -422,8 +421,7 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
 
     @objc private func tapped() {
         stopMomentum()
-        if typingEnabled && !isFirstResponder { becomeFirstResponder() }
-        onTap?()
+        if typingEnabled && !isFirstResponder { _ = becomeFirstResponder() }
     }
 
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { false }

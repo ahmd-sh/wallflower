@@ -16,7 +16,6 @@ import Wire
 struct HomeScreen: View {
     @Environment(\.palette) private var palette
     @Environment(\.look) private var look
-    @Environment(\.scenePhase) private var phase
     let session: Session
     let host: Host
     let model: AppModel
@@ -32,7 +31,7 @@ struct HomeScreen: View {
     var body: some View {
         let status = session.status
         let machine = host.called
-        let address = host.dev ? "development transport" : "\(host.user)@\(host.address):\(host.port)"
+        let address = host.reach
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -48,17 +47,7 @@ struct HomeScreen: View {
             .padding(.leading, 20)
             .padding(.top, 10)
             .padding(.bottom, 4)
-            if case .needsUser(let blocked) = status {
-                BlockedCard(
-                    blocked: blocked, machine: machine, unlockSeconds: model.unlockSeconds, authorizeCommand: model.authorizeCommand,
-                    onUnlock: { model.unlock() },
-                    onTrust: { h, k in model.hostKeys.trust(host: h, key: k); session.retry() },
-                    onForget: { h in model.hostKeys.forget(host: h); session.retry() },
-                    onRetry: { session.retry() },
-                    onSetup: onSettings
-                )
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            Blocking(session: session, model: model, machine: machine, onSetup: onSettings)
             if let muxes = session.sessions?.muxes {
                 if saysDown {
                     Reconnecting(status: status, machine: machine, onRetry: { session.retry() })
@@ -97,6 +86,8 @@ struct HomeScreen: View {
         .animation(Motion.spatial, value: saysDown)
         .animation(Motion.spatial, value: status.isBlocked)
         .onAppear { session.start() }
+        .modifier(ConnectionWatch(status: status, model: model, saysDown: $saysDown))
+        #if DEBUG
         .onChange(of: model.rehearsal.count) { _, _ in
             if model.rehearsal.arg("trust") != nil, case .needsUser(.unknownHost(let h, let k)) = session.status {
                 model.hostKeys.trust(host: h, key: k)
@@ -107,16 +98,7 @@ struct HomeScreen: View {
                 session.switchTo(mux: m.name, session: s.id)
             }
         }
-        .task(id: status.isDown) {
-            // Down a moment, as across a network change, it isn't worth saying.
-            let down = status.isDown
-            if down { try? await Task.sleep(for: .seconds(1.5)) }
-            guard !Task.isCancelled else { return }
-            saysDown = down
-        }
-        .task(id: status.isKeyLocked) {
-            if status.isKeyLocked && phase == .active { model.unlock() }
-        }
+        #endif
         .alert(naming.map { "new \($0) session" } ?? "", isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
             TextField("name (optional)", text: $name)
             Button("start") {
@@ -231,7 +213,6 @@ private struct NewSession: View {
     @Environment(\.accessibilityReduceMotion) private var still
     let starting: Bool
     let onNew: () -> Void
-    @State private var start = Date()
 
     var body: some View {
         Button {
@@ -247,38 +228,84 @@ private struct NewSession: View {
             }
             .frame(maxWidth: .infinity)
             .padding(14)
-            .background {
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: still)) { t in
-                    let crept = still ? 0 : Self.crept(t.date.timeIntervalSince(start))
-                    GeometryReader { geo in
-                        let w: CGFloat = 1.5
-                        let r: CGFloat = 12 - w / 2
-                        let box = CGRect(origin: .zero, size: geo.size).insetBy(dx: w / 2, dy: w / 2)
-                        // Dashes that fit the edge evenly, so there's no seam where it starts.
-                        let round = 2 * (box.width + box.height) - (8 - 2 * .pi) * r
-                        let period = round / max((round / 10).rounded(), 1)
-                        let phase = period - crept.truncatingRemainder(dividingBy: period)
-                        RoundedRectangle(cornerRadius: r)
-                            .inset(by: w / 2)
-                            .stroke(palette.grey, style: StrokeStyle(lineWidth: w, dash: [period * 0.55, period * 0.45], dashPhase: phase))
-                    }
-                }
-            }
+            .background { CreepingDashes(color: UIColor(palette.grey), creeping: !still) }
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(Pressable())
         .disabled(starting)
-        .onAppear { start = Date() }
+    }
+}
+
+/** A rounded edge of dashes, creeping round clockwise at 3pt a second while [creeping]: Core Animation moves them, so it costs nothing a frame. */
+private struct CreepingDashes: UIViewRepresentable {
+    let color: UIColor
+    let creeping: Bool
+
+    func makeUIView(context: Context) -> DashesView { DashesView() }
+
+    func updateUIView(_ v: DashesView, context: Context) {
+        v.edge.strokeColor = color.cgColor
+        v.creeping = creeping
     }
 
-    /** How far round the dashes have crept after [t] seconds: up to 3pt a second over 0.7s, eased. */
-    private static func crept(_ t: Double) -> CGFloat {
-        let up = 0.7
-        if t < up {
-            // The integral of 3·smoothstep(t/up).
-            let u = t / up
-            return CGFloat(3 * up * (u * u * u - u * u * u * u / 2))
+    final class DashesView: UIView {
+        override class var layerClass: AnyClass { CAShapeLayer.self }
+        var edge: CAShapeLayer { layer as! CAShapeLayer }
+        var creeping = true { didSet { if creeping != oldValue { creep() } } }
+        private var period: CGFloat = 0
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            edge.fillColor = nil
+            edge.lineWidth = 1.5
         }
-        return CGFloat(3 * up * 0.5 + 3 * (t - up))
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            let w = edge.lineWidth
+            let r = 12 - w / 2
+            let box = bounds.insetBy(dx: w / 2, dy: w / 2)
+            edge.path = UIBezierPath(roundedRect: box, cornerRadius: r).cgPath
+            // Dashes that fit the edge evenly, so there's no seam where it starts.
+            let round = 2 * (box.width + box.height) - (8 - 2 * .pi) * r
+            let period = round / max((round / 10).rounded(), 1)
+            edge.lineDashPattern = [NSNumber(value: period * 0.55), NSNumber(value: period * 0.45)]
+            if period != self.period {
+                self.period = period
+                creep()
+            }
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            creep() // coming in, from a standstill
+        }
+
+        /** From a standstill up to 3pt a second over 0.7s, eased, then on at that. */
+        private func creep() {
+            edge.removeAllAnimations()
+            edge.lineDashPhase = period
+            guard creeping, window != nil, period > 0, !UserDefaults.standard.bool(forKey: "wfStill") else { return } // still for UI tests, which wait for the app to come to rest
+            let up: CFTimeInterval = 0.7
+            let speed: CGFloat = 3
+            let lead = speed * up / 2
+            let start = CABasicAnimation(keyPath: "lineDashPhase")
+            start.fromValue = period
+            start.toValue = period - lead
+            start.duration = up
+            start.timingFunction = CAMediaTimingFunction(controlPoints: 0.5, 0, 1, 1) // its speed at the end is twice its average: the walk's
+            let walk = CABasicAnimation(keyPath: "lineDashPhase")
+            walk.fromValue = period - lead
+            walk.toValue = -lead
+            walk.duration = period / speed
+            walk.beginTime = edge.convertTime(CACurrentMediaTime(), from: nil) + up
+            walk.repeatCount = .infinity
+            walk.isRemovedOnCompletion = false // kept through the app going to the background
+            edge.add(start, forKey: "start")
+            edge.add(walk, forKey: "walk")
+        }
     }
 }

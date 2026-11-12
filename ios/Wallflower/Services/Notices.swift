@@ -36,7 +36,6 @@ final class Notices: NSObject, UNUserNotificationCenterDelegate {
         content.sound = .default
         content.threadIdentifier = pane
         content.userInfo = ["pane": pane]
-        content.interruptionLevel = .timeSensitive
         center.add(UNNotificationRequest(identifier: "mac:" + pane, content: content, trigger: nil))
     }
 
