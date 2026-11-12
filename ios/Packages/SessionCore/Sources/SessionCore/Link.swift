@@ -178,6 +178,7 @@ final class Link {
         guard let events else { return "stopped" }
         conn.write(FrameEncoder.message(.hello(events.hello())))
         l.lastPing = Date()
+        l.helloBy = l.lastPing.addingTimeInterval(Self.helloTimeout)
         events.linked()
         live = l
         events.up()
@@ -251,7 +252,8 @@ final class Link {
         while !Task.isCancelled && !l.ended {
             try? await Task.sleep(for: .seconds(Self.tick))
             let now = Date()
-            if let d = l.deadline, now > d {
+            // A pong only says the line's alive: a gateway that never says hello is tried again.
+            if l.deadline.map({ now > $0 }) ?? false || !l.greeted && now > l.helloBy {
                 l.conn?.close()
                 return
             }
@@ -317,6 +319,7 @@ final class Link {
     static let tick: TimeInterval = 1
     static let heartbeatInterval: TimeInterval = 15
     static let pongTimeout: TimeInterval = 10
+    static let helloTimeout: TimeInterval = 10
 }
 
 /** One connection's worth: thrown away whole when it ends. */
@@ -334,6 +337,8 @@ final class Live {
     var lastPing = Date()
     /** When the connection counts as dead unless a pong arrives. */
     var deadline: Date?
+    /** When it counts as dead unless the gateway has said hello. */
+    var helloBy = Date.distantFuture
     private(set) var ended = false
     private var endError: Error?
     private var endWaiters: [CheckedContinuation<Error?, Never>] = []

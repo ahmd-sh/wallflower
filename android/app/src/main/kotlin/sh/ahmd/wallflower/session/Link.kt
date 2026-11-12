@@ -117,6 +117,8 @@ internal class Link(
         @Volatile var lastPing = 0L
         /** When the connection counts as dead unless a pong arrives; 0 if no ping is outstanding. */
         @Volatile var deadline = 0L
+        /** When it counts as dead unless the gateway has said hello. */
+        @Volatile var helloBy = 0L
     }
 
     fun start() {
@@ -187,6 +189,7 @@ internal class Link(
                 }
             }
             l.lastPing = clock()
+            l.helloBy = l.lastPing + HELLO_TIMEOUT_MS
             synchronized(lock) {
                 events.linked()
                 live = l
@@ -251,7 +254,8 @@ internal class Link(
             delay(TICK_MS)
             val now = clock() // counts time asleep, unlike nanoTime
             val d = l.deadline
-            if (d != 0L && now > d) {
+            // A pong only says the line's alive: a gateway that never says hello is tried again.
+            if (d != 0L && now > d || !greeted && now > l.helloBy) {
                 l.conn.close()
                 return
             }
@@ -297,5 +301,6 @@ internal class Link(
         const val TICK_MS = 1_000L
         const val HEARTBEAT_MS = 15_000L
         const val PONG_TIMEOUT_MS = 10_000L
+        const val HELLO_TIMEOUT_MS = 10_000L
     }
 }
