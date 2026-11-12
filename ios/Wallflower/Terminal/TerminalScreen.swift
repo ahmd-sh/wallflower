@@ -275,7 +275,7 @@ struct TerminalScreen: View {
             asked: current ? screen.asked : nil,
             aside: current ? screen.aside : nil,
             answer: screen.answer,
-            mode: current ? screen.mode : nil,
+            mode: current && !modeWalk.modes(actions?.program).isEmpty ? screen.mode : nil, // a mode it can't go round isn't offered, as on Android
             modes: current ? modeWalk.modes(actions?.program) : [],
             onMode: { moding = $0 },
             nudged: nudged,
