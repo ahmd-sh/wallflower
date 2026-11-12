@@ -449,13 +449,16 @@ private struct PlusButton: View {
         }
         .fileImporter(isPresented: $files, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
-            let out = urls.compactMap { url -> Picked? in
-                let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                guard let data = try? Data(contentsOf: url) else { return nil }
-                return Picked(name: url.lastPathComponent, data: data, image: UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true)
+            // Read off the main thread: a big file would hold the screen still.
+            Task.detached {
+                let out = urls.compactMap { url -> Picked? in
+                    let scoped = url.startAccessingSecurityScopedResource()
+                    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                    guard let data = try? Data(contentsOf: url) else { return nil }
+                    return Picked(name: url.lastPathComponent, data: data, image: UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true)
+                }
+                if !out.isEmpty { await MainActor.run { onAttach(out) } }
             }
-            if !out.isEmpty { onAttach(out) }
         }
     }
 }
