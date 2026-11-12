@@ -231,7 +231,6 @@ private struct NewSession: View {
     @Environment(\.accessibilityReduceMotion) private var still
     let starting: Bool
     let onNew: () -> Void
-    @State private var start = Date()
 
     var body: some View {
         Button {
@@ -247,38 +246,84 @@ private struct NewSession: View {
             }
             .frame(maxWidth: .infinity)
             .padding(14)
-            .background {
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: still)) { t in
-                    let crept = still ? 0 : Self.crept(t.date.timeIntervalSince(start))
-                    GeometryReader { geo in
-                        let w: CGFloat = 1.5
-                        let r: CGFloat = 12 - w / 2
-                        let box = CGRect(origin: .zero, size: geo.size).insetBy(dx: w / 2, dy: w / 2)
-                        // Dashes that fit the edge evenly, so there's no seam where it starts.
-                        let round = 2 * (box.width + box.height) - (8 - 2 * .pi) * r
-                        let period = round / max((round / 10).rounded(), 1)
-                        let phase = period - crept.truncatingRemainder(dividingBy: period)
-                        RoundedRectangle(cornerRadius: r)
-                            .inset(by: w / 2)
-                            .stroke(palette.grey, style: StrokeStyle(lineWidth: w, dash: [period * 0.55, period * 0.45], dashPhase: phase))
-                    }
-                }
-            }
+            .background { CreepingDashes(color: UIColor(palette.grey), creeping: !still) }
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(Pressable())
         .disabled(starting)
-        .onAppear { start = Date() }
+    }
+}
+
+/** A rounded edge of dashes, creeping round clockwise at 3pt a second while [creeping]: Core Animation moves them, so it costs nothing a frame. */
+private struct CreepingDashes: UIViewRepresentable {
+    let color: UIColor
+    let creeping: Bool
+
+    func makeUIView(context: Context) -> DashesView { DashesView() }
+
+    func updateUIView(_ v: DashesView, context: Context) {
+        v.edge.strokeColor = color.cgColor
+        v.creeping = creeping
     }
 
-    /** How far round the dashes have crept after [t] seconds: up to 3pt a second over 0.7s, eased. */
-    private static func crept(_ t: Double) -> CGFloat {
-        let up = 0.7
-        if t < up {
-            // The integral of 3·smoothstep(t/up).
-            let u = t / up
-            return CGFloat(3 * up * (u * u * u - u * u * u * u / 2))
+    final class DashesView: UIView {
+        override class var layerClass: AnyClass { CAShapeLayer.self }
+        var edge: CAShapeLayer { layer as! CAShapeLayer }
+        var creeping = true { didSet { if creeping != oldValue { creep() } } }
+        private var period: CGFloat = 0
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+            edge.fillColor = nil
+            edge.lineWidth = 1.5
         }
-        return CGFloat(3 * up * 0.5 + 3 * (t - up))
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            let w = edge.lineWidth
+            let r = 12 - w / 2
+            let box = bounds.insetBy(dx: w / 2, dy: w / 2)
+            edge.path = UIBezierPath(roundedRect: box, cornerRadius: r).cgPath
+            // Dashes that fit the edge evenly, so there's no seam where it starts.
+            let round = 2 * (box.width + box.height) - (8 - 2 * .pi) * r
+            let period = round / max((round / 10).rounded(), 1)
+            edge.lineDashPattern = [NSNumber(value: period * 0.55), NSNumber(value: period * 0.45)]
+            if period != self.period {
+                self.period = period
+                creep()
+            }
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            creep() // coming in, from a standstill
+        }
+
+        /** From a standstill up to 3pt a second over 0.7s, eased, then on at that. */
+        private func creep() {
+            edge.removeAllAnimations()
+            edge.lineDashPhase = period
+            guard creeping, window != nil, period > 0, !UserDefaults.standard.bool(forKey: "wfStill") else { return } // still for UI tests, which wait for the app to come to rest
+            let up: CFTimeInterval = 0.7
+            let speed: CGFloat = 3
+            let lead = speed * up / 2
+            let start = CABasicAnimation(keyPath: "lineDashPhase")
+            start.fromValue = period
+            start.toValue = period - lead
+            start.duration = up
+            start.timingFunction = CAMediaTimingFunction(controlPoints: 0.5, 0, 1, 1) // its speed at the end is twice its average: the walk's
+            let walk = CABasicAnimation(keyPath: "lineDashPhase")
+            walk.fromValue = period - lead
+            walk.toValue = -lead
+            walk.duration = period / speed
+            walk.beginTime = edge.convertTime(CACurrentMediaTime(), from: nil) + up
+            walk.repeatCount = .infinity
+            walk.isRemovedOnCompletion = false // kept through the app going to the background
+            edge.add(start, forKey: "start")
+            edge.add(walk, forKey: "walk")
+        }
     }
 }
