@@ -6,14 +6,18 @@ import WallflowerDesign
  * The program's own list of its tasks, in a mobile view's place while it
  * shows it: its filters to pick from, its tasks in their groups to open
  * one, the one under its cursor lit, and a way back and to a new one. What's
- * out of sight above or below is a page away. Each is keys to the program
+ * out of sight above or below is a page away. Something sent while it's up
+ * waits, as what's typed would go to it: it says so a moment ([nudged]). Each is keys to the program
  * ([onKeys]), which moves its own cursor; what it shows next says where it went.
  */
 struct TasksPage: View {
     let tasks: Aside.Tasks
     let onKeys: ([String]) -> Void
+    let nudged: Int
     @Environment(\.palette) private var palette
     @Environment(\.haptics) private var haptics
+    @State private var held = false
+    @State private var holds = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -23,6 +27,14 @@ struct TasksPage: View {
                 .padding(.leading, 20)
                 .padding(.trailing, 120) // clear of the pane's controls
                 .padding(.top, 14)
+            if held {
+                Text("go back first, then send")
+                    .words(.caption)
+                    .foregroundColor(palette.orange)
+                    .padding(.leading, 20)
+                    .padding(.top, 2)
+                    .transition(.opacity)
+            }
             Flow(spacing: 6) {
                 ForEach(Array(tasks.filters.enumerated()), id: \.offset) { i, f in
                     Button { send(tasks.showing(i)) } label: {
@@ -77,6 +89,13 @@ struct TasksPage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(palette.bg0)
+        .onChange(of: nudged) { holds += 1 } // sent while it's up, not before it came
+        .task(id: holds) {
+            guard holds > 0 else { return }
+            withAnimation(Motion.effect) { held = true }
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled { withAnimation(Motion.effect) { held = false } }
+        }
     }
 
     /** A group's heading, or a task, by where it is among them all: what the list shows, in order. */

@@ -1,5 +1,6 @@
 package sh.ahmd.wallflower.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,23 +20,37 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.program.Aside
 
 /**
  * The program's own list of its tasks, in a mobile view's place while it
  * shows it: its filters to pick from, its tasks in their groups to open
  * one, the one under its cursor lit, and a way back and to a new one. What's
- * out of sight above or below is a page away. Each is keys to the program
+ * out of sight above or below is a page away. Something sent while it's up
+ * waits, as what's typed would go to it: it says so a moment ([nudged]). Each is keys to the program
  * ([onKeys]), which moves its own cursor; what it shows next says where it went.
  */
 @Composable
-internal fun TasksPage(tasks: Aside.Tasks, onKeys: (List<String>) -> Unit, modifier: Modifier = Modifier) {
+internal fun TasksPage(tasks: Aside.Tasks, onKeys: (List<String>) -> Unit, nudged: Long, modifier: Modifier = Modifier) {
     val haptics = haptics()
+    // Something sent while it's up waits: it says so a moment.
+    val before = remember { nudged }
+    val held by produceState(false, nudged) {
+        if (nudged != 0L && nudged != before) {
+            value = true
+            delay(HELD_MS)
+            value = false
+        }
+    }
     val send = { keys: List<String> ->
         if (keys.isNotEmpty()) {
             haptics.tick()
@@ -44,6 +59,7 @@ internal fun TasksPage(tasks: Aside.Tasks, onKeys: (List<String>) -> Unit, modif
     }
     Column(modifier.fillMaxSize().background(Palette.bg0)) {
         Text(tasks.named, color = Palette.fg, style = Type.title, modifier = Modifier.padding(start = 20.dp, top = 14.dp, end = 120.dp)) // clear of the pane's controls
+        AnimatedVisibility(held) { Text("go back first, then send", color = Palette.orange, style = Type.caption, modifier = Modifier.padding(start = 20.dp, top = 2.dp)) }
         FlowRow(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -143,3 +159,6 @@ private fun Action(text: String, modifier: Modifier, onClick: () -> Unit) = Box(
         .padding(vertical = 11.dp),
     contentAlignment = Alignment.Center,
 ) { Text(text, color = Palette.fg, style = Type.label) }
+
+/** How long something sent while the list is up says it waits. */
+private const val HELD_MS = 3_000L

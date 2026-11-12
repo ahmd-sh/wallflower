@@ -138,7 +138,7 @@ public struct MobileView: View {
             Group {
                 switch phase {
                 // The program's list of its tasks takes the conversation's place, as it does the program's screen.
-                case .tasks: if let tasks { TasksPage(tasks: tasks, onKeys: onKeys) }
+                case .tasks: if let tasks { TasksPage(tasks: tasks, onKeys: onKeys, nudged: nudged) }
                 case .reading: Hint(text: "reading…")
                 case .empty:
                     // The mode can be picked before the first message.

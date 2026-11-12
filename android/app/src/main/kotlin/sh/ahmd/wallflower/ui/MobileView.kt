@@ -252,7 +252,7 @@ fun MobileView(
         Crossfade(phase, animationSpec = Motion.effect(), label = "mobile view") { p ->
             when (p) {
                 // The program's list of its tasks takes the conversation's place, as it does the program's screen.
-                Phase.Tasks -> (aside as? Aside.Tasks)?.let { TasksPage(it, onKeys) }
+                Phase.Tasks -> (aside as? Aside.Tasks)?.let { TasksPage(it, onKeys, nudged) }
                 Phase.Reading -> Hint("reading…")
                 // The mode can be picked before the first message.
                 Phase.Empty -> Box(Modifier.fillMaxSize()) {
