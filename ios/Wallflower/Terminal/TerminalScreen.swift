@@ -258,7 +258,7 @@ struct TerminalScreen: View {
     @ViewBuilder
     private func panes(windows: [MuxWindow], window: MuxWindow?, pane: Pane?, bar: KeyBar, mobileViews: Set<String>) -> some View {
         if let window, let pane {
-            PanePager(panes: window.panes.sorted { $0.index < $1.index }, shown: pane, onShow: { session.show(window, $0) }, onPosition: { position = $0 }) { p, current, swipe in
+            PanePager(panes: window.panes.sorted { $0.index < $1.index }, shown: pane, onShow: { session.show(window, $0) }, onPosition: { position = $0 }, onNew: { session.split(pane) }) { p, current, swipe in
                 page(p, current: current, swipe: swipe, bar: bar, mobileViews: mobileViews, tab: window.label())
             }
             .id(window.id)

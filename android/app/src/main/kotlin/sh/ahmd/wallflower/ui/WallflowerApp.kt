@@ -600,6 +600,7 @@ private fun TerminalScreen(
                                             shownHere,
                                             onShow = { session.show(w, it) },
                                             onPosition = if (id == window.id) { at -> position = at } else null,
+                                            onNew = { session.split(shownHere) },
                                         ) { p, current, swipe ->
                                             Page(p, current, swipe)
                                         }
