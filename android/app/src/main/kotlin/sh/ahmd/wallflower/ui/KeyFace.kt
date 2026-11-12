@@ -98,6 +98,6 @@ internal class Above(private val gap: Int) : PopupPositionProvider {
 
 private val KEYS = mapOf(
     "C-" to Glyph.Ctrl, "S-" to Glyph.Shift,
-    "Escape" to Glyph.Escape, "Tab" to Glyph.Tab, "BTab" to Glyph.BackTab, "Enter" to Glyph.Enter, "BSpace" to Glyph.Backspace, "Space" to Glyph.Space,
+    "Tab" to Glyph.Tab, "BTab" to Glyph.BackTab, "Enter" to Glyph.Enter, "BSpace" to Glyph.Backspace, "Space" to Glyph.Space,
     "Up" to Glyph.Up, "Down" to Glyph.Down, "Left" to Glyph.Left, "Right" to Glyph.Right,
 )

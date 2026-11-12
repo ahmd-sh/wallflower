@@ -50,7 +50,7 @@ import androidx.compose.ui.unit.sp
 /** wallflower's icons; from [Escape] on, keys'; from [Hexagon] on, programs' (with [Terminal], [Spark] and [Edit]: see [glyphOf]). */
 enum class Glyph {
     Plus, Close, Chat, Terminal, Spark, Copy, Check, Edit,
-    Escape, Tab, BackTab, Enter, Up, Down, Left, Right, Backspace, Space, Ctrl, Shift, Arrows, Bolt,
+    Tab, BackTab, Enter, Up, Down, Left, Right, Backspace, Space, Ctrl, Shift, Arrows, Bolt,
     Hexagon, Snake, Branch, Pulse, Globe, Boxes, Folder, Database, Book, Hammer,
 }
 
@@ -140,11 +140,6 @@ fun GlyphIcon(glyph: Glyph, color: Color, modifier: Modifier = Modifier, size: D
             Glyph.Edit -> rotate(-45f, c) {
                 stroke(-1.2f to 0f, -0.7f to -0.32f, 1.1f to -0.32f, 1.1f to 0.32f, -0.7f to 0.32f, closed = true)
                 stroke(0.6f to -0.32f, 0.6f to 0.32f)
-            }
-            Glyph.Escape -> {
-                drawArc(color, 270f, 270f, useCenter = false, topLeft = at(-0.85f, -0.85f), size = Size(r * 1.7f, r * 1.7f), style = line)
-                stroke(0f to 0f, -0.95f to -0.95f)
-                stroke(-0.95f to -0.4f, -0.95f to -0.95f, -0.4f to -0.95f)
             }
             Glyph.Tab -> tab()
             Glyph.BackTab -> scale(-1f, 1f, c) { tab() }

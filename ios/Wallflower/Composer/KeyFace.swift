@@ -53,7 +53,7 @@ struct KeysFace: View {
 
 let keyGlyphs: [String: Glyph] = [
     "C-": .ctrl, "S-": .shift,
-    "Escape": .escape, "Tab": .tab, "BTab": .backTab, "Enter": .enter, "BSpace": .backspace, "Space": .space,
+    "Tab": .tab, "BTab": .backTab, "Enter": .enter, "BSpace": .backspace, "Space": .space,
     "Up": .up, "Down": .down, "Left": .left, "Right": .right,
 ]
 
