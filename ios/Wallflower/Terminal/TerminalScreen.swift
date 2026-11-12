@@ -129,11 +129,9 @@ struct TerminalScreen: View {
                             }
                             .transition(.opacity.combined(with: .scale))
                         }
-                        if window.panes.count > 1 {
-                            PaneDots(count: window.panes.count, position: position) {
-                                handle.hideKeyboard()
-                                withAnimation(Motion.spatial) { overview = true }
-                            }
+                        PaneDots(count: window.panes.count, position: position) {
+                            handle.hideKeyboard()
+                            withAnimation(Motion.spatial) { overview = true }
                         }
                     }
                 }

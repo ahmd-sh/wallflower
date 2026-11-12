@@ -26,8 +26,8 @@ struct ViewToggle: View {
 
 /**
  * Which of the window's [count] panes is showing: swipe the terminal sideways
- * for the others. The light follows [position] as panes move, stretching
- * from dot to dot.
+ * for the others, tap for all of them. The light follows [position] as
+ * panes move, stretching from dot to dot.
  */
 struct PaneDots: View {
     @Environment(\.palette) private var palette
