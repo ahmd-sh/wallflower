@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxColors
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -185,13 +186,15 @@ internal fun share(context: Context, text: String) {
 
 /** A command to run, or a value to copy, in a box of its own. */
 @Composable
-internal fun Code(text: String) = Text(
-    text,
-    color = Palette.fg,
-    fontFamily = Mono,
-    fontSize = 11.sp,
-    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Palette.bg1).padding(10.dp),
-)
+internal fun Code(text: String) = SelectionContainer {
+    Text(
+        text,
+        color = Palette.fg,
+        fontFamily = Mono,
+        fontSize = 11.sp,
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Palette.bg1).padding(10.dp),
+    )
+}
 
 /** A choice among a few: on when [selected]. */
 @Composable

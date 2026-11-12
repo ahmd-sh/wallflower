@@ -461,8 +461,8 @@ public struct BlockedCard: View {
                 let macOlder = gateway < app
                 CardTitle(macOlder ? "update wallflower on \(machine)" : "update this app")
                 if macOlder {
-                    Paragraph("\(machine)'s wallflower speaks protocol \(gateway), this app \(app). Update it from wallflower's folder there, then retry:")
-                    Code("go install ./cmd/wallflower")
+                    Paragraph("\(machine)'s wallflower speaks protocol \(gateway), this app \(app). Update it with the line it was installed with (go install, from a checkout), then retry:")
+                    Code(installLine)
                 } else {
                     Paragraph("\(machine)'s wallflower speaks protocol \(gateway), this app \(app). Install this app's latest build, then retry.")
                 }

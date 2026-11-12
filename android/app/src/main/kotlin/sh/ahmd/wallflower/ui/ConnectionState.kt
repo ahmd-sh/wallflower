@@ -342,8 +342,8 @@ fun BlockedCard(
                 val macOlder = blocked.gateway < blocked.app
                 Title(if (macOlder) "update wallflower on $machine" else "update this app")
                 if (macOlder) {
-                    Body("$machine's wallflower speaks protocol ${blocked.gateway}, this app ${blocked.app}. Update it from wallflower's folder there, then retry:")
-                    Code("go install ./cmd/wallflower")
+                    Body("$machine's wallflower speaks protocol ${blocked.gateway}, this app ${blocked.app}. Update it with the line it was installed with (go install, from a checkout), then retry:")
+                    Code(INSTALL)
                 } else {
                     Body("$machine's wallflower speaks protocol ${blocked.gateway}, this app ${blocked.app}. Install this app's latest build, then retry.")
                 }

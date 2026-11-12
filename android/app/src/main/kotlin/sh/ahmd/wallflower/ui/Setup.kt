@@ -92,8 +92,8 @@ fun SetupScreen(
             Text("wallflower", color = Palette.fg, fontFamily = words, fontSize = wordSize(24.sp, 30.sp), fontWeight = FontWeight.Bold)
             Text("Your computer's terminals, made for your phone.", color = Palette.grey, style = Type.body, textAlign = TextAlign.Center)
         }
-        Text("On your computer, run this. It gets the computer ready, then shows a code.", color = Palette.fg, style = Type.label)
-        Code("wallflower setup")
+        Text("On your computer, run this. It installs wallflower and gets the computer ready, then shows a code.", color = Palette.fg, style = Type.label)
+        Code(INSTALL)
         ScanCode("scan the code", primary = true, createKey, pair, onConnect)
         if (byHand) {
             form()
@@ -314,3 +314,6 @@ private val UNLOCKS = listOf(5 * 60, 30 * 60, 2 * 3600, 8 * 3600)
 /** The multiplexers the gateway can serve a session of. */
 
 internal fun unlockLabel(seconds: Int) = if (seconds < 3600) "${seconds / 60} min" else "${seconds / 3600} h"
+
+/** What installs wallflower on a computer and readies it (or, run again, updates it): the line on its GitHub page. */
+internal const val INSTALL = "curl -fsSL https://github.com/ahmd-sh/wallflower/releases/latest/download/install.sh | sh"

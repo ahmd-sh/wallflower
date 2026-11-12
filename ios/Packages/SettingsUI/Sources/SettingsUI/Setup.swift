@@ -4,8 +4,8 @@ import WallflowerDesign
 
 /**
  * Setting wallflower up: what it is, in a line, then pairing with the
- * computer by the code `wallflower setup` shows there, or setting it up by
- * hand: the computer to reach, and this phone's key to let in there. With a
+ * computer by the code its install line ends with there, or setting it up
+ * by hand: the computer to reach, and this phone's key to let in there. With a
  * way back ([onBack]) in place of the welcome, it edits the computer from
  * settings, where a code pairs again, or with another. [pairing] names the
  * computer while pairing with it goes on, and [pairError] says why it didn't.
@@ -71,11 +71,11 @@ public struct SetupScreen: View {
                         .frame(maxWidth: .infinity)
                         .padding(.top, 16)
                         .padding(.bottom, 8)
-                        Text("On your computer, run this. It gets it ready, then shows a code.")
+                        Text("On your computer, run this. It installs wallflower and gets the computer ready, then shows a code.")
                             .words(.label)
                             .foregroundColor(palette.fg)
                             .fixedSize(horizontal: false, vertical: true)
-                        Code("wallflower setup")
+                        Code(installLine)
                         WordButton("scan the code", primary: true, action: scan)
                         progress
                         Button {
@@ -245,3 +245,6 @@ private struct SetupForm: View {
 }
 
 private let unlocks = [5 * 60, 30 * 60, 2 * 3600, 8 * 3600]
+
+/** What installs wallflower on a computer and readies it (or, run again, updates it): the line on its GitHub page. */
+let installLine = "curl -fsSL https://github.com/ahmd-sh/wallflower/releases/latest/download/install.sh | sh"
