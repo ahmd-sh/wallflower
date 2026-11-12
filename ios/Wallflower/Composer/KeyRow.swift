@@ -87,9 +87,11 @@ private struct KeyChip: View {
         })
         .overlay { if held && !repeats { HeldName(name: KeyBar.name(of: key)) } }
         .animation(Motion.effect, value: held)
+        .onDisappear { hold?.cancel() } // gone mid-press (the bar changed), it stops
     }
 
     private func start() {
+        hold?.cancel()
         hold = Task {
             try? await Task.sleep(for: .milliseconds(repeats ? 400 : 500))
             guard !Task.isCancelled else { return }

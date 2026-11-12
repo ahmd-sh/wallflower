@@ -151,6 +151,7 @@ private struct Place: View {
     @State private var pressed = false
     @State private var hold: Task<Void, Never>?
     @State private var held = false
+    @GestureState private var touching = false
 
     var body: some View {
         KeysFace(keys: [name], color: palette.fg, size: 16)
@@ -160,6 +161,7 @@ private struct Place: View {
             .animation(Motion.effect, value: pressed)
             .gesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($touching) { _, t, _ in t = true }
                     .onChanged { _ in
                         guard !pressed else { return }
                         pressed = true
@@ -183,6 +185,14 @@ private struct Place: View {
                         pressed = false
                     }
             )
+            // A press cut short rather than let go (the system took the touch), or the pad gone mid-press, stops too.
+            .onChange(of: touching) { _, now in
+                if !now {
+                    hold?.cancel()
+                    pressed = false
+                }
+            }
+            .onDisappear { hold?.cancel() }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(KeyBar.name(of: [name]))
             .accessibilityAddTraits(.isButton)

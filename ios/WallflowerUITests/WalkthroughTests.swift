@@ -100,6 +100,7 @@ final class WalkthroughTests: XCTestCase {
         app.buttons["left"].tap()
         sleep(1)
         XCTAssert(up.exists, "the pad stays up while it's typed on")
+        app.buttons["down"].press(forDuration: 1.2) // repeats while held, and stops when let go (about 16 downs, not hundreds)
         let close = app.buttons["put the arrows away"]
         let home = close.frame
         up.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -0.33)).press(forDuration: 0.05, thenDragTo: at(0.5, 0.3), withVelocity: .slow, thenHoldForDuration: 0.3)
