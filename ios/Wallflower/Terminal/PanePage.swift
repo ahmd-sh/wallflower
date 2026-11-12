@@ -100,6 +100,8 @@ struct PanePage: View {
     let nudged: Int
     /** The message held to edit, if picking is for it. */
     let held: String?
+    /** The app is walking the program's list to a message itself: the list isn't the user's to pick from meanwhile. */
+    var seeking = false
     let handle: TerminalHandle
     let typing: Bool
     let onGridSize: (Int, Int) -> Void
@@ -130,6 +132,7 @@ struct PanePage: View {
                     doing: current ? status : nil,
                     asked: current ? asked : nil,
                     nudged: current ? nudged : 0,
+                    seeking: current && seeking,
                     aside: current ? aside : nil,
                     answer: answer,
                     mode: current ? mode : nil,

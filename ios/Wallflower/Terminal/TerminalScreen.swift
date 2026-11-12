@@ -293,6 +293,7 @@ struct TerminalScreen: View {
             onMode: { moding = $0 },
             nudged: nudged,
             held: seeker.editing,
+            seeking: current && seeker.seeking != nil,
             handle: handle,
             typing: !mobile,
             onGridSize: { cols, rows in
@@ -542,6 +543,7 @@ private struct Watch: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onChange(of: pane?.id, initial: true) { _, _ in update() }
+            .onChange(of: pane.map { "\($0.command)|\($0.program ?? "")" }) { _, _ in update() } // another program in the pane reads its screen its own way
             .onChange(of: terminal.map(ObjectIdentifier.init), initial: true) { _, _ in update() }
             .onChange(of: asks, initial: true) { _, _ in update() }
             .onChange(of: pane?.activity) { _, _ in screen.reread() }
