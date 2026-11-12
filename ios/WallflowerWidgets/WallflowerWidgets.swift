@@ -27,11 +27,11 @@ private enum Ink {
 struct WallflowerLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: WallflowerActivity.self) { context in
-            LockScreen(state: context.state, machine: context.attributes.machine)
+            LockScreen(state: seen(context), machine: context.attributes.machine)
                 .activityBackgroundTint(Ink.bg)
                 .activitySystemActionForegroundColor(Ink.fg)
         } dynamicIsland: { context in
-            let s = context.state
+            let s = seen(context)
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     HStack(spacing: 8) {
@@ -68,13 +68,20 @@ struct WallflowerLiveActivity: Widget {
     }
 }
 
+/** What the app last said, or, past its stale date (the app's been stopped too long to say again), that it's out of date. */
+private func seen(_ context: ActivityViewContext<WallflowerActivity>) -> WallflowerActivity.ContentState {
+    var s = context.state
+    if context.isStale && !s.done { s.stale = true }
+    return s
+}
+
 private func color(_ s: WallflowerActivity.ContentState) -> Color {
     s.done ? Ink.green : s.waiting ? Ink.orange : Ink.purple
 }
 
 private func doing(_ s: WallflowerActivity.ContentState) -> String {
     if s.done { return "done" }
-    if s.stale { return "reconnecting" }
+    if s.stale { return "out of date" }
     return s.waiting ? "needs your input" : "working"
 }
 
@@ -109,7 +116,7 @@ private struct Elapsed: View {
     let state: WallflowerActivity.ContentState
 
     var body: some View {
-        if let since = state.since, !state.waiting, !state.done {
+        if let since = state.since, !state.waiting, !state.done, !state.stale {
             Text(timerInterval: since...Date.distantFuture, countsDown: false)
                 .monospacedDigit()
                 .multilineTextAlignment(.trailing)

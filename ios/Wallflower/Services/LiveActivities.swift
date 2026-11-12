@@ -8,13 +8,16 @@ import Wire
  * The Live Activity: of the session's panes, the one at work to show — one
  * waiting for the user first, then the one working longest — on the Lock
  * Screen and in the Dynamic Island, as Android's Live Update shows it in the
- * status bar. Done, it says so a moment, then goes.
+ * status bar. Done, it says so a moment, then goes. While the app runs it's
+ * kept fresh; an app iOS has stopped can't, so past a few minutes the
+ * system takes it as stale, and it says so rather than tick on.
  */
 @MainActor
 final class LiveActivities {
     private var current: Activity<WallflowerActivity>?
     private var shown: WallflowerActivity.ContentState?
     private var ending: Task<Void, Never>?
+    private var refreshing: Task<Void, Never>?
 
     init() {
         // One left by an app that was killed says what nobody's keeping up: it goes, and the next starts fresh.
@@ -23,9 +26,14 @@ final class LiveActivities {
         }
     }
 
+    /** [state]'s panes as they are; nil when the setting is off, which ends it at once. */
     func update(state: SessionState?, connected: Bool, machine: String) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        let all = state?.windows.flatMap { w in w.panes.map { (w, $0) } } ?? []
+        guard let state else {
+            if current != nil { end() }
+            return
+        }
+        let all = state.windows.flatMap { w in w.panes.map { (w, $0) } }
         let waiting = all.first { $0.1.activity == Pane.WAITING }
         let working = all.filter { $0.1.activity == Pane.WORKING }.min { a, b in (a.1.since > 0 ? a.1.since : .max) < (b.1.since > 0 ? b.1.since : .max) }
         guard let (w, p) = waiting ?? working else {
@@ -50,7 +58,7 @@ final class LiveActivities {
     private func show(_ s: WallflowerActivity.ContentState, machine: String) {
         guard s != shown else { return }
         let was = shown
-        let content = ActivityContent(state: s, staleDate: nil, relevanceScore: s.waiting ? 100 : 50)
+        let content = fresh(s)
         if let a = current, a.activityState == .active {
             shown = s
             // Felt and heard once, as it comes to need the user.
@@ -61,7 +69,28 @@ final class LiveActivities {
             current = try? Activity.request(attributes: WallflowerActivity(machine: machine), content: content, pushType: nil)
             shown = current == nil ? nil : s
         }
+        keepFresh()
     }
+
+    /** [s], good for a few minutes: past that, an app that hasn't said again isn't running to. */
+    private func fresh(_ s: WallflowerActivity.ContentState) -> ActivityContent<WallflowerActivity.ContentState> {
+        ActivityContent(state: s, staleDate: Date().addingTimeInterval(Self.freshFor), relevanceScore: s.waiting ? 100 : 50)
+    }
+
+    /** While it's shown and the app runs, it's said again before it goes stale. */
+    private func keepFresh() {
+        guard refreshing == nil else { return }
+        refreshing = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.freshFor / 2))
+                guard let self, let a = self.current, let s = self.shown, !s.done else { break }
+                await a.update(self.fresh(s))
+            }
+            self?.refreshing = nil
+        }
+    }
+
+    private static let freshFor: TimeInterval = 240
 
     /** Nothing's at work any more: it says done a moment, then goes. */
     private func finish(_ s: WallflowerActivity.ContentState) {
@@ -82,6 +111,7 @@ final class LiveActivities {
 
     func end() {
         ending?.cancel()
+        refreshing?.cancel()
         let a = current
         current = nil
         shown = nil
