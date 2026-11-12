@@ -163,4 +163,23 @@ class KeyBarTest {
         assertEquals(off, Json.decodeFromString<KeyBar>(Json.encodeToString(off)).upgraded())
         assertEquals(KeyBar.defaults, KeyBar.defaults.upgraded())
     }
+
+    @Test
+    fun cmdIsOnlyWhereItCanBePressed() {
+        val cmd = KeyBar.common.first { it.label == "cmd" }
+        assertEquals(listOf("D-"), cmd.keys)
+        assertTrue(cmd.sticky)
+        assertEquals("cmd + key", KeyBar.nameOf(cmd))
+        assertEquals("⌘s", KeyBar.labelOf(cmd.then(BarKey.typed('s')).keys.take(1)))
+        assertEquals("cmd left", KeyBar.nameOf(listOf("D-Left")))
+
+        val tmux = Pressing(listOf("bindings"))
+        val rex = Pressing(listOf("super"))
+        val keys = listOf(cmd, BarKey("save", listOf("D-s")), BarKey("^c", listOf("C-c")), KeyBar.ARROWS)
+        assertEquals(listOf("^c", "arrows"), tmux.only(keys).map { it.label })
+        assertEquals(keys, rex.only(keys))
+        assertEquals(listOf("C-", "M-", "S-"), tmux.modifiers)
+        assertEquals(KeyBar.modifiers, rex.modifiers)
+        assertTrue(tmux.can(listOf("Escape", ":w", "Enter")))
+    }
 }

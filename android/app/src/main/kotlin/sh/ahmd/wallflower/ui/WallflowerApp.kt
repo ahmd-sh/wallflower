@@ -1,5 +1,7 @@
 package sh.ahmd.wallflower.ui
 
+import sh.ahmd.wallflower.Pressing
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
@@ -126,6 +128,8 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
     LaunchedEffect(screen) { if (screen != Screen.Terminal) focus.clearFocus() } // the composer's keyboard goes away
     val current = session
     val mux by (current?.mux ?: flowOf(null)).collectAsStateWithLifecycle(null)
+    val listed by (current?.sessions ?: flowOf(null)).collectAsStateWithLifecycle(null)
+    val pressing = Pressing(listed?.muxes.orEmpty().flatMap { it.can } + mux?.can.orEmpty())
     val connect = { h: Host ->
         model.configure(h)
         screen = Screen.Terminal
@@ -164,7 +168,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
         screen = Screen.Terminal
     }
     // Pages draw over the terminal, which keeps its place underneath; the viewer over them.
-    Box(Modifier.fillMaxSize()) {
+    CompositionLocalProvider(LocalPressing provides pressing) { Box(Modifier.fillMaxSize()) {
         FloatingHost {
             key(current) {
                 Crossfade(place == null, animationSpec = Motion.effect(), label = "home") { home ->
@@ -259,7 +263,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
             }
         }
         ViewerHost(viewer, current, model.fetches, onAdd = add)
-    }
+    } }
 }
 
 /**
@@ -645,10 +649,11 @@ private fun TerminalScreen(
                         val uploads by model.uploads.items.collectAsStateWithLifecycle()
                         val uploadDir by model.uploads.dir.collectAsStateWithLifecycle()
                         val profile = bar.profileFor(pane.command, pane.program)
+                        val pressing = Pressing(mux?.can.orEmpty())
                         Composer(
                             state = model.drafts.of(pane.id),
                             program = pane.command,
-                            keys = profile.keys,
+                            keys = pressing.only(profile.keys),
                             connected = status is Status.Connected,
                             line = screen.line.takeIf { seeking == null }, // what's typed to ask a message back isn't the user's
                             attachments = Attachments(
@@ -706,7 +711,7 @@ private fun TerminalScreen(
                             onStop = actions::stop,
                             onEditKeys = onEditKeys,
                             pad = pad,
-                            shortcuts = profile.shortcutsFor(actions.program),
+                            shortcuts = pressing.only(profile.shortcutsFor(actions.program)),
                             onShortcut = shortcut@{
                                 // What a menu's waiting on would take a shortcut's text as picks (a hotkey's letter), and its Enter or shift+tab as an answer.
                                 if (holding) {

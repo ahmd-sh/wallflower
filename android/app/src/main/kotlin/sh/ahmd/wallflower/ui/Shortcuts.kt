@@ -193,7 +193,7 @@ internal fun KeysBuilder(keys: List<String>, onChange: (List<String>) -> Unit) {
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (m in KeyBar.modifiers) Chip(KeyBar.labelOf(listOf(m)), m in held) { held = if (m in held) held - m else held + m }
+        for (m in LocalPressing.current.modifiers) Chip(KeyBar.labelOf(listOf(m)), m in held) { held = if (m in held) held - m else held + m }
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         for (k in KeyBar.named) KeyChoice(faceOf(listOf(k)), KeyBar.nameOf(listOf(k)), false) { add(k) }

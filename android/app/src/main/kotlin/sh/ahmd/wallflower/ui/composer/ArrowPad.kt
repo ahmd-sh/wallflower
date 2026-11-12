@@ -49,9 +49,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import sh.ahmd.wallflower.BarKey
 import sh.ahmd.wallflower.KeyBar
 import sh.ahmd.wallflower.ui.Glyph
@@ -221,15 +218,7 @@ private fun Place(name: String, onPress: (again: Boolean) -> Unit) {
                 detectTapGestures(onPress = {
                     pressed = true
                     var held = false
-                    val hold = if (!repeats) null else scope.launch {
-                        delay(REPEAT_AFTER_MS)
-                        held = true
-                        press(false)
-                        while (isActive) {
-                            delay(REPEAT_EVERY_MS)
-                            press(true)
-                        }
-                    }
+                    val hold = if (!repeats) null else scope.holding(true, onHeld = { held = true }, fire = { press(it) })
                     val released = tryAwaitRelease()
                     hold?.cancel()
                     pressed = false

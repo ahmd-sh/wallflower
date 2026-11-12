@@ -9,6 +9,7 @@ import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -29,6 +30,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import sh.ahmd.wallflower.BarKey
 import sh.ahmd.wallflower.KeyBar
+import sh.ahmd.wallflower.Pressing
 
 /** How [key] shows: as [faceOf] its keys, unless the user wrote its label. */
 internal fun faceOf(key: BarKey): AnnotatedString = when {
@@ -101,3 +103,6 @@ private val KEYS = mapOf(
     "Tab" to Glyph.Tab, "BTab" to Glyph.BackTab, "Enter" to Glyph.Enter, "BSpace" to Glyph.Backspace, "Space" to Glyph.Space,
     "Up" to Glyph.Up, "Down" to Glyph.Down, "Left" to Glyph.Left, "Right" to Glyph.Right,
 )
+
+/** What the computer's multiplexers can press, for the keys a bar or shortcut can be given. */
+internal val LocalPressing = staticCompositionLocalOf { Pressing(false) }

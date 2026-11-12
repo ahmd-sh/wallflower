@@ -390,7 +390,7 @@ fun ProfileScreen(
         Section("add")
         Body("Your own keys, like ctrl with a letter or several in a row, are shortcuts: add them from the shortcuts key.")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (k in KeyBar.common) KeyChoice(faceOf(k), KeyBar.nameOf(k), false) { save(profile.copy(keys = profile.keys + k)) }
+            for (k in LocalPressing.current.only(KeyBar.common)) KeyChoice(faceOf(k), KeyBar.nameOf(k), false) { save(profile.copy(keys = profile.keys + k)) }
         }
 
         if (ref is ProfileRef.At) {

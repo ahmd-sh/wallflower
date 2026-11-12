@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -131,19 +133,10 @@ private fun KeyChip(key: BarKey, armed: Boolean, onKey: (BarKey) -> Unit) {
                 val longPress = viewConfiguration.longPressTimeoutMillis
                 detectTapGestures(onPress = {
                     pressed = true
-                    val hold = scope.launch {
-                        delay(if (repeats) REPEAT_AFTER_MS else longPress)
+                    val hold = scope.holding(repeats, if (repeats) REPEAT_AFTER_MS else longPress, onHeld = {
                         held = true
-                        if (!repeats) {
-                            haptics.hold()
-                            return@launch
-                        }
-                        fire(false)
-                        while (isActive) {
-                            delay(REPEAT_EVERY_MS)
-                            fire(true)
-                        }
-                    }
+                        if (!repeats) haptics.hold()
+                    }, fire = fire)
                     val released = tryAwaitRelease() // false if the row scrolled instead
                     hold.cancel()
                     pressed = false
@@ -216,5 +209,22 @@ private fun EditKeys(onEdit: () -> Unit) {
     }
 }
 
-internal const val REPEAT_AFTER_MS = 400L
-internal const val REPEAT_EVERY_MS = 50L
+/**
+ * A key held down: after [after], [onHeld]; then, for one that [repeats],
+ * [fire] (again after the first) 20 times a second, till the job's
+ * cancelled, as letting go or the row scrolling does.
+ */
+internal fun CoroutineScope.holding(repeats: Boolean, after: Long = REPEAT_AFTER_MS, onHeld: () -> Unit, fire: (again: Boolean) -> Unit): Job =
+    launch {
+        delay(after)
+        onHeld()
+        if (!repeats) return@launch
+        fire(false)
+        while (isActive) {
+            delay(REPEAT_EVERY_MS)
+            fire(true)
+        }
+    }
+
+private const val REPEAT_AFTER_MS = 400L
+private const val REPEAT_EVERY_MS = 50L

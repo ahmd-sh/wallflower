@@ -139,8 +139,8 @@ data class KeyBar(
         /** The pane's shortcuts, in one key; `shortcuts` by name. */
         val SHORTCUTS = BarKey("shortcuts", emptyList(), shortcuts = true)
 
-        /** The modifiers, held with the next key: ctrl, alt and shift. */
-        val modifiers = listOf("C-", "M-", "S-")
+        /** The modifiers, held with the next key: ctrl, alt, shift, and cmd (super), where it can be pressed ([Pressing]). */
+        val modifiers = listOf("C-", "M-", "S-", "D-")
 
         /** Keys every keyboard has, which a shortcut's keys are made of, besides text and the modifiers. */
         val named = listOf("Escape", "Tab", "Enter", "BSpace", "Space", "Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown", "DC")
@@ -158,6 +158,7 @@ data class KeyBar(
             BarKey("ctrl", listOf("C-"), sticky = true),
             BarKey("alt", listOf("M-"), sticky = true),
             BarKey("shift", listOf("S-"), sticky = true),
+            BarKey("cmd", listOf("D-"), sticky = true),
         )
 
         /** [key] with [modifier] held: shift tab is back tab, and a shifted letter its capital. */
@@ -190,7 +191,7 @@ data class KeyBar(
             (held.map { SAID.getValue("$it-") } + (SAID[rest] ?: rest)).joinToString(" ")
         }
 
-        /** The modifiers held with a key (C, M, S) and the key: C-M-Left is C, M and Left. */
+        /** The modifiers held with a key (C, M, S, D) and the key: C-M-Left is C, M and Left. */
         fun held(key: String): Pair<List<Char>, String> {
             var rest = key
             val held = ArrayList<Char>()
@@ -201,14 +202,14 @@ data class KeyBar(
             return held to rest
         }
 
-        private val MODIFIERS = mapOf('C' to "^", 'M' to "alt+", 'S' to "⇧")
+        private val MODIFIERS = mapOf('C' to "^", 'M' to "alt+", 'S' to "⇧", 'D' to "⌘")
         private val NAMED = mapOf(
             "Enter" to "⏎", "Escape" to "esc", "Tab" to "tab", "BTab" to "⇧tab", "BSpace" to "⌫", "Space" to "space",
             "Up" to "↑", "Down" to "↓", "Left" to "←", "Right" to "→", "Home" to "home", "End" to "end",
             "PageUp" to "pgup", "PageDown" to "pgdn", "DC" to "del", "IC" to "ins", "prefix" to "prefix",
         )
         private val SAID = mapOf(
-            "C-" to "ctrl", "M-" to "alt", "S-" to "shift",
+            "C-" to "ctrl", "M-" to "alt", "S-" to "shift", "D-" to "cmd",
             "Enter" to "enter", "Escape" to "escape", "Tab" to "tab", "BTab" to "shift tab", "BSpace" to "backspace", "Space" to "space",
             "Up" to "up", "Down" to "down", "Left" to "left", "Right" to "right", "Home" to "home", "End" to "end",
             "PageUp" to "page up", "PageDown" to "page down", "DC" to "delete", "IC" to "insert", "prefix" to "prefix",
@@ -319,5 +320,28 @@ class KeyBarStore(private val prefs: SharedPreferences) {
 
     private companion object {
         const val KEY = "keybar"
+    }
+}
+
+/**
+ * What the multiplexer behind the bar can press, as it says (its can):
+ * every one presses ctrl, alt and shift; super (D-, the Mac's command key,
+ * shown as cmd) only one that says so, as Rex does. tmux has no super.
+ */
+data class Pressing(val superKey: Boolean) {
+    constructor(can: Collection<String>) : this(SUPER in can)
+
+    /** Whether all of [keys] can be pressed. */
+    fun can(keys: List<String>): Boolean = superKey || keys.none { it == "D-" || 'D' in KeyBar.held(it).first }
+
+    /** Those of [keys] that can be pressed. */
+    fun only(keys: List<BarKey>): List<BarKey> = keys.filter { can(it.keys) }
+
+    /** The modifiers that can be held. */
+    val modifiers: List<String> get() = KeyBar.modifiers.filter { can(listOf(it)) }
+
+    companion object {
+        /** What a multiplexer says it can do when it presses super (Mux.can, MuxSessions.can). */
+        const val SUPER = "super"
     }
 }
