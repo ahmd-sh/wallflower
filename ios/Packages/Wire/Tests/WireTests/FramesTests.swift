@@ -81,7 +81,25 @@ final class FramesTests: XCTestCase {
             return m
         }
 
-        XCTAssertEqual(.hello(ServerHello(v: VERSION, uploads: "/Users/me/Library/Caches/wallflower/uploads", machine: "vishingstar", can: [ServerHello.FILES])), try message())
+        XCTAssertEqual(
+            .hello(
+                ServerHello(
+                    v: VERSION, uploads: "/Users/me/Library/Caches/wallflower/uploads", machine: "vishingstar",
+                    programs: [
+                        ProgramData(
+                            id: "aider",
+                            keys: KeyBarData(name: "aider", keys: ["Escape", "ctrl", "/undo Enter"], stop: ["C-c"]),
+                            commands: [CommandData(text: "/undo", about: "undo the last change ✓"), CommandData(text: "/diff")],
+                            newline: ["M-Enter"],
+                            clear: ["C-a", "C-k"],
+                            shortcuts: [ShortcutData(keys: ["/undo", "Enter"]), ShortcutData(keys: ["C-c", "C-c"], label: "quit")]
+                        ),
+                    ],
+                    can: [ServerHello.FILES]
+                )
+            ),
+            try message()
+        )
         XCTAssertEqual(.attached(Attached(mux: Mux(name: "tmux", version: "3.8", can: [Mux.BINDINGS]))), try message())
         guard case let .state(state) = try message() else { throw Failure("not state") }
         XCTAssertEqual("o", state.name)
@@ -122,13 +140,15 @@ final class FramesTests: XCTestCase {
                         WireEntry(id: "u2.0", from: "user", kind: "picture", mime: "image/png", size: 3),
                         WireEntry(id: "a3", from: "program", kind: "said", text: "**Done.** All `3` pass."),
                     ],
-                    context: 17967
+                    context: 17967,
+                    title: "Fix the tests ✓",
+                    queued: ["and the docs ✓"]
                 )
             ),
             try message()
         )
         XCTAssertEqual(.entries(Entries(pane: "%2", entries: [WireEntry(id: "n1", from: "user", kind: "note", text: "[Request interrupted by user]")])), try message())
-        XCTAssertEqual(.entries(Entries(pane: "%2", context: 0)), try message())
+        XCTAssertEqual(.entries(Entries(pane: "%2", context: 0, queued: [])), try message())
         XCTAssertEqual(.entries(Entries(pane: "%2", reset: true, error: "the conversation ended")), try message())
         XCTAssertEqual(.notification(ProgramNotification(pane: "%2", title: "Claude Code", body: "Claude needs your permission to use Bash ✓")), try message())
         XCTAssertEqual(.notification(ProgramNotification(pane: "%3", body: "build done")), try message())
@@ -179,6 +199,68 @@ final class FramesTests: XCTestCase {
         XCTAssertEqual(.file(FileReply(id: "f2", path: "/Users/me/log.txt", error: "permission denied")), try message())
         XCTAssertEqual(.bye(Bye(reason: "tmux exited")), try message())
         XCTAssertTrue(frames.isEmpty, "chunk \(chunk)")
+    }
+
+    /// Every field the gateway sends reaches the app: taking any one out of a
+    /// golden message (one that isn't empty) changes what it decodes to, or
+    /// stops it decoding, so a field dropped or named differently here fails.
+    func testEveryFieldOfTheGatewaysReachesTheApp() throws {
+        let frames = try golden("server.bin")
+        var at = frames.startIndex
+        var checked = 0
+        while at < frames.endIndex {
+            let n = frames[at..<at + 4].reduce(0) { $0 << 8 | Int($1) }
+            let type = frames[at + 4]
+            let payload = frames[at + 5..<at + 4 + n]
+            at += 4 + n
+            guard type == FRAME_JSON else { continue }
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
+            let t = try XCTUnwrap(json["t"] as? String)
+            let whole = try ServerMessage.decode(t, from: Data(payload))
+            for (path, without) in withoutEach(json, "", top: true) {
+                let data = try JSONSerialization.data(withJSONObject: without)
+                XCTAssertNotEqual(whole, try? ServerMessage.decode(t, from: data), "\(t): \(path) doesn't reach the app")
+                checked += 1
+            }
+        }
+        XCTAssertGreaterThan(checked, 100)
+    }
+
+    /// `value` with each of its fields that isn't empty taken out in turn, at any depth, by path; not a message's type.
+    private func withoutEach(_ value: Any, _ path: String, top: Bool = false) -> [(String, Any)] {
+        if let o = value as? [String: Any] {
+            return o.filter { !top || $0.key != "t" }.flatMap { k, v -> [(String, Any)] in
+                var gone = o
+                gone[k] = nil
+                let here: [(String, Any)] = empty(v) ? [] : [("\(path).\(k)", gone)]
+                return here + withoutEach(v, "\(path).\(k)").map { p, inner in
+                    var changed = o
+                    changed[k] = inner
+                    return (p, changed)
+                }
+            }
+        }
+        if let a = value as? [Any] {
+            return a.indices.flatMap { i in
+                withoutEach(a[i], "\(path)[\(i)]").map { p, inner in
+                    var changed = a
+                    changed[i] = inner
+                    return (p, changed)
+                }
+            }
+        }
+        return []
+    }
+
+    private func empty(_ value: Any) -> Bool {
+        switch value {
+        case is NSNull: true
+        case let o as [String: Any]: o.isEmpty
+        case let a as [Any]: a.isEmpty
+        case let s as String: s.isEmpty
+        case let n as NSNumber: n == 0 || CFGetTypeID(n) == CFBooleanGetTypeID() && !n.boolValue
+        default: false
+        }
     }
 
     func testUnknownMessageTypesAreSkippable() throws {

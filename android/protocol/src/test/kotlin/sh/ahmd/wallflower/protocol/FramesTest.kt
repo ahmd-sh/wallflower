@@ -3,13 +3,22 @@ package sh.ahmd.wallflower.protocol
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.ByteBuffer
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class FramesTest {
     private fun golden(name: String) = File(System.getProperty("wallflower.testdata"), name).readBytes()
@@ -74,7 +83,22 @@ class FramesTest {
         val r = FrameReader(ByteArrayInputStream(golden("server.bin")))
         fun message() = assertIs<Frame.Message>(r.next()).message
 
-        assertEquals(ServerHello(VERSION, uploads = "/Users/me/Library/Caches/wallflower/uploads", machine = "vishingstar", can = listOf(ServerHello.FILES)), message())
+        assertEquals(
+            ServerHello(
+                VERSION, uploads = "/Users/me/Library/Caches/wallflower/uploads", machine = "vishingstar", can = listOf(ServerHello.FILES),
+                programs = listOf(
+                    ProgramData(
+                        "aider",
+                        keys = KeyBarData("aider", listOf("Escape", "ctrl", "/undo Enter"), stop = listOf("C-c")),
+                        commands = listOf(CommandData("/undo", "undo the last change ✓"), CommandData("/diff")),
+                        newline = listOf("M-Enter"),
+                        clear = listOf("C-a", "C-k"),
+                        shortcuts = listOf(ShortcutData(listOf("/undo", "Enter")), ShortcutData(listOf("C-c", "C-c"), label = "quit")),
+                    ),
+                ),
+            ),
+            message(),
+        )
         assertEquals(Attached(Mux("tmux", "3.8", listOf(Mux.BINDINGS))), message())
         val state = assertIs<State>(message())
         assertEquals("o", state.name)
@@ -98,7 +122,7 @@ class FramesTest {
         assertEquals(Pong(4), message())
         assertEquals(
             Entries(
-                "%2", reset = true, more = true, context = 17967,
+                "%2", reset = true, more = true, context = 17967, title = "Fix the tests ✓", queued = listOf("and the docs ✓"),
                 entries = listOf(
                     Entry("u1", "user", "said", "fix the tests ✓"),
                     Entry("a0", "program", "thought", "the tests"),
@@ -113,7 +137,7 @@ class FramesTest {
             message(),
         )
         assertEquals(Entries("%2", entries = listOf(Entry("n1", "user", "note", "[Request interrupted by user]"))), message())
-        assertEquals(Entries("%2", context = 0), message())
+        assertEquals(Entries("%2", context = 0, queued = emptyList()), message())
         assertEquals(Entries("%2", reset = true, error = "the conversation ended"), message())
         assertEquals(Notification("%2", "Claude Code", "Claude needs your permission to use Bash ✓"), message())
         assertEquals(Notification("%3", body = "build done"), message())
@@ -159,6 +183,52 @@ class FramesTest {
         assertEquals(FetchedFile("f2", "/Users/me/log.txt", error = "permission denied"), message())
         assertEquals(Bye("tmux exited"), message())
         assertNull(r.next())
+    }
+
+    /**
+     * Every field the gateway sends reaches the app: taking any one out of a
+     * golden message (one that isn't empty) changes what it decodes to, or
+     * stops it decoding, so a field dropped or named differently here fails.
+     */
+    @Test
+    fun everyFieldOfTheGatewaysReachesTheApp() {
+        val frames = golden("server.bin")
+        var at = 0
+        var checked = 0
+        while (at < frames.size) {
+            val n = ByteBuffer.wrap(frames, at, 4).int
+            val type = frames[at + 4].toInt()
+            val payload = frames.copyOfRange(at + 5, at + 4 + n)
+            at += 4 + n
+            if (type != FRAME_JSON) continue
+            val json = WireJson.parseToJsonElement(payload.decodeToString()).jsonObject
+            val whole = WireJson.decodeFromJsonElement(ServerMessage.serializer(), json)
+            for ((path, without) in withoutEach(json, "", top = true)) {
+                val decoded = runCatching { WireJson.decodeFromJsonElement(ServerMessage.serializer(), without) }.getOrNull()
+                assertNotEquals(whole, decoded, "${json["t"]}: $path doesn't reach the app")
+                checked++
+            }
+        }
+        assertTrue(checked > 100, "only $checked fields checked")
+    }
+
+    /** [e] with each of its fields that isn't empty taken out in turn, at any depth, by path; not a message's type. */
+    private fun withoutEach(e: JsonElement, path: String, top: Boolean = false): List<Pair<String, JsonElement>> = when (e) {
+        is JsonObject -> e.entries.filter { !top || it.key != "t" }.flatMap { (k, v) ->
+            val here = if (empty(v)) emptyList() else listOf("$path.$k" to JsonObject(e - k))
+            here + withoutEach(v, "$path.$k").map { (p, inner) -> p to JsonObject(e + (k to inner)) }
+        }
+        is JsonArray -> e.flatMapIndexed { i, v ->
+            withoutEach(v, "$path[$i]").map { (p, inner) -> p to JsonArray(e.toMutableList().also { it[i] = inner }) }
+        }
+        else -> emptyList()
+    }
+
+    private fun empty(e: JsonElement) = when (e) {
+        is JsonNull -> true
+        is JsonObject -> e.isEmpty()
+        is JsonArray -> e.isEmpty()
+        is JsonPrimitive -> if (e.isString) e.content == "" else e.content == "false" || e.content == "0"
     }
 
     @Test
