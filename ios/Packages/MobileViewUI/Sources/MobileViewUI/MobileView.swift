@@ -58,6 +58,7 @@ public struct MobileView: View {
     @State private var stopping = false
     @State private var feel = Fold()
     @State private var feelAside = Fold()
+    @State private var grouped = Grouped()
 
     public init(
         reading: Reading,
@@ -127,7 +128,7 @@ public struct MobileView: View {
     }
 
     public var body: some View {
-        let items = ReadModel.items(reading.shown)
+        let items = grouped.items(reading.shown)
         let status = self.status
         // Nothing said yet, a conversation can still have something at its foot: an answer aside, a menu, what's queued.
         let phase: Phase = tasks != nil ? .tasks
@@ -285,5 +286,24 @@ private struct Capped: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+    }
+}
+
+/**
+ * The conversation grouped (ReadModel.items), again only when what's shown
+ * changes: the view's drawn again for much else (the clock, the line, a
+ * swipe). A cache, not state: nothing watches it.
+ */
+@MainActor
+private final class Grouped {
+    private var entries: [Entry] = []
+    private var grouped: [Item] = []
+
+    func items(_ shown: [Entry]) -> [Item] {
+        if shown != entries { // an array unchanged is the same storage, which compares at once
+            entries = shown
+            grouped = ReadModel.items(shown)
+        }
+        return grouped
     }
 }
