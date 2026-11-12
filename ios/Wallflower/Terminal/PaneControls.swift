@@ -65,6 +65,7 @@ struct PaneDots: View {
             .chrome()
         }
         .buttonStyle(Pressable())
+        .accessibilityLabel(count == 1 ? "1 pane" : "\(count) panes")
         .padding(8)
         .animation(Motion.spatial, value: position.at)
     }

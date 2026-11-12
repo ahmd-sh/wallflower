@@ -206,8 +206,8 @@ struct PanePager<Page: View>: View {
                         .frame(width: geo.size.width, height: geo.size.height)
                         .offset(x: CGFloat(slot) * geo.size.width + pager.offset)
                 }
-                if next == nil, onNew != nil {
-                    // Kept in the middle of what the pane has uncovered.
+                if next == nil, onNew != nil, pager.offset < 0 || pager.making {
+                    // Kept in the middle of what the pane has uncovered; there only while it's uncovered.
                     NewPane(lit: pager.armed || pager.making)
                         .opacity(min(max(-(pager.offset - pager.snap) / newPaneReach, 0), 1))
                         .offset(x: (pager.snap - pager.lead) / 2)

@@ -89,13 +89,39 @@ struct TerminalScreen: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
             Blocking(session: session, model: model, machine: host.called, onSetup: onSettings)
-            ZStack(alignment: .topTrailing) {
-                panes(windows: windows, window: window, pane: pane, bar: bar, mobileViews: mobileViews)
-                    .opacity(saysDown && state != nil ? 0.45 : 1)
-                if state == nil {
-                    Connecting(status: status, machine: host.called, address: host.reach, onRetry: { session.retry() }, opening: opening(place))
-                        .transition(.opacity)
+            // The overview lies over the panes and the composer both: what's under it isn't to be typed into.
+            ZStack {
+                VStack(spacing: 0) {
+                    ZStack(alignment: .topTrailing) {
+                        panes(windows: windows, window: window, pane: pane, bar: bar, mobileViews: mobileViews)
+                            .opacity(saysDown && state != nil ? 0.45 : 1)
+                        if state == nil {
+                            Connecting(status: status, machine: host.called, address: host.reach, onRetry: { session.retry() }, opening: opening(place))
+                                .transition(.opacity)
+                        }
+                        if let window, let pane, !overview {
+                            HStack(spacing: 0) {
+                                if pane.view {
+                                    ViewToggle(mobile: mobile) {
+                                        haptics.toggle(!mobile)
+                                        model.settings.mobileView = !mobile
+                                    }
+                                    .transition(.opacity.combined(with: .scale))
+                                }
+                                PaneDots(count: window.panes.count, position: position) {
+                                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) // the terminal's keyboard, or the composer's
+                                    withAnimation(Motion.spatial) { overview = true }
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: .infinity)
+                    if let pane, let actions {
+                        composer(pane: pane, actions: actions, mobile: mobile, activity: activity, bar: bar, connected: status == .connected)
+                            .environment(\.viewing, viewing(pane))
+                    }
                 }
+                .accessibilityHidden(overview)
                 if overview, let window {
                     PaneOverview(
                         window: window, shown: pane?.id, terminals: session.terminals,
@@ -109,6 +135,7 @@ struct TerminalScreen: View {
                         },
                         onClose: { close(window, $0) },
                         onFiles: session.canFiles ? { p in
+                            session.show(window, p)
                             withAnimation(Motion.spatial) { overview = false }
                             model.files = FilesAt(start: p.path.nilIfEmpty ?? "~", pane: p.id)
                         } : nil
@@ -116,27 +143,8 @@ struct TerminalScreen: View {
                     .transition(.scale(scale: 1.08).combined(with: .opacity))
                     .zIndex(2)
                 }
-                if let window, let pane, !overview {
-                    HStack(spacing: 0) {
-                        if pane.view {
-                            ViewToggle(mobile: mobile) {
-                                haptics.toggle(!mobile)
-                                model.settings.mobileView = !mobile
-                            }
-                            .transition(.opacity.combined(with: .scale))
-                        }
-                        PaneDots(count: window.panes.count, position: position) {
-                            handle.hideKeyboard()
-                            withAnimation(Motion.spatial) { overview = true }
-                        }
-                    }
-                }
             }
             .frame(maxHeight: .infinity)
-            if let pane, let actions {
-                composer(pane: pane, actions: actions, mobile: mobile, activity: activity, bar: bar, connected: status == .connected)
-                    .environment(\.viewing, viewing(pane))
-            }
         }
         .background(palette.bg0.ignoresSafeArea())
         .animation(Motion.spatial, value: saysDown)
