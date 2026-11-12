@@ -64,7 +64,7 @@ func (s Server) Sessions() (mux.Listing, error) {
 	if isNoServer(err) {
 		return mux.Listing{}, nil
 	}
-	return mux.Listing{Running: true, Sessions: list, Can: []string{mux.CanNew, mux.CanRename, mux.CanKill}}, err
+	return mux.Listing{Running: true, Sessions: list, Can: []string{mux.CanNew, mux.CanRename, mux.CanKill, mux.Super}}, err
 }
 
 func isNoServer(err error) bool {

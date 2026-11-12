@@ -47,7 +47,8 @@ type Close struct {
 }
 
 // Keys presses keys by wallflower's names (Enter, Escape, Up, C-c, M-Enter,
-// BTab, ...; see package mux), encoded for the pane's current modes;
+// BTab, D-s where the multiplexer can (CanSuper), ...; see package mux),
+// encoded for the pane's current modes;
 // anything else is typed as it is. Bytes go in data frames, composed text
 // in Submit.
 type Keys struct {
@@ -298,6 +299,11 @@ type Mux struct {
 // CanBindings: Keys can press keys through the multiplexer's own key
 // bindings.
 const CanBindings = "bindings"
+
+// CanSuper: Keys presses keys with super held (D-: the Mac's command key),
+// which tmux can't. In MuxSessions.Can too, for a client to offer such keys
+// before it's attached.
+const CanSuper = "super"
 
 type State struct {
 	Session string   `json:"session"`

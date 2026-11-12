@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -66,16 +67,18 @@ func TestFilter(t *testing.T) {
 
 func TestKeyOf(t *testing.T) {
 	for name, want := range map[string]key{
-		"Enter":   {Key: "enter"},
-		"C-c":     {Key: "key_c", Mods: "ctrl", UnshiftedCodepoint: 'c'},
-		"M-b":     {Key: "key_b", Mods: "alt", Text: "b", UnshiftedCodepoint: 'b'},
-		"M-Enter": {Key: "enter", Mods: "alt"},
-		"S-Up":    {Key: "arrow_up", Mods: "shift"},
-		"BTab":    {Key: "tab", Mods: "shift"},
-		"C-M-x":   {Key: "key_x", Mods: "ctrl+alt", UnshiftedCodepoint: 'x'},
-		"M-?":     {Key: "slash", Mods: "shift+alt", ConsumedMods: "shift", Text: "?", UnshiftedCodepoint: '/'},
-		"F5":      {Key: "f5"},
-		"Space":   {Key: "space", Text: " ", UnshiftedCodepoint: ' '},
+		"Enter":    {Key: "enter"},
+		"C-c":      {Key: "key_c", Mods: "ctrl", UnshiftedCodepoint: 'c'},
+		"M-b":      {Key: "key_b", Mods: "alt", Text: "b", UnshiftedCodepoint: 'b'},
+		"M-Enter":  {Key: "enter", Mods: "alt"},
+		"S-Up":     {Key: "arrow_up", Mods: "shift"},
+		"BTab":     {Key: "tab", Mods: "shift"},
+		"C-M-x":    {Key: "key_x", Mods: "ctrl+alt", UnshiftedCodepoint: 'x'},
+		"M-?":      {Key: "slash", Mods: "shift+alt", ConsumedMods: "shift", Text: "?", UnshiftedCodepoint: '/'},
+		"F5":       {Key: "f5"},
+		"Space":    {Key: "space", Text: " ", UnshiftedCodepoint: ' '},
+		"D-s":      {Key: "key_s", Mods: "super", Text: "s", UnshiftedCodepoint: 's'},
+		"C-D-Left": {Key: "arrow_left", Mods: "ctrl+super"},
 	} {
 		want.Action = "press"
 		if got, ok := keyOf(name); !ok || got != want {
@@ -211,6 +214,25 @@ func TestKeysAndPaste(t *testing.T) {
 		t.Fatal(err)
 	}
 	output(t, c, block, "^[[200~one $HOME^Mtwo^[[201~")
+}
+
+// Super reaches a program that asks for the kitty keyboard's keys; one
+// that doesn't gets its arrows, as xterm's meta, and none of its letters.
+func TestSuper(t *testing.T) {
+	c, _, block := client(t, 60, 20)
+	if !slices.Contains(c.About().Can, mux.Super) {
+		t.Errorf("about %+v", c.About())
+	}
+	c.Snapshot()
+	c.Type(block, []byte(`stty -icanon -echo; echo RE""ADY; cat -v`+"\r"))
+	output(t, c, block, "READY")
+	c.Keys(block, "D-s", "D-Left", "x")
+	output(t, c, block, "^[[1;9Dx")
+	c.Keys(block, "C-c")
+	c.Type(block, []byte(`stty raw -echo; printf '\033[>1u'; echo KI""TTY; cat -v`+"\r"))
+	output(t, c, block, "KITTY")
+	c.Keys(block, "D-s", "D-Left")
+	output(t, c, block, "^[[115;9u^[[1;9D")
 }
 
 func TestScreensAndSizing(t *testing.T) {

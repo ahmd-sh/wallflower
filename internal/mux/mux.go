@@ -81,6 +81,10 @@ const (
 	// Bindings: Client.Bound presses keys through the multiplexer's own key
 	// bindings, "prefix" standing for its prefix key.
 	Bindings = "bindings"
+	// Super: Client.Keys presses keys with super held (D-s: the Mac's
+	// command key), which tmux has no name for. A Listing says so too, for
+	// a client to offer them before it's attached.
+	Super = "super"
 )
 
 // A Client is attached to a session as the desktop's own clients are, so

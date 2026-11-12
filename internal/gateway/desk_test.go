@@ -29,7 +29,7 @@ type backend struct {
 
 var (
 	tmuxBackend = backend{name: "tmux", can: []string{protocol.CanBindings}, start: startTmux, behindAlt: true}
-	rexBackend  = backend{name: "rex", start: startRex}
+	rexBackend  = backend{name: "rex", can: []string{protocol.CanSuper}, start: startRex}
 	backends    = []backend{tmuxBackend, rexBackend}
 )
 

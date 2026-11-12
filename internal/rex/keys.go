@@ -60,10 +60,10 @@ func init() {
 	}
 }
 
-// keyOf is a key by wallflower's name (C-c, M-Enter, S-Up, BTab) as Rex's,
+// keyOf is a key by wallflower's name (C-c, M-Enter, S-Up, D-s, BTab) as Rex's,
 // or false for text to type as it is.
 func keyOf(name string) (key, bool) {
-	var shift, ctrl, alt bool
+	var shift, ctrl, alt, super bool
 	rest := name
 	for len(rest) > 2 && rest[1] == '-' {
 		switch rest[0] {
@@ -73,6 +73,8 @@ func keyOf(name string) (key, bool) {
 			alt = true
 		case 'S':
 			shift = true
+		case 'D':
+			super = true
 		default:
 			return key{}, false
 		}
@@ -88,7 +90,7 @@ func keyOf(name string) (key, bool) {
 	} else {
 		r := []rune(rest)
 		pos, ok := keyboard[r[0]]
-		if len(r) != 1 || !ok || !ctrl && !alt {
+		if len(r) != 1 || !ok || !ctrl && !alt && !super {
 			return key{}, false // text, typed as it is
 		}
 		k.Key = pos.key
@@ -105,7 +107,7 @@ func keyOf(name string) (key, bool) {
 	for _, m := range []struct {
 		on   bool
 		name string
-	}{{shift, "shift"}, {ctrl, "ctrl"}, {alt, "alt"}} {
+	}{{shift, "shift"}, {ctrl, "ctrl"}, {alt, "alt"}, {super, "super"}} {
 		if m.on {
 			mods = append(mods, m.name)
 		}

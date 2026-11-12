@@ -87,7 +87,7 @@ func attach(c *control, a mux.Attach) (*attached, error) {
 	}
 	t := &attached{
 		c: c, session: session, client: att.Client, cols: a.Cols, rows: a.Rows, away: a.Away,
-		about:  mux.About{Name: "rex", Version: version.Rex},
+		about:  mux.About{Name: "rex", Version: version.Rex, Can: []string{mux.Super}},
 		blocks: map[string]*block{}, owned: map[string][2]int{},
 		events: make(chan mux.Event), closed: make(chan struct{}),
 	}
