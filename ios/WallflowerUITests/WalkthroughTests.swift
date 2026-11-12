@@ -273,3 +273,39 @@ extension WalkthroughTests {
         XCTAssertTrue(app.menuItems["Copy screen"].firstMatch.waitForExistence(timeout: 3))
     }
 }
+
+extension WalkthroughTests {
+    /**
+     * A lone pane (tab 0) dragged left a little springs back; far enough, it
+     * gives way to "new pane" (held there to be seen), and let go there, a
+     * new pane comes in, shown, with the window's dots.
+     */
+    func testNewPane() {
+        app.launchArguments = app.launchArguments.map { $0 == "tab:1" ? "tab:0" : $0 }
+        app.launch()
+        allowNotifications()
+        sleep(7)
+        shot("lone")
+        at(0.85, 0.4).press(forDuration: 0.05, thenDragTo: at(0.6, 0.4), withVelocity: .slow, thenHoldForDuration: 0)
+        sleep(2)
+        shot("short-drag")
+        // Seen while held: the press blocks, so it's caught from aside.
+        if let dir = shots {
+            for (i, t) in [2.0, 3.0].enumerated() {
+                DispatchQueue.global().asyncAfter(deadline: .now() + t) {
+                    try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("held-\(i).png"))
+                }
+            }
+        }
+        at(0.85, 0.4).press(forDuration: 0.05, thenDragTo: at(0.1, 0.4), withVelocity: .slow, thenHoldForDuration: 1)
+        sleep(4)
+        shot("new-pane")
+        // Again, with nothing coming (WF_NEW_PANE_AGAIN: the computer's made to keep it waiting): its place waits, then springs back.
+        if ProcessInfo.processInfo.environment["WF_NEW_PANE_AGAIN"] ?? ProcessInfo.processInfo.environment["TEST_RUNNER_WF_NEW_PANE_AGAIN"] != nil {
+            sleep(6)
+            at(0.85, 0.4).press(forDuration: 0.05, thenDragTo: at(0.1, 0.4), withVelocity: .fast, thenHoldForDuration: 0.5)
+            sleep(6)
+            shot("waited")
+        }
+    }
+}
