@@ -29,9 +29,11 @@ public final class Codex: Program {
         stop: ["Escape"]
     )
 
-    /// A few, to show what a shortcut can be: a key, commands run as sent,
-    /// and /side, which starts what's sent, the question to ask aside.
+    /// A few, to show what a shortcut can be: keys (← from its empty
+    /// composer brings up its agents), commands run as sent, and /side,
+    /// which starts what's sent, the question to ask aside.
     public let shortcuts: [Shortcut] = [
+        Shortcut(["Left"], label: "agents"),
         Shortcut(["F4"], label: "activity"),
         Shortcut(["/model", "Enter"]),
         Shortcut(["/diff", "Enter"]),
@@ -113,7 +115,7 @@ public final class Codex: Program {
     /// Asked whether to trust a folder, a number doesn't answer: 1 only moves
     /// to trust, which Enter confirms, and 2 leaves at once.
     public func prompt(_ screen: Screen) -> Prompt? {
-        if composer(screen) != nil { return nil }
+        if composer(screen) != nil || center(screen) != nil { return nil }
         guard var p = Prompt.read(screen) else { return nil }
         let from = (p.lines.lastIndex { let t = $0.text.trimmedStart(); return t.startsWith("•") || t.startsWith("↪") } ?? -1) + 1
         p.lines = Array(p.lines.dropFirst(from).drop { $0.text.isBlank })
@@ -161,6 +163,121 @@ public final class Codex: Program {
     }
 
     private static let needs = Pattern("^\\s*\\[[^\\]]*]\\s*Action Required(\\s*\\|\\s*|$)")
+
+    /// Its agent command center (← from an empty composer), its own screen:
+    /// a heading, the filters, a rule, then its tasks under " Tasks", in
+    /// groups (faint: "~/dev/wallflower  24", "Pinned  1"), each task its
+    /// mark and name, the cursor's row "› " and lit; "↑" and "↓" where more
+    /// is out of sight; its keys at the foot. A filter's count is its own;
+    /// the current one isn't faint, and "‹" or "›" stand for more of them.
+    /// Of the marks, ! needs the user and ○ is nothing new; ● is working
+    /// (green) or needs the user or is new since it was looked at (blue),
+    /// told apart by the filter, or by nothing working or needing the user.
+    /// Its keys (?) show over the filters, in the tasks' place.
+    public func aside(_ screen: Screen) -> Aside? {
+        let s = screen
+        guard let top = center(s) else { return nil }
+        let filters = filters(s, top + 1)
+        let current = filters.first { $0.current }?.name
+        let working = filters.first { $0.name == "Working" }?.count
+        let needing = filters.first { $0.name == "Needs you" }?.count
+        // Its keys, over the filters: a view of its own on its own.
+        if top + 3 < s.rows && text(s, top + 3, 0).trimmed() == "Task shortcuts" { return .view(Aside.View(name: "agents' keys", leave: ["Escape"])) }
+        var foot = s.rows - 1
+        while foot > top && text(s, foot, 0).isBlank { foot -= 1 }
+        if !Codex.keys.containsMatch(in: text(s, foot, 0)) { foot += 1 }
+        var groups: [Aside.Tasks.Group] = []
+        var name: String?
+        var count = ""
+        var tasks: [Aside.Tasks.Task] = []
+        var above = false, below = false
+        var says: String?
+        func close() {
+            if name != nil || !tasks.isEmpty { groups.append(Aside.Tasks.Group(name: name ?? "", count: count, tasks: tasks)) }
+            name = nil
+            count = ""
+            tasks = []
+        }
+        for y in until(top + 3, foot) {
+            let row = text(s, y, 0)
+            if row.isBlank { continue }
+            let rest = row.trimmedStart()
+            let at = row.length - rest.length
+            if rest.startsWith("↑") {
+                above = true
+            } else if rest.startsWith("↓") {
+                below = true
+            } else if s.isFaint(at, y) && at <= 2 && Codex.heading.matches(rest) {
+                close()
+                let m = Codex.gap.find(rest)!
+                name = rest.substring(0, m.range.lowerBound)
+                count = rest.substring(m.range.upperBound)
+            } else if s.isFaint(at, y) && at > 2 {
+                // " Tasks"
+            } else if let m = Codex.task.find(row) {
+                let mark: Aside.Tasks.Mark
+                switch m.groupValue(2) {
+                case "!": mark = .needsYou
+                case "○": mark = .idle
+                default:
+                    if current == "Working" { mark = .working }
+                    else if current == "Needs you" { mark = .needsYou }
+                    else if working == 0 && needing == 0 { mark = .updated }
+                    else { mark = .lit }
+                }
+                tasks.append(Aside.Tasks.Task(name: m.groupValue(3), mark: mark, current: !m.groupValue(1).isEmpty))
+            } else if groups.isEmpty && tasks.isEmpty {
+                says = rest
+            }
+        }
+        close()
+        return .tasks(Aside.Tasks(
+            named: "agents",
+            filters: filters,
+            groups: groups,
+            above: above,
+            below: below,
+            says: groups.isEmpty ? says : nil,
+            leave: ["Escape"],
+            up: ["Up"],
+            down: ["Down"],
+            open: ["Enter"],
+            next: ["Tab"],
+            previous: ["BTab"],
+            pageUp: ["PageUp"],
+            pageDown: ["PageDown"],
+            new: ["n"]
+        ))
+    }
+
+    /// The agent command center's heading row, near the top, if it's up.
+    private func center(_ s: Screen) -> Int? {
+        until(0, min(3, s.rows - 3)).first { text(s, $0, 0).trimmedStart().startsWith("Agent command center") }
+    }
+
+    /// The filters on row `y`: each a name, then how many, apart from the next; the one current isn't faint.
+    private func filters(_ s: Screen, _ y: Int) -> [Aside.Tasks.Filter] {
+        var row = ""
+        var at: [Int] = []
+        for x in until(0, s.cols) where !s.isSpacer(x, y) {
+            let t = s.text(x, y).isEmpty ? " " : s.text(x, y)
+            row += t
+            at += Array(repeating: x, count: t.length)
+        }
+        return Codex.filter.findAll(row).map { m in
+            Aside.Tasks.Filter(name: m.groupValue(1), count: Int(m.groupValue(2)) ?? 0, current: !s.isFaint(at[m.range.lowerBound], y))
+        }
+    }
+
+    private static let filter = Pattern("(\\p{L}[\\p{L} ]*?) (\\d+)(?= |$)")
+
+    private static let task = Pattern("^\\s*(›)?\\s*([^\\p{L}\\p{N}\\s])\\s(.+?)\\s*$")
+
+    private static let keys = Pattern("\\besc back\\b")
+
+    private static let heading = Pattern("\\S.*?\\s{2,}\\d.*")
+
+    private static let gap = Pattern("\\s{2,}")
 
     private func text(_ s: Screen, _ y: Int, _ from: Int) -> String {
         var b = ""

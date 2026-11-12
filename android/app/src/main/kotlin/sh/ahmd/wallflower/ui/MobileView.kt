@@ -244,12 +244,15 @@ fun MobileView(
         }
         // Nothing said yet, a conversation can still have something at its foot: an answer aside, a menu, what's queued.
         val phase = when {
+            aside is Aside.Tasks -> Phase.Tasks
             !reading.loaded -> Phase.Reading
             items.isEmpty() && aside == null && status == null && reading.queued.isEmpty() -> Phase.Empty
             else -> Phase.Shown
         }
         Crossfade(phase, animationSpec = Motion.effect(), label = "mobile view") { p ->
             when (p) {
+                // The program's list of its tasks takes the conversation's place, as it does the program's screen.
+                Phase.Tasks -> (aside as? Aside.Tasks)?.let { TasksPage(it, onKeys, nudged) }
                 Phase.Reading -> Hint("reading…")
                 // The mode can be picked before the first message.
                 Phase.Empty -> Box(Modifier.fillMaxSize()) {
@@ -265,7 +268,7 @@ fun MobileView(
                         verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Bottom), // a short conversation sits at the foot, by the composer
                     ) {
                         // What's aside of the program's line takes its place, at the foot.
-                        if (aside != null) {
+                        if (aside != null && aside !is Aside.Tasks) {
                             item(key = "aside") {
                                 AnimatedContent(
                                     aside,
@@ -345,7 +348,7 @@ fun MobileView(
         }
         val shownTitle = rememberLast(title)
         AnimatedVisibility(
-            title != null,
+            title != null && phase != Phase.Tasks, // the list says what it is
             modifier = Modifier.align(Alignment.TopStart),
             enter = fadeIn(Motion.effect()),
             exit = fadeOut(Motion.effect()),
@@ -362,7 +365,7 @@ fun MobileView(
     }
 }
 
-private enum class Phase { Reading, Empty, Shown }
+private enum class Phase { Tasks, Reading, Empty, Shown }
 
 /** What's below the conversation: a menu to answer, the program working, or waiting on something unread. */
 private enum class Status { Asking, Working, Waiting, Seeking }
@@ -1071,6 +1074,7 @@ private fun AsideCard(aside: Aside, answer: List<String>, nudged: Long, onKeys: 
             }
             Chip("back", Palette.blue, onClick = leave)
         }
+        is Aside.Tasks -> Unit // a page of its own (TasksPage)
         is Aside.Answer -> Box(modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Palette.bg1).padding(10.dp)) {
             Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(Modifier.padding(end = 44.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {

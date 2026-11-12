@@ -1,0 +1,26 @@
+  [1mAgent command center[0;2m  Group: Director…[0m
+  [1;4m All 26 [0m [2m Needs you 0 [0m [2m Working 0 [0m   [2m›[0m
+  [2m──────────────────────────────────────[0m
+  [1mTask shortcuts[0m
+
+  [1mNavigate[0m
+  [38;2;99;168;248m↑[39m      Up
+  [38;2;99;168;248m↓[39m      Down
+  [38;2;99;168;248menter[39m  Open
+  [38;2;99;168;248mpgup[39m   Page up
+  [38;2;99;168;248mpgdn[39m   Page down
+  [38;2;99;168;248m⌃c[39m     Quit
+
+  [1mTasks[0m
+  [38;2;99;168;248mn[39m       New
+  [38;2;99;168;248mw[39m       New worktree
+  [38;2;99;168;248mo[39m       Resume
+  [38;2;99;168;248mf[39m       Fork
+  [38;2;99;168;248mr[39m       Rename
+  [38;2;99;168;248mx[39m       Stop
+  [38;2;99;168;248ma[39m       Archive
+  [38;2;99;168;248mh[39m       Hide
+  [38;2;99;168;248mdelete[39m  Delete
+  [38;2;99;168;248mp[39m       Pin/unpin
+  [2m… resize to see all[0m
+  [1mesc[0m back
