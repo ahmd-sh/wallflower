@@ -359,3 +359,107 @@ extension WalkthroughTests {
         }
     }
 }
+
+extension WalkthroughTests {
+    /**
+     * The dots bring up the window's panes as cards, over the composer and
+     * its keys too, so nothing under them takes a touch; "files here" on a
+     * card shows its pane first. (Tab 1: a new pane is made from its card,
+     * then the first card's files asked for, so the first pane is shown.)
+     */
+    func testOverview() {
+        app.launch()
+        allowNotifications()
+        sleep(6)
+        let arrows = app.buttons["arrows, enter, backspace"]
+        XCTAssert(arrows.waitForExistence(timeout: 4))
+        XCTAssert(arrows.isHittable)
+        let dots = app.buttons.matching(NSPredicate(format: "label ENDSWITH ' pane' OR label ENDSWITH ' panes'")).firstMatch
+        XCTAssert(dots.waitForExistence(timeout: 2))
+        dots.tap()
+        sleep(2)
+        shot("overview")
+        XCTAssertFalse(arrows.exists, "the key bar is under the cards")
+        let new = app.staticTexts["new pane"]
+        XCTAssert(new.waitForExistence(timeout: 2))
+        new.tap()
+        sleep(3)
+        shot("split")
+        XCTAssert(arrows.isHittable, "the cards go once one's picked")
+        dots.tap()
+        sleep(2)
+        at(0.25, 0.3).press(forDuration: 1.0) // the first card
+        sleep(1)
+        shot("card-menu")
+        let files = app.buttons["files here"]
+        XCTAssert(files.waitForExistence(timeout: 2))
+        files.tap()
+        sleep(3)
+        shot("files")
+        let close = app.buttons["Close"]
+        if close.waitForExistence(timeout: 3) { close.tap() }
+        sleep(2)
+        shot("back")
+        XCTAssert(arrows.isHittable)
+    }
+}
+
+extension WalkthroughTests {
+    /** Settings, over the terminal, goes back with a swipe from the left edge, and with nothing else: not a drag across its middle, nor a scroll. */
+    func testBackSwipe() {
+        app.launch()
+        allowNotifications()
+        sleep(6)
+        at(0.94, 0.098).tap() // the connection's menu
+        let open = app.buttons["settings"]
+        XCTAssert(open.waitForExistence(timeout: 2))
+        open.tap()
+        sleep(2)
+        let page = app.staticTexts["settings"]
+        XCTAssert(page.waitForExistence(timeout: 4))
+        shot("settings")
+        at(0.4, 0.6).press(forDuration: 0.05, thenDragTo: at(0.95, 0.6), withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(1)
+        XCTAssert(page.exists, "a drag across the middle doesn't go back")
+        app.swipeUp()
+        sleep(1)
+        app.swipeDown()
+        sleep(1)
+        XCTAssert(page.exists, "nor does a scroll")
+        at(0.0, 0.5).press(forDuration: 0.05, thenDragTo: at(0.8, 0.5), withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(2)
+        shot("back")
+        XCTAssertFalse(page.exists, "a swipe from the edge goes back")
+    }
+}
+
+extension WalkthroughTests {
+    /** The viewer reads a long text file a piece at a time, and renders markdown. (The rig's home has lines.txt, 450 lines, and notes.md.) */
+    func testViewer() {
+        app.launch()
+        allowNotifications()
+        sleep(6)
+        at(0.94, 0.098).tap() // the connection's menu
+        let files = app.buttons["files"]
+        XCTAssert(files.waitForExistence(timeout: 2))
+        files.tap()
+        sleep(3)
+        let lines = app.staticTexts["lines.txt"]
+        XCTAssert(lines.waitForExistence(timeout: 4))
+        lines.tap()
+        sleep(3)
+        shot("text")
+        XCTAssert(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "line 1\n")).firstMatch.waitForExistence(timeout: 3), "the first piece")
+        app.swipeUp(velocity: .fast)
+        app.swipeUp(velocity: .fast)
+        app.swipeUp(velocity: .fast)
+        sleep(1)
+        XCTAssert(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "line 201\n")).firstMatch.exists, "the next")
+        app.navigationBars.buttons.firstMatch.tap()
+        sleep(2)
+        app.staticTexts["notes.md"].tap()
+        sleep(3)
+        shot("markdown")
+        XCTAssert(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'bold'")).firstMatch.waitForExistence(timeout: 3))
+    }
+}
