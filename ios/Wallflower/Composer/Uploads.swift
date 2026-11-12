@@ -36,6 +36,7 @@ final class Uploads {
     var dir: String? = UserDefaults.standard.string(forKey: "uploads") {
         didSet { if let d = dir, d != oldValue { UserDefaults.standard.set(d, forKey: "uploads") } }
     }
+    @ObservationIgnored private let cache = NSCache<NSString, UIImage>()
     @ObservationIgnored private let thumbs = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("thumbs")
 
     func add(_ session: Session, pane: String, _ picked: [Picked], drafts: Drafts) {
@@ -66,10 +67,14 @@ final class Uploads {
 
     /** The preview kept for an uploaded image, by its path on the computer, if there is one. */
     func thumbnail(_ path: String) -> UIImage? {
-        UIImage(contentsOfFile: thumbs.appendingPathComponent(key(path)).path)
+        if let image = cache.object(forKey: path as NSString) { return image }
+        guard let image = UIImage(contentsOfFile: thumbs.appendingPathComponent(key(path)).path) else { return nil }
+        cache.setObject(image, forKey: path as NSString)
+        return image
     }
 
     private func keep(_ image: UIImage, _ path: String) {
+        cache.setObject(image, forKey: path as NSString)
         try? FileManager.default.createDirectory(at: thumbs, withIntermediateDirectories: true)
         try? image.jpegData(compressionQuality: 0.85)?.write(to: thumbs.appendingPathComponent(key(path)))
     }

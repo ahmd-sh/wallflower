@@ -191,16 +191,6 @@ struct Composer: View {
                     .foregroundColor(sticky.armed != nil ? palette.orange : palette.dim)
                     .allowsHitTesting(false)
             }
-            if text.isEmpty && sticky.armed == nil && !ghost.isEmpty {
-                GhostLine(text: ghost, suggested: pending.isEmpty, onClear: onClear, onTap: { focused = true }) {
-                    if pending.isEmpty && ghost.hasSuffix("…"), let accept = onAcceptSuggestion {
-                        accepting = ghost
-                        accept()
-                    } else {
-                        take(ghost)
-                    }
-                }
-            }
             TextField("", text: $text, axis: .vertical)
                 .lineLimit(1...6)
                 .font(Fonts.mono(15))
@@ -216,6 +206,17 @@ struct Composer: View {
                     text = old
                     if let c = added { sticky.intercept(c) }
                 }
+            // Over the field (which is see-through beneath it), so its × and swipe are its own; a tap on it is the field's.
+            if text.isEmpty && sticky.armed == nil && !ghost.isEmpty {
+                GhostLine(text: ghost, suggested: pending.isEmpty, onClear: onClear, onTap: { focused = true }) {
+                    if pending.isEmpty && ghost.hasSuffix("…"), let accept = onAcceptSuggestion {
+                        accepting = ghost
+                        accept()
+                    } else {
+                        take(ghost)
+                    }
+                }
+            }
         }
         .frame(minHeight: 21)
     }
@@ -357,7 +358,7 @@ private struct AttachmentsRow: View {
     }
 
     private func attachedPaths() -> [String] {
-        guard let dir, let re = uploadPaths(dir) else { return [] }
+        guard let dir, text.contains(dir), let re = uploadPaths(dir) else { return [] }
         let ns = text as NSString
         var seen: [String] = []
         for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
