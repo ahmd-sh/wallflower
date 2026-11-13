@@ -220,6 +220,7 @@ struct TerminalScreen: View {
     /** A key from the bar, or the arrows' pad. */
     private func press(_ key: BarKey) {
         typed = key.keys.last != "Enter"
+        handle.forgetTyped()
         sticky.press(key)
     }
 
@@ -290,6 +291,7 @@ struct TerminalScreen: View {
             },
             onTyped: { t in
                 guard let actions else { return }
+                if sticky.armed != nil { handle.forgetTyped() } // what it takes goes with the key, not as typed
                 sticky.type(t, returnKeys: actions.returnKeys) { text in
                     typed = true
                     handle.scrollToBottom()
@@ -366,6 +368,7 @@ struct TerminalScreen: View {
             },
             onEnter: {
                 typed = false
+                handle.forgetTyped()
                 if mobile {
                     actions.enter()
                 } else {
@@ -375,6 +378,7 @@ struct TerminalScreen: View {
             },
             onStop: {
                 typed = false
+                handle.forgetTyped()
                 actions.stop()
             },
             onEditKeys: onEditKeys,
@@ -388,6 +392,7 @@ struct TerminalScreen: View {
                     return
                 }
                 typed = key.keys.last != "Enter"
+                handle.forgetTyped()
                 if !mobile { handle.scrollToBottom() }
                 actions.shortcut(key, line: screen.line)
             },

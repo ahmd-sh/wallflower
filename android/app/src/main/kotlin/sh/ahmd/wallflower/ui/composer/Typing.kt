@@ -2,6 +2,7 @@ package sh.ahmd.wallflower.ui.composer
 
 import android.content.Context
 import android.text.InputType
+import android.text.Selection
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.View
@@ -29,8 +30,10 @@ import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
 
 /**
  * The phone's keyboard typing straight into a pane, as a terminal takes it:
- * no suggestions or autocorrect, text as it's typed, every other key by its
- * name, from the keyboard on screen or one plugged in.
+ * text as it's typed, every other key by its name, from the keyboard on
+ * screen or one plugged in. To the keyboard it's a text field, so glide
+ * typing, voice typing and its suggestions work (no autocorrect); each
+ * change it makes goes to the pane at once (see [KeyboardEdit]).
  */
 @Stable
 internal class Typing {
@@ -43,6 +46,28 @@ internal class Typing {
         wantsKeyboard = true
         node?.showIfTyping()
         focus.requestFocus()
+    }
+
+    /** A key went that the keyboard didn't type: what it typed is the pane's now, not its to change. */
+    fun forget() {
+        node?.restart()
+    }
+}
+
+/**
+ * What a change of the keyboard's text comes to in a pane, which only
+ * takes keys at its cursor (the text's end): [deletes] ⌫ back to where old
+ * and new part, a character (code point) at a time, then the rest [typed].
+ */
+internal data class KeyboardEdit(val deletes: Int, val typed: String) {
+    companion object {
+        fun of(old: String, new: String): KeyboardEdit {
+            val o = old.codePoints().toArray()
+            val n = new.codePoints().toArray()
+            var same = 0
+            while (same < o.size && same < n.size && o[same] == n[same]) same++
+            return KeyboardEdit(o.size - same, String(n, same, n.size - same))
+        }
     }
 }
 
@@ -149,6 +174,12 @@ internal class TypingNode(var typing: Typing, var onTyped: (Typed) -> Unit) :
         v.imm.showSoftInput(v, 0)
     }
 
+    /** The keyboard starts afresh, with nothing it typed: a new connection, empty. */
+    fun restart() {
+        val v = view ?: return
+        v.post { if (view === v) v.imm.restartInput(v) }
+    }
+
     /** Lets go of the keyboard: Compose puts it away, unless something else takes it up. */
     private fun end() {
         session?.cancel()
@@ -156,8 +187,13 @@ internal class TypingNode(var typing: Typing, var onTyped: (Typed) -> Unit) :
         view = null
     }
 
-    override fun onKeyEvent(event: ComposeKeyEvent): Boolean =
-        event.type == KeyEventType.KeyDown && press(event.nativeKeyEvent, onScreen = false)
+    override fun onKeyEvent(event: ComposeKeyEvent): Boolean {
+        if (event.type != KeyEventType.KeyDown) return false
+        val e = event.nativeKeyEvent
+        if (!press(e, onScreen = false)) return false
+        if (e.keyCode != KeyEvent.KEYCODE_DEL && (e.keyCode in NAMES || e.isCtrlPressed || e.isAltPressed)) restart() // an arrow, ctrl with a key
+        return true
+    }
 
     override fun onPreKeyEvent(event: ComposeKeyEvent) = false
 
@@ -174,55 +210,101 @@ internal class TypingNode(var typing: Typing, var onTyped: (Typed) -> Unit) :
     }
 
     /**
-     * What the keyboard is told it types into: a field that wants exact
-     * characters, as Termux asks for. Text comes as it's committed (the
-     * keyboard may hold a word back while it composes it), and the
-     * connection's own text is emptied each time, so it never has anything
-     * to delete: ⌫ and return come as keys.
+     * What the keyboard is told it types into: a line of web text, which
+     * keeps its suggestions, glide and voice typing but not autocorrect
+     * (Gboard corrects plain text whatever its flags say), and isn't learnt
+     * from (passwords go through here). Its text is what it's typed since it
+     * last started afresh; the pane has all of it ([sent]).
      */
     private inner class Request(private val host: View) : PlatformTextInputMethodRequest {
         override fun createInputConnection(outAttributes: EditorInfo): InputConnection {
-            outAttributes.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
-                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            outAttributes.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_ACTION_NONE
-            return object : BaseInputConnection(host, true) {
-                override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
-                    super.commitText(text, newCursorPosition)
-                    flush()
-                    return true
-                }
+            outAttributes.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_WEB_EDIT_TEXT
+            outAttributes.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_FLAG_NO_EXTRACT_UI or
+                EditorInfo.IME_ACTION_NONE or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+            outAttributes.initialSelStart = 0
+            outAttributes.initialSelEnd = 0
+            return Connection(host)
+        }
+    }
 
-                override fun finishComposingText(): Boolean {
-                    super.finishComposingText()
-                    flush()
-                    return true
-                }
+    private inner class Connection(private val host: View) : BaseInputConnection(host, true) {
+        private var sent = ""
+        private var batch = 0
 
-                // Some keyboards delete by asking for text before the cursor to go.
-                override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
-                    repeat(beforeLength) { onTyped(Typed.Key("BSpace")) }
-                    return super.deleteSurroundingText(beforeLength, afterLength)
-                }
+        override fun beginBatchEdit(): Boolean {
+            batch++
+            return super.beginBatchEdit()
+        }
 
-                override fun performEditorAction(editorAction: Int): Boolean {
+        override fun endBatchEdit(): Boolean {
+            batch = maxOf(batch - 1, 0)
+            val more = super.endBatchEdit()
+            sync()
+            return more
+        }
+
+        override fun commitText(text: CharSequence?, newCursorPosition: Int) = super.commitText(text, newCursorPosition).also { sync() }
+
+        override fun setComposingText(text: CharSequence?, newCursorPosition: Int) = super.setComposingText(text, newCursorPosition).also { sync() }
+
+        override fun setComposingRegion(start: Int, end: Int) = super.setComposingRegion(start, end).also { sync() }
+
+        override fun finishComposingText() = super.finishComposingText().also { sync() }
+
+        override fun commitCompletion(text: android.view.inputmethod.CompletionInfo?) = super.commitCompletion(text).also { sync() }
+
+        override fun commitCorrection(correctionInfo: android.view.inputmethod.CorrectionInfo?) = super.commitCorrection(correctionInfo).also { sync() }
+
+        // Some keyboards delete by asking for text before the cursor to go, even with none of their own: that's the pane's line.
+        override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
+            beyond(beforeLength)
+            return super.deleteSurroundingText(beforeLength, afterLength).also { sync() }
+        }
+
+        override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean {
+            val content = editable
+            val cursor = content?.let { Selection.getSelectionStart(it) } ?: 0
+            val have = if (content != null && cursor > 0) Character.codePointCount(content, 0, cursor) else 0
+            repeat(maxOf(beforeLength - have, 0)) { onTyped(Typed.Key("BSpace")) }
+            return super.deleteSurroundingTextInCodePoints(beforeLength, afterLength).also { sync() }
+        }
+
+        /** ⌫s asked for past the start of what the keyboard typed, which go to the pane's own line. */
+        private fun beyond(count: Int) {
+            val cursor = editable?.let { Selection.getSelectionStart(it) } ?: 0
+            repeat(maxOf(count - maxOf(cursor, 0), 0)) { onTyped(Typed.Key("BSpace")) }
+        }
+
+        override fun performEditorAction(editorAction: Int): Boolean {
+            onTyped(Typed.Return)
+            restart()
+            return true
+        }
+
+        override fun sendKeyEvent(event: KeyEvent): Boolean {
+            if (event.action != KeyEvent.ACTION_DOWN) return true
+            if (press(event, onScreen = true) && event.keyCode != KeyEvent.KEYCODE_DEL) restart()
+            return true
+        }
+
+        /** The keyboard's text as it is now, gone to the pane as keys. */
+        private fun sync() {
+            if (batch > 0) return
+            val content = editable ?: return
+            val now = content.toString()
+            if (now == sent) return
+            val e = KeyboardEdit.of(sent, now)
+            sent = now
+            repeat(e.deletes) { onTyped(Typed.Key("BSpace")) }
+            when {
+                e.typed.isEmpty() -> {}
+                e.typed == "\n" -> {
                     onTyped(Typed.Return)
-                    return true
+                    restart()
                 }
-
-                override fun sendKeyEvent(event: KeyEvent): Boolean {
-                    if (event.action == KeyEvent.ACTION_DOWN) press(event, onScreen = true)
-                    return true
-                }
-
-                private fun flush() {
-                    val content = editable ?: return
-                    when {
-                        content.toString() == "\n" -> onTyped(Typed.Return)
-                        content.isNotEmpty() -> onTyped(Typed.Text(content.toString()))
-                    }
-                    content.clear()
-                }
+                else -> onTyped(Typed.Text(e.typed))
             }
+            host.imm.updateSelection(host, Selection.getSelectionStart(content), Selection.getSelectionEnd(content), getComposingSpanStart(content), getComposingSpanEnd(content))
         }
     }
 }
