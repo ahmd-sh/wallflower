@@ -14,14 +14,16 @@ import WallflowerDesign
  * its scrollback and never sends anything; over a full-screen app it's a
  * wheel notch per row ([onAppScroll]). A sideways drag is for moving between
  * panes ([onSwipe], [onSwipeEnd]). While [typing], a tap brings up the
- * phone's keyboard, which types straight into the pane ([onTyped]).
+ * phone's keyboard, which types straight into the pane ([onTyped]): as a
+ * text field to the keyboard (TerminalTyping.swift), so swiped words,
+ * dictation and a held ⌫ work as they do in one.
  *
  * Held, it selects the word there, and the drag that follows takes in
  * more; the selection's ends then have handles to drag. The terminal keeps
  * it on its cells as they scroll. The edit menu copies it, pastes, or
  * selects all that's in view.
  */
-final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
+final class TerminalView: UIView, UIGestureRecognizerDelegate {
     /** What it shows; while it's in a window, its output brings a frame. */
     var terminal: Terminal? {
         didSet {
@@ -622,6 +624,7 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
     /** What's on the clipboard, typed into the pane: pasted whole, so its lines don't run one by one. */
     override func paste(_ sender: Any?) {
         guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+        forgetTyped() // the line's no longer what the keyboard typed
         onTyped?(.text(text))
     }
 
@@ -729,27 +732,52 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
-        if ok { onTypingChanged?(true) }
+        if ok {
+            forgetTyped()
+            onTypingChanged?(true)
+        }
         return ok
     }
 
     override func resignFirstResponder() -> Bool {
         let ok = super.resignFirstResponder()
-        if ok { onTypingChanged?(false) }
+        if ok {
+            forgetTyped()
+            onTypingChanged?(false)
+        }
         return ok
     }
 
-    var hasText: Bool { true }
+    /** What the keyboard's typed since it last started afresh; the pane has it all. */
+    var keyboardText = KeyboardText()
+    weak var inputDelegate: (any UITextInputDelegate)?
+    lazy var tokenizer: any UITextInputTokenizer = UITextInputStringTokenizer(textInput: self)
+    /** Inside one of the keyboard's own edits, when telling it its text changed would muddle it. */
+    var inKeyboardEdit = false
 
-    func insertText(_ text: String) {
-        if text == "\n" {
-            onTyped?(.return)
-        } else {
-            onTyped?(.text(text))
+    /**
+     * The keyboard starts afresh: what it typed is the pane's now, and
+     * isn't its to change (a key went that it didn't type, the line was sent).
+     */
+    func forgetTyped() {
+        guard keyboardText != KeyboardText() else { return }
+        if inKeyboardEdit {
+            DispatchQueue.main.async { [weak self] in self?.forgetTyped() }
+            return
         }
+        inputDelegate?.selectionWillChange(self)
+        inputDelegate?.textWillChange(self)
+        keyboardText = KeyboardText()
+        inputDelegate?.textDidChange(self)
+        inputDelegate?.selectionDidChange(self)
     }
 
-    func deleteBackward() { onTyped?(.key("BSpace")) }
+    /** Where the keyboard's caret is: the pane's cursor, run on past what's predicted. */
+    func caretFrame() -> CGRect {
+        let (cx, cy) = predictions.cursorAfter(cols: cols) ?? (cursorX, cursorY)
+        let s = fitScale()
+        return CGRect(x: CGFloat(cx) * metrics.cellWidth * s, y: CGFloat(cy) * metrics.cellHeight * s - shift(), width: 2, height: metrics.cellHeight * s)
+    }
 
     var autocorrectionType: UITextAutocorrectionType = .no
     var autocapitalizationType: UITextAutocapitalizationType = .none
@@ -757,7 +785,7 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
     var smartQuotesType: UITextSmartQuotesType = .no
     var smartDashesType: UITextSmartDashesType = .no
     var smartInsertDeleteType: UITextSmartInsertDeleteType = .no
-    var keyboardType: UIKeyboardType = .asciiCapable
+    var keyboardType: UIKeyboardType = .default
     var keyboardAppearance: UIKeyboardAppearance = .dark
     var returnKeyType: UIReturnKeyType = .default
     var inlinePredictionType: UITextInlinePredictionType = .no
@@ -767,6 +795,7 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         var handled = false
         for p in presses {
             guard let key = p.key, let t = Typed.from(key) else { continue }
+            forgetTyped() // an arrow, ctrl with a key: the line isn't what the keyboard typed any more
             onTyped?(t)
             handled = true
         }

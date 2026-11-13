@@ -88,3 +88,26 @@ class StickyTypingTest {
         val RETURN = listOf("C-j")
     }
 }
+
+class KeyboardEditTest {
+    @Test
+    fun typingOnTheEndTypesJustThat() {
+        assertEquals(KeyboardEdit(0, " "), KeyboardEdit.of("ls", "ls "))
+        assertEquals(KeyboardEdit(0, "hello"), KeyboardEdit.of("", "hello"))
+        assertEquals(KeyboardEdit(0, ""), KeyboardEdit.of("same", "same"))
+    }
+
+    @Test
+    fun aWordPutRightDeletesBackToWhereItParts() {
+        // A suggestion picked, a glided word's other pick, voice typing hearing it better.
+        assertEquals(KeyboardEdit(5, "ommit"), KeyboardEdit.of("git cmomit", "git commit"))
+        assertEquals(KeyboardEdit(1, "ld"), KeyboardEdit.of("hello word", "hello world"))
+        assertEquals(KeyboardEdit(3, ""), KeyboardEdit.of("abc", ""))
+    }
+
+    @Test
+    fun deletesCountCharactersAsALineEditorDoes() {
+        assertEquals(KeyboardEdit(2, ""), KeyboardEdit.of("hi 🇨🇦", "hi ")) // a flag is two code points
+        assertEquals(KeyboardEdit(1, "é"), KeyboardEdit.of("cafe", "café"))
+    }
+}

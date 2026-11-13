@@ -17,6 +17,8 @@ final class TerminalHandle {
     func scrollToBottom() { view?.scrollToBottom() }
     func type() { _ = view?.becomeFirstResponder() }
     func hideKeyboard() { _ = view?.resignFirstResponder() }
+    /** A key went that the keyboard didn't type: what it typed isn't its to change any more. */
+    func forgetTyped() { view?.forgetTyped() }
 }
 
 /** A terminal view in SwiftUI. */

@@ -152,6 +152,11 @@ internal fun Composer(
         typed = key.keys.lastOrNull() != "Enter"
         onKey(key)
     }
+    // A key from the bar or the pad, which the keyboard didn't type: what it typed isn't its to change any more.
+    val press: (BarKey) -> Unit = { key ->
+        typing?.forget()
+        sticky.press(key)
+    }
     val paths = remember(attachments.dir) { attachments.dir?.let(::uploadPaths) }
     val slash = commands.isNotEmpty()
     val colors = Palette
@@ -219,7 +224,7 @@ internal fun Composer(
     }
     val clustered = keys.any { it.cluster }
     LaunchedEffect(clustered) { if (!clustered && pad.at == null) pad.close() }
-    ArrowPadUp(pad, sticky::press)
+    ArrowPadUp(pad, press)
     val whole = remember(paths) { paths?.let(::WholeUploads) }
     val empty by remember(state) { derivedStateOf { state.text.isEmpty() } } // not every keystroke
     // From a pane written for to one typed into, or back, the keyboard stays up for the next.
@@ -247,6 +252,7 @@ internal fun Composer(
                     Modifier
                 } else {
                     Modifier.typing(typing) {
+                        if (sticky.armed != null) typing.forget() // what it takes goes with the key, not as typed
                         sticky.type(it, returnKeys) { text ->
                             typed = true
                             onType(text)
@@ -318,9 +324,10 @@ internal fun Composer(
                 sticky.armed,
                 shortcuts,
                 pad,
-                onKey = sticky::press,
+                onKey = press,
                 onShortcut = { key ->
                     sticky.drop()
+                    typing?.forget()
                     val text = (KeyBar.steps(key.keys).singleOrNull() as? Step.Text)?.takeIf { !it.enter && typing == null }
                     if (text != null) {
                         start(text.text)
@@ -354,10 +361,12 @@ internal fun Composer(
                 },
                 onEnter = {
                     typed = false
+                    typing?.forget()
                     onEnter()
                 },
                 onStop = {
                     typed = false
+                    typing?.forget()
                     onStop()
                 },
             )
