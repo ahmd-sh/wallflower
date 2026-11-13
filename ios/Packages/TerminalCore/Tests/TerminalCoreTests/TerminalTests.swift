@@ -39,4 +39,64 @@ final class TerminalTests: XCTestCase {
         t.write(Data("\u{1b}[?1049h".utf8))
         XCTAssertEqual(t.wheel(up: true, col: 0, row: 0), .arrows)
     }
+
+    func testSelectsTheWordUnderACell() {
+        let t = Terminal(cols: 40, rows: 4)
+        t.write(Data("see src/main.go:12 now\r\n(https://x.dev/a?b=1)".utf8))
+        XCTAssertTrue(t.selectWord(col: 6, row: 0))
+        XCTAssertEqual(t.selectionText(), "src/main.go:12", "a path keeps its slashes and colons")
+        XCTAssertEqual(t.selection(), Terminal.Selection(startCol: 4, startRow: 0, endCol: 17, endRow: 0))
+        XCTAssertTrue(t.selectWord(col: 10, row: 1))
+        XCTAssertEqual(t.selectionText(), "https://x.dev/a?b=1", "brackets end it")
+        XCTAssertFalse(t.selectWord(col: 30, row: 0), "nothing to select in blank cells")
+    }
+
+    func testDragExtendsFromTheWord() {
+        let t = Terminal(cols: 40, rows: 4)
+        t.write(Data("one two three\r\nfour five".utf8))
+        XCTAssertTrue(t.selectWord(col: 5, row: 0)) // two
+        t.selectExtend(col: 6, row: 1) // into five
+        XCTAssertEqual(t.selectionText(), "two three\nfour fi")
+        t.selectExtend(col: 1, row: 0) // back before it: the word stays in
+        XCTAssertEqual(t.selectionText(), "ne two")
+        t.selectExtend(col: 5, row: 0)
+        XCTAssertEqual(t.selectionText(), "two")
+    }
+
+    func testHandlesMoveOneEnd() {
+        let t = Terminal(cols: 40, rows: 4)
+        t.write(Data("alpha beta gamma".utf8))
+        XCTAssertTrue(t.selectWord(col: 7, row: 0)) // beta
+        t.selectHold(last: true)
+        t.selectTo(col: 15, row: 0)
+        XCTAssertEqual(t.selectionText(), "beta gamma")
+        t.selectHold(last: false)
+        t.selectTo(col: 0, row: 0)
+        XCTAssertEqual(t.selectionText(), "alpha beta gamma")
+        t.selectTo(col: 15, row: 0) // past the other end: it turns around
+        XCTAssertEqual(t.selectionText(), "a")
+        t.unselect()
+        XCTAssertNil(t.selection())
+        XCTAssertNil(t.selectionText())
+    }
+
+    func testCopyJoinsWrappedRowsAndTrims() {
+        let t = Terminal(cols: 10, rows: 4)
+        t.write(Data("abcdefghijklmn   \r\nxy   ".utf8))
+        t.selectView()
+        XCTAssertEqual(t.selectionText()?.trimmingCharacters(in: .newlines), "abcdefghijklmn\nxy")
+    }
+
+    func testSelectionStaysOnItsTextAsItScrolls() {
+        let t = Terminal(cols: 20, rows: 3)
+        t.write(Data("first\r\nsecond".utf8))
+        XCTAssertTrue(t.selectWord(col: 1, row: 1))
+        t.write(Data("\r\nthird\r\nfourth".utf8)) // second scrolls up a row
+        XCTAssertEqual(t.selection(), Terminal.Selection(startCol: 0, startRow: 0, endCol: 5, endRow: 0))
+        t.write(Data("\r\nfifth".utf8))
+        XCTAssertEqual(t.selection()?.startRow, -1, "above the view, still kept")
+        XCTAssertEqual(t.selectionText(), "second")
+        t.scrollBy(-1)
+        XCTAssertEqual(t.selection()?.startRow, 0)
+    }
 }

@@ -22,6 +22,7 @@ final class TerminalHandle {
 /** A terminal view in SwiftUI. */
 struct TerminalHost: UIViewRepresentable {
     @Environment(\.haptics) private var haptics
+    @Environment(\.palette) private var palette
     let terminal: Terminal?
     let theme: Theme
     let paused: Bool
@@ -49,9 +50,15 @@ struct TerminalHost: UIViewRepresentable {
         v.onGridSize = current ? onGridSize : nil
         v.onAppScroll = onAppScroll
         v.isUserInteractionEnabled = touchable
-        v.onTyped = onTyped
+        // What's typed goes where the selection was: it's let go.
+        v.onTyped = { [weak v] t in
+            v?.clearSelection()
+            onTyped(t)
+        }
         v.onTypingChanged = onTypingChanged
         v.onHeld = { [haptics] in haptics.hold() }
+        v.onSelectionMoved = { [haptics] in haptics.tick() }
+        v.selectionColor = UIColor(palette.orange)
         if v.isFirstResponder && !(typing && current) { handle.handoff = true }
         v.typingEnabled = typing && current
         if let swipe {

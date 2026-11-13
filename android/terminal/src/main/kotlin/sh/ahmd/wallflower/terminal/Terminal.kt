@@ -97,6 +97,43 @@ class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
 
     @Volatile private var lastReader: Any? = null
 
+    /** A selection's first and last cells in reading order, in the viewport; rows scrolled out of view are outside it. */
+    data class Selection(val startCol: Int, val startRow: Int, val endCol: Int, val endRow: Int) {
+        /** Whether a viewport cell is in it. */
+        fun contains(col: Int, row: Int): Boolean =
+            row in startRow..endRow && !(row == startRow && col < startCol) && !(row == endRow && col > endCol)
+    }
+
+    /**
+     * Selects the word at a viewport cell, the terminal keeping it on its
+     * cells as they scroll; false if there's no word there. A drag from it
+     * then extends it ([selectExtend]).
+     */
+    fun selectWord(col: Int, row: Int): Boolean = lock.read { handle != 0L && nativeSelectWord(handle, col, row) }
+
+    /** The selection from the word [selectWord] picked to a cell, the word kept in it. */
+    fun selectExtend(col: Int, row: Int) = lock.read { if (handle != 0L) nativeSelectExtend(handle, col, row) }
+
+    /** Frees one end of the selection, its first in reading order or its [last], for [selectTo] to move; the other stays put. */
+    fun selectHold(last: Boolean) = lock.read { if (handle != 0L) nativeSelectHold(handle, last) }
+
+    fun selectTo(col: Int, row: Int) = lock.read { if (handle != 0L) nativeSelectTo(handle, col, row) }
+
+    /** Selects what's in view. */
+    fun selectView() = lock.read { if (handle != 0L) nativeSelectView(handle) }
+
+    fun unselect() = lock.read { if (handle != 0L) nativeUnselect(handle) }
+
+    fun selection(): Selection? = lock.read {
+        val out = IntArray(4)
+        if (handle != 0L && nativeSelection(handle, out)) Selection(out[0], out[1], out[2], out[3]) else null
+    }
+
+    /** The selected text as a copy has it: rows the program wrapped joined, trailing blanks gone. */
+    fun selectionText(): String? = lock.read {
+        if (handle == 0L) null else nativeSelectionText(handle)?.decodeToString()
+    }
+
     override fun close() = lock.write {
         if (handle != 0L) nativeFree(handle)
         handle = 0L
@@ -116,5 +153,13 @@ class Terminal(cols: Int, rows: Int, scrollback: Int = 10_000) : AutoCloseable {
         @JvmStatic external fun nativeWheel(handle: Long, up: Boolean, col: Int, row: Int, out: ByteArray): Int
         @JvmStatic external fun nativeScreen(handle: Long): ByteArray?
         @JvmStatic external fun nativeFrame(handle: Long, buffer: ByteBuffer, force: Boolean): Int
+        @JvmStatic external fun nativeSelectWord(handle: Long, col: Int, row: Int): Boolean
+        @JvmStatic external fun nativeSelectExtend(handle: Long, col: Int, row: Int)
+        @JvmStatic external fun nativeSelectHold(handle: Long, last: Boolean)
+        @JvmStatic external fun nativeSelectTo(handle: Long, col: Int, row: Int)
+        @JvmStatic external fun nativeSelectView(handle: Long)
+        @JvmStatic external fun nativeUnselect(handle: Long)
+        @JvmStatic external fun nativeSelection(handle: Long, out: IntArray): Boolean
+        @JvmStatic external fun nativeSelectionText(handle: Long): ByteArray?
     }
 }

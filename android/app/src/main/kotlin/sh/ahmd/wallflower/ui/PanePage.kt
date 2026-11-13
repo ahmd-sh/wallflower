@@ -6,10 +6,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.CompositionLocalProvider
@@ -38,7 +40,7 @@ import sh.ahmd.wallflower.terminal.TerminalView
  * what it shows [aside] of its line (with what's been read of an
  * [answer]), and its [mode] (with those it goes round), which picked goes to
  * [onMode]; it can compact (with its [line]), and animates; its terminal view goes to [onView]. A tap on the terminal
- * goes to [onTap]. While a message asked back is looked for ([seeking]), what it's looked for in isn't asked. A message asked back to edit goes to
+ * goes to [onTap], and text pasted on it to [onPaste] (null: no paste). While a message asked back is looked for ([seeking]), what it's looked for in isn't asked. A message asked back to edit goes to
  * [onEdit], with the reading it's from. Keys from the prompt's card go to
  * [onPrompt] too. The conversation's title shows unless
  * the [tab] says it already.
@@ -65,12 +67,15 @@ internal fun PanePage(
     onGridSize: (cols: Int, rows: Int, ahead: Boolean) -> Unit,
     onView: (TerminalView) -> Unit,
     onTap: (() -> Unit)?,
+    onPaste: ((String) -> Unit)? = null,
     onEdit: (Entry.Said, Reading) -> Unit = { _, _ -> },
     onPrompt: () -> Unit = {},
     held: String? = null,
     tab: String? = null,
 ) = Box(Modifier.fillMaxSize()) {
     val theme = Palette.terminal
+    val haptics = haptics()
+    val selection = MaterialTheme.colorScheme.primary.toArgb() // as text selects
     AndroidView(
         modifier = Modifier.fillMaxSize().padding(horizontal = PAGE_PADDING).clipToBounds(),
         factory = { ctx -> TerminalView(ctx).apply { this.onGridSize = onGridSize } },
@@ -83,6 +88,10 @@ internal fun PanePage(
             it.onSwipeEnd = swipe?.let { s -> s::end }
             it.onAppScroll = { up, wheel -> actions?.wheel(up, wheel) }
             it.onTap = onTap
+            it.onPaste = onPaste
+            it.onHeld = haptics::hold
+            it.onSelectionMoved = haptics::tick
+            it.selectionColor = selection
             if (current) onView(it)
         },
     )

@@ -37,4 +37,23 @@ void wf_term_set_colors(WFTerm *t, int32_t fg, int32_t bg, int32_t cursor, const
 // synchronized update is in progress, or -needed if buf is too small.
 int wf_term_frame(WFTerm *t, int32_t *buf, size_t cap, bool force);
 
+// Selection, in viewport cells. select_word picks the word at a cell (0 if
+// there's none there), which select_extend then extends from to a cell, the
+// word kept in it. select_hold frees one end (0: the first in reading order,
+// 1: the last) for select_to to move. select_view selects what's in view.
+int wf_term_select_word(WFTerm *t, int col, int row);
+void wf_term_select_extend(WFTerm *t, int col, int row);
+void wf_term_select_hold(WFTerm *t, int end);
+void wf_term_select_to(WFTerm *t, int col, int row);
+void wf_term_select_view(WFTerm *t);
+void wf_term_unselect(WFTerm *t);
+
+// The selection's first and last cells in reading order, into out as col,
+// row, col, row; rows scrolled out of view are outside 0..rows-1. 0 with none.
+int wf_term_selection(WFTerm *t, int32_t *out);
+
+// The selected text as a copy has it (wrapped rows joined, trailing blanks
+// gone), malloc'd and NUL-terminated; the caller frees it. NULL with none.
+uint8_t *wf_term_selection_text(WFTerm *t, size_t *len);
+
 #endif

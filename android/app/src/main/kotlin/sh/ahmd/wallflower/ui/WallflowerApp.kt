@@ -439,6 +439,7 @@ private fun TerminalScreen(
                 onGridSize = { cols, rows, ahead -> session.start(cols, rows); session.resize(cols, rows, ahead) },
                 onView = { view = it },
                 onTap = if (current && p != null && p.id !in mobileViews) typing::start else null,
+                onPaste = if (current && here != null && p != null && p.id !in mobileViews) { text -> view?.scrollToBottom(); here.type(text) } else null,
                 onPrompt = seeker::handled, // the user's own hand on it
                 held = seeker.editing,
                 onEdit = { e, reading -> here?.let { seeker.edit(e, it, reading, screen.line) } },
@@ -566,6 +567,7 @@ private fun TerminalScreen(
                             queues = activity == Activity.Working && actions.program.queues,
                             holds = holding,
                             onType = { text ->
+                                view?.clearSelection() // what's typed goes where the selection was: it's let go
                                 view?.scrollToBottom()
                                 if (screen.line != null) view?.predict(text) // at a prompt, which echoes
                                 actions.type(text)
