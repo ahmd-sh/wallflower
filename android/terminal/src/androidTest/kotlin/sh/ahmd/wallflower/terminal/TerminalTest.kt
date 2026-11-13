@@ -137,4 +137,57 @@ class TerminalTest {
             big.close()
         }
     }
+
+    @Test
+    fun selectsTheWordUnderACell() = Terminal(40, 4).use { t ->
+        t.write("see src/main.go:12 now\r\n(https://x.dev/a?b=1)".encodeToByteArray())
+        assertTrue(t.selectWord(6, 0))
+        assertEquals("a path keeps its slashes and colons", "src/main.go:12", t.selectionText())
+        assertEquals(Terminal.Selection(4, 0, 17, 0), t.selection())
+        assertTrue(t.selectWord(10, 1))
+        assertEquals("brackets end it", "https://x.dev/a?b=1", t.selectionText())
+        assertFalse("nothing to select in blank cells", t.selectWord(30, 0))
+    }
+
+    @Test
+    fun dragExtendsFromTheWord() = Terminal(40, 4).use { t ->
+        t.write("one two three\r\nfour five".encodeToByteArray())
+        assertTrue(t.selectWord(5, 0)) // two
+        t.selectExtend(6, 1) // into five
+        assertEquals("two three\nfour fi", t.selectionText())
+        t.selectExtend(1, 0) // back before it: the word stays in
+        assertEquals("ne two", t.selectionText())
+    }
+
+    @Test
+    fun handlesMoveOneEnd() = Terminal(40, 4).use { t ->
+        t.write("alpha beta gamma".encodeToByteArray())
+        assertTrue(t.selectWord(7, 0)) // beta
+        t.selectHold(last = true)
+        t.selectTo(15, 0)
+        assertEquals("beta gamma", t.selectionText())
+        t.selectHold(last = false)
+        t.selectTo(0, 0)
+        assertEquals("alpha beta gamma", t.selectionText())
+        t.unselect()
+        assertEquals(null, t.selection())
+    }
+
+    @Test
+    fun selectionStaysOnItsTextAsItScrolls() = Terminal(20, 3).use { t ->
+        t.write("first\r\nsecond".encodeToByteArray())
+        assertTrue(t.selectWord(1, 1))
+        t.write("\r\nthird\r\nfourth".encodeToByteArray())
+        assertEquals(Terminal.Selection(0, 0, 5, 0), t.selection())
+        t.write("\r\nfifth".encodeToByteArray())
+        assertEquals("above the view, still kept", -1, t.selection()?.startRow)
+        assertEquals("second", t.selectionText())
+    }
+
+    @Test
+    fun copyJoinsWrappedRowsAndTrims() = Terminal(10, 4).use { t ->
+        t.write("abcdefghijklmn   \r\nxy   ".encodeToByteArray())
+        t.selectView()
+        assertEquals("abcdefghijklmn\nxy", t.selectionText()?.trim('\n'))
+    }
 }

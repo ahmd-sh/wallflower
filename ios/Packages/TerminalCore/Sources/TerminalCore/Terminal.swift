@@ -122,6 +122,74 @@ public final class Terminal: @unchecked Sendable {
         return n > 0
     }
 
+    /** A selection's first and last cells in reading order, in the viewport; rows scrolled out of view are outside it. */
+    public struct Selection: Equatable, Sendable {
+        public var startCol: Int
+        public var startRow: Int
+        public var endCol: Int
+        public var endRow: Int
+
+        public init(startCol: Int, startRow: Int, endCol: Int, endRow: Int) {
+            self.startCol = startCol
+            self.startRow = startRow
+            self.endCol = endCol
+            self.endRow = endRow
+        }
+
+        /** Whether a viewport cell is in it. */
+        public func contains(col: Int, row: Int) -> Bool {
+            if row < startRow || row > endRow { return false }
+            if row == startRow && col < startCol { return false }
+            if row == endRow && col > endCol { return false }
+            return true
+        }
+    }
+
+    /**
+     * Selects the word at a viewport cell, the terminal keeping it on its
+     * cells as they scroll; false if there's no word there. A drag from it
+     * then extends it ([selectExtend]).
+     */
+    public func selectWord(col: Int, row: Int) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let h = handle else { return false }
+        return wf_term_select_word(h, Int32(col), Int32(row)) != 0
+    }
+
+    /** The selection from the word [selectWord] picked to a cell, the word kept in it. */
+    public func selectExtend(col: Int, row: Int) { locked { wf_term_select_extend($0, Int32(col), Int32(row)) } }
+
+    /** Frees one end of the selection, its first in reading order or its [last], for [selectTo] to move; the other stays put. */
+    public func selectHold(last: Bool) { locked { wf_term_select_hold($0, last ? 1 : 0) } }
+
+    public func selectTo(col: Int, row: Int) { locked { wf_term_select_to($0, Int32(col), Int32(row)) } }
+
+    /** Selects what's in view. */
+    public func selectView() { locked { wf_term_select_view($0) } }
+
+    public func unselect() { locked { wf_term_unselect($0) } }
+
+    public func selection() -> Selection? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let h = handle else { return nil }
+        var out = [Int32](repeating: 0, count: 4)
+        guard wf_term_selection(h, &out) != 0 else { return nil }
+        return Selection(startCol: Int(out[0]), startRow: Int(out[1]), endCol: Int(out[2]), endRow: Int(out[3]))
+    }
+
+    /** The selected text as a copy has it: rows the program wrapped joined, trailing blanks gone. */
+    public func selectionText() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let h = handle else { return nil }
+        var len = 0
+        guard let p = wf_term_selection_text(h, &len) else { return nil }
+        defer { free(p) }
+        return String(decoding: UnsafeBufferPointer(start: p, count: len), as: UTF8.self)
+    }
+
     public func close() {
         lock.lock()
         if let h = handle { wf_term_free(h) }

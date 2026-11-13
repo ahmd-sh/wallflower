@@ -43,6 +43,7 @@ struct WFTerm {
   int64_t held_since;
   GhosttyMouseEncoder mouse; // created on first wheel event
   int32_t cursor_was[4];      // flags, x, y, style, as the last frame had it
+  GhosttyTrackedGridRef anchor[2]; // the word a press selected, a drag extends from
 };
 typedef struct WFTerm Term;
 
@@ -120,6 +121,7 @@ void wf_term_free(WFTerm *t) {
   ghostty_render_state_row_iterator_free(t->rows);
   ghostty_render_state_free(t->state);
   if (t->mouse) ghostty_mouse_encoder_free(t->mouse);
+  for (int i = 0; i < 2; i++) ghostty_tracked_grid_ref_free(t->anchor[i]);
   ghostty_terminal_free(t->term);
   pthread_mutex_destroy(&t->lock);
   free(t);
@@ -284,6 +286,163 @@ void wf_term_set_colors(WFTerm *t, int32_t fg, int32_t bg, int32_t cursor, const
   pthread_mutex_unlock(&t->lock);
 }
 
+// Selection: what's chosen to copy, kept by the terminal on the cells it
+// covers however they scroll. Cells are the viewport's; a selection's rows
+// scrolled out of view come back outside 0..rows-1.
+
+// What ends a word: blanks, quotes, brackets and rules, but not the colons
+// and slashes of paths and URLs, which select whole.
+static const uint32_t WORD_BOUNDARY[] = {
+  ' ', '\t', 0xA0, '"', '\'', '`', '|', 0x2502, ';', ',', '(', ')', '[', ']', '{', '}', '<', '>',
+};
+
+// The cell at a viewport point, kept within the viewport.
+static bool cell_ref(Term* t, int col, int row, GhosttyGridRef* out) {
+  uint16_t cols = 0, rows = 0;
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_COLS, &cols);
+  ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_ROWS, &rows);
+  if (cols == 0 || rows == 0) return false;
+  col = col < 0 ? 0 : col >= cols ? cols - 1 : col;
+  row = row < 0 ? 0 : row >= rows ? rows - 1 : row;
+  GhosttyPoint pt = {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = {.x = (uint16_t)col, .y = (uint32_t)row}}};
+  *out = GHOSTTY_INIT_SIZED(GhosttyGridRef);
+  return ghostty_terminal_grid_ref(t->term, pt, out) == GHOSTTY_SUCCESS;
+}
+
+static bool on_screen(Term* t, const GhosttyGridRef* ref, GhosttyPointCoordinate* out) {
+  return ghostty_terminal_point_from_grid_ref(t->term, ref, GHOSTTY_POINT_TAG_SCREEN, out) == GHOSTTY_SUCCESS;
+}
+
+// Reading order: negative if a comes before b.
+static int compare(Term* t, const GhosttyGridRef* a, const GhosttyGridRef* b) {
+  GhosttyPointCoordinate pa = {0}, pb = {0};
+  if (!on_screen(t, a, &pa) || !on_screen(t, b, &pb)) return 0;
+  if (pa.y != pb.y) return pa.y < pb.y ? -1 : 1;
+  return (int)pa.x - (int)pb.x;
+}
+
+static void install(Term* t, const GhosttyGridRef* start, const GhosttyGridRef* end) {
+  GhosttySelection s = GHOSTTY_INIT_SIZED(GhosttySelection);
+  s.start = *start;
+  s.end = *end;
+  ghostty_terminal_set(t->term, GHOSTTY_TERMINAL_OPT_SELECTION, &s);
+}
+
+static void drop_anchor(Term* t) {
+  for (int i = 0; i < 2; i++) {
+    ghostty_tracked_grid_ref_free(t->anchor[i]);
+    t->anchor[i] = NULL;
+  }
+}
+
+// Selects the word at a cell, remembered as where a drag extends from.
+// Returns 0 if there's no word there.
+static int select_word(Term* t, int col, int row) {
+  drop_anchor(t);
+  GhosttyGridRef ref;
+  if (!cell_ref(t, col, row, &ref)) return 0;
+  GhosttyTerminalSelectWordOptions o = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectWordOptions);
+  o.ref = ref;
+  o.boundary_codepoints = WORD_BOUNDARY;
+  o.boundary_codepoints_len = sizeof WORD_BOUNDARY / sizeof WORD_BOUNDARY[0];
+  GhosttySelection word = GHOSTTY_INIT_SIZED(GhosttySelection), f = GHOSTTY_INIT_SIZED(GhosttySelection);
+  if (ghostty_terminal_select_word(t->term, &o, &word) != GHOSTTY_SUCCESS ||
+      ghostty_terminal_selection_ordered(t->term, &word, GHOSTTY_SELECTION_ORDER_FORWARD, &f) != GHOSTTY_SUCCESS) {
+    return 0;
+  }
+  GhosttyPointCoordinate ends[2] = {{0}, {0}};
+  bool tracked = on_screen(t, &f.start, &ends[0]) && on_screen(t, &f.end, &ends[1]);
+  ghostty_terminal_set(t->term, GHOSTTY_TERMINAL_OPT_SELECTION, &f);
+  // Tracked from points, not the refs: setting the selection outdated those.
+  for (int i = 0; tracked && i < 2; i++) {
+    GhosttyPoint pt = {.tag = GHOSTTY_POINT_TAG_SCREEN, .value = {.coordinate = ends[i]}};
+    if (ghostty_terminal_grid_ref_track(t->term, pt, &t->anchor[i]) != GHOSTTY_SUCCESS) t->anchor[i] = NULL;
+  }
+  return 1;
+}
+
+// The selection from the word a press chose to a cell, the word always in it.
+static void select_extend(Term* t, int col, int row) {
+  GhosttyGridRef a = GHOSTTY_INIT_SIZED(GhosttyGridRef), b = GHOSTTY_INIT_SIZED(GhosttyGridRef), p;
+  if (!t->anchor[0] || !t->anchor[1] ||
+      ghostty_tracked_grid_ref_snapshot(t->anchor[0], &a) != GHOSTTY_SUCCESS ||
+      ghostty_tracked_grid_ref_snapshot(t->anchor[1], &b) != GHOSTTY_SUCCESS || !cell_ref(t, col, row, &p)) {
+    return;
+  }
+  if (compare(t, &p, &a) < 0) install(t, &b, &p);
+  else if (compare(t, &p, &b) > 0) install(t, &a, &p);
+  else install(t, &a, &b);
+}
+
+// Keeps one end (0: the first in reading order, 1: the last) free for
+// select_to to move, the other held where it is.
+static void select_hold(Term* t, int end) {
+  drop_anchor(t);
+  GhosttySelection s = GHOSTTY_INIT_SIZED(GhosttySelection), f = GHOSTTY_INIT_SIZED(GhosttySelection);
+  if (ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_SELECTION, &s) != GHOSTTY_SUCCESS ||
+      ghostty_terminal_selection_ordered(t->term, &s, GHOSTTY_SELECTION_ORDER_FORWARD, &f) != GHOSTTY_SUCCESS) {
+    return;
+  }
+  if (end) install(t, &f.start, &f.end);
+  else install(t, &f.end, &f.start);
+}
+
+static void select_to(Term* t, int col, int row) {
+  GhosttySelection s = GHOSTTY_INIT_SIZED(GhosttySelection);
+  GhosttyGridRef p;
+  if (ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_SELECTION, &s) == GHOSTTY_SUCCESS && cell_ref(t, col, row, &p)) {
+    install(t, &s.start, &p);
+  }
+}
+
+static void select_view(Term* t) {
+  drop_anchor(t);
+  GhosttyGridRef a, b;
+  if (cell_ref(t, 0, 0, &a) && cell_ref(t, INT32_MAX, INT32_MAX, &b)) install(t, &a, &b);
+}
+
+static void unselect(Term* t) {
+  drop_anchor(t);
+  ghostty_terminal_set(t->term, GHOSTTY_TERMINAL_OPT_SELECTION, NULL);
+}
+
+// The selection's first and last cells in reading order (col, row, col, row).
+static int selection(Term* t, int32_t* out) {
+  GhosttySelection s = GHOSTTY_INIT_SIZED(GhosttySelection), f = GHOSTTY_INIT_SIZED(GhosttySelection);
+  GhosttyGridRef top;
+  GhosttyPointCoordinate a = {0}, b = {0}, v = {0};
+  if (ghostty_terminal_get(t->term, GHOSTTY_TERMINAL_DATA_SELECTION, &s) != GHOSTTY_SUCCESS ||
+      ghostty_terminal_selection_ordered(t->term, &s, GHOSTTY_SELECTION_ORDER_FORWARD, &f) != GHOSTTY_SUCCESS ||
+      !cell_ref(t, 0, 0, &top) || !on_screen(t, &f.start, &a) || !on_screen(t, &f.end, &b) || !on_screen(t, &top, &v)) {
+    return 0;
+  }
+  out[0] = a.x;
+  out[1] = (int32_t)a.y - (int32_t)v.y;
+  out[2] = b.x;
+  out[3] = (int32_t)b.y - (int32_t)v.y;
+  return 1;
+}
+
+// The selected text, as a copy should have it: rows the program wrapped
+// joined, trailing blanks gone. malloc'd, NUL-terminated; NULL with none.
+static uint8_t* selection_text(Term* t, size_t* len_out) {
+  GhosttyTerminalSelectionFormatOptions o = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectionFormatOptions);
+  o.emit = GHOSTTY_FORMATTER_FORMAT_PLAIN;
+  o.unwrap = true;
+  o.trim = true;
+  uint8_t* p = NULL;
+  size_t n = 0;
+  if (ghostty_terminal_selection_format_alloc(t->term, NULL, o, &p, &n) != GHOSTTY_SUCCESS) return NULL;
+  uint8_t* out = malloc(n + 1);
+  if (out) {
+    if (n) memcpy(out, p, n);
+    out[n] = 0;
+    *len_out = n;
+  }
+  ghostty_free(NULL, p, n);
+  return out;
+}
+
 typedef struct {
   int32_t* buf;
   size_t cap;  // in ints
@@ -420,4 +579,55 @@ int wf_term_frame(WFTerm *t, int32_t *buf, size_t cap, bool force) {
   o.buf[row_count_at] = row_count;
   ghostty_render_state_clean(t->state);
   return (int)(o.len * sizeof(int32_t));
+}
+
+int wf_term_select_word(WFTerm *t, int col, int row) {
+  pthread_mutex_lock(&t->lock);
+  int found = select_word(t, col, row);
+  pthread_mutex_unlock(&t->lock);
+  return found;
+}
+
+void wf_term_select_extend(WFTerm *t, int col, int row) {
+  pthread_mutex_lock(&t->lock);
+  select_extend(t, col, row);
+  pthread_mutex_unlock(&t->lock);
+}
+
+void wf_term_select_hold(WFTerm *t, int end) {
+  pthread_mutex_lock(&t->lock);
+  select_hold(t, end);
+  pthread_mutex_unlock(&t->lock);
+}
+
+void wf_term_select_to(WFTerm *t, int col, int row) {
+  pthread_mutex_lock(&t->lock);
+  select_to(t, col, row);
+  pthread_mutex_unlock(&t->lock);
+}
+
+void wf_term_select_view(WFTerm *t) {
+  pthread_mutex_lock(&t->lock);
+  select_view(t);
+  pthread_mutex_unlock(&t->lock);
+}
+
+void wf_term_unselect(WFTerm *t) {
+  pthread_mutex_lock(&t->lock);
+  unselect(t);
+  pthread_mutex_unlock(&t->lock);
+}
+
+int wf_term_selection(WFTerm *t, int32_t *out) {
+  pthread_mutex_lock(&t->lock);
+  int has = selection(t, out);
+  pthread_mutex_unlock(&t->lock);
+  return has;
+}
+
+uint8_t *wf_term_selection_text(WFTerm *t, size_t *len) {
+  pthread_mutex_lock(&t->lock);
+  uint8_t *out = selection_text(t, len);
+  pthread_mutex_unlock(&t->lock);
+  return out;
 }
