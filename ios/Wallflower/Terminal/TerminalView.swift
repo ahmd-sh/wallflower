@@ -15,6 +15,11 @@ import WallflowerDesign
  * wheel notch per row ([onAppScroll]). A sideways drag is for moving between
  * panes ([onSwipe], [onSwipeEnd]). While [typing], a tap brings up the
  * phone's keyboard, which types straight into the pane ([onTyped]).
+ *
+ * Held, it selects the word there, and the drag that follows takes in
+ * more; the selection's ends then have handles to drag. The terminal keeps
+ * it on its cells as they scroll. The edit menu copies it, pastes, or
+ * selects all that's in view.
  */
 final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
     /** What it shows; while it's in a window, its output brings a frame. */
@@ -22,6 +27,11 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         didSet {
             guard terminal !== oldValue else { return }
             oldValue?.removeListener(self)
+            if selected != nil {
+                oldValue?.unselect()
+                selected = nil
+                placeHandles()
+            }
             if window != nil { listen() }
             forceFull = true
             requestFrame()
@@ -54,8 +64,18 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
     var onSwipe: ((CGFloat) -> Void)?
     /** The sideways drag let go: how far it went, and how fast (points a second; negative is leftwards). */
     var onSwipeEnd: ((CGFloat, CGFloat) -> Void)?
-    /** Held: felt, as the paste it offers comes up. */
+    /** Held: felt, as the word there is selected, or the paste it offers comes up. */
     var onHeld: (() -> Void)?
+    /** A selection's end moved to another cell: felt. */
+    var onSelectionMoved: (() -> Void)?
+    /** What selected text is marked in, and its handles. */
+    var selectionColor = UIColor.systemOrange {
+        didSet {
+            guard selectionColor != oldValue else { return }
+            for h in handles { h.fillColor = selectionColor.cgColor }
+            if selected != nil { overlay.setNeedsDisplay() }
+        }
+    }
     /** What's typed while it has the keyboard. */
     var onTyped: ((Typed) -> Void)?
     /** It took the keyboard, or let go of it. */
@@ -71,7 +91,8 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
     }
 
     private let content = CALayer() // the rows, shifted and scaled as one
-    private let overlay = OverlayLayer() // cursor and predictions
+    private let overlay = OverlayLayer() // cursor, predictions and the selection
+    private let handles = [CAShapeLayer(), CAShapeLayer()] // the selection's start and end, in the view's own points
     private var rows: [RowLayer] = []
     private let fb = FrameBuffer()
     private var cols = 0
@@ -105,12 +126,18 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         overlay.anchorPoint = .zero
         overlay.contentsScale = UIScreen.main.scale
         overlay.view = self
+        for h in handles {
+            h.actions = ["path": NSNull(), "hidden": NSNull(), "position": NSNull(), "bounds": NSNull(), "fillColor": NSNull()]
+            h.fillColor = selectionColor.cgColor
+            h.isHidden = true
+            layer.addSublayer(h)
+        }
         clipsToBounds = true
         let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
         pan.delegate = self
         pan.maximumNumberOfTouches = 1
         addGestureRecognizer(pan)
-        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
+        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
         hold.minimumPressDuration = 0.45
         addGestureRecognizer(hold)
@@ -210,6 +237,7 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         scrollback = max(fb.scrollTotal - fb.scrollLength, 0)
         rest()
         if !predictions.isEmpty && predictions.confirm(cellAt: codepointAt, now: now()) { scheduleExpiry() }
+        if selected != nil { readSelection() }
         place()
         overlay.setNeedsDisplay()
     }
@@ -299,6 +327,7 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         overlay.position = .zero
         overlay.transform = t
         CATransaction.commit()
+        placeHandles()
     }
 
     /** Where the cursor's row ends as drawn, in points from the top. */
@@ -306,6 +335,7 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        for h in handles { h.frame = bounds }
         rest()
         reportGrid()
         place()
@@ -353,6 +383,10 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
 
     fileprivate func drawOverlay(_ ctx: CGContext) {
         let m = metrics
+        if let s = selected {
+            ctx.setFillColor(selectionColor.withAlphaComponent(0.32).cgColor)
+            ctx.fill(selectionRects(s))
+        }
         if !predictions.isEmpty {
             ctx.setFillColor(color(background).cgColor)
             for p in predictions.cells {
@@ -388,6 +422,155 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         }
     }
 
+    // MARK: Selection
+
+    /** The selection made here, its first and last cells in the viewport, while the terminal keeps one. */
+    private(set) var selected: Terminal.Selection?
+    /** A press selected a word, and its drag takes in more. */
+    private var extending = false
+    /** The handle being dragged (0 the start, 1 the end), and from how far off its cell the finger took it. */
+    private var grabbed: Int?
+    private var grabOffset: CGPoint = .zero
+
+    /** The viewport cell under a point in the view, kept within the grid. */
+    private func cell(at p: CGPoint) -> (Int, Int) {
+        let s = fitScale()
+        let col = Int(floor(p.x / (metrics.cellWidth * s)))
+        let row = Int(floor((p.y + shift()) / (metrics.cellHeight * s)))
+        return (min(max(col, 0), max(cols - 1, 0)), min(max(row, 0), max(gridRows - 1, 0)))
+    }
+
+    /** A viewport cell's frame in the view. */
+    private func cellFrame(col: Int, row: Int) -> CGRect {
+        let s = fitScale()
+        let w = metrics.cellWidth * s
+        let h = metrics.cellHeight * s
+        return CGRect(x: CGFloat(col) * w, y: CGFloat(row) * h - shift(), width: w, height: h)
+    }
+
+    /** What the terminal has selected now, which output may have moved or cleared; true if that changed. */
+    @discardableResult
+    private func readSelection() -> Bool {
+        let now = terminal?.selection()
+        guard now != selected else { return false }
+        selected = now
+        if now == nil { hideMenu() }
+        overlay.setNeedsDisplay()
+        placeHandles()
+        return true
+    }
+
+    /** Lets go of the selection: tapped away, swiped to another pane, or typed over. */
+    func clearSelection() {
+        extending = false
+        grabbed = nil
+        guard selected != nil else { return }
+        terminal?.unselect()
+        selected = nil
+        hideMenu()
+        overlay.setNeedsDisplay()
+        placeHandles()
+    }
+
+    /** The selection's rows in the grid's own points, as the overlay draws them: whole rows between its first and last. */
+    private func selectionRects(_ s: Terminal.Selection) -> [CGRect] {
+        let top = max(s.startRow, 0)
+        let bottom = min(s.endRow, gridRows - 1)
+        guard top <= bottom else { return [] }
+        let m = metrics
+        return (top...bottom).map { y in
+            let from = y == s.startRow ? s.startCol : 0
+            let to = y == s.endRow ? s.endCol + 1 : cols
+            return CGRect(x: CGFloat(from) * m.cellWidth, y: CGFloat(y) * m.cellHeight, width: CGFloat(max(to - from, 0)) * m.cellWidth, height: m.cellHeight)
+        }
+    }
+
+    /** Where the selection is in the view, as far as it's in view; nil if none of it is. */
+    private func selectionFrame() -> CGRect? {
+        guard let s = selected, let first = selectionRects(s).first else { return nil }
+        let k = fitScale()
+        let r = selectionRects(s).reduce(first) { $0.union($1) }
+        let shown = CGRect(x: r.minX * k, y: r.minY * k - shift(), width: r.width * k, height: r.height * k).intersection(bounds)
+        return shown.isNull || shown.isEmpty ? nil : shown
+    }
+
+    /** The handles, as iOS text has them: a bar down each end, the start's knob above it and the end's below. */
+    private func placeHandles() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        guard let s = selected else {
+            for h in handles { h.isHidden = true }
+            return
+        }
+        for (i, h) in handles.enumerated() {
+            let row = i == 0 ? s.startRow : s.endRow
+            guard row >= 0 && row < gridRows else {
+                h.isHidden = true
+                continue
+            }
+            let c = cellFrame(col: i == 0 ? s.startCol : s.endCol, row: row)
+            let x = i == 0 ? c.minX : c.maxX
+            let path = UIBezierPath(rect: CGRect(x: x - Self.handleBar / 2, y: c.minY, width: Self.handleBar, height: c.height))
+            let knob = CGPoint(x: x, y: i == 0 ? c.minY - Self.handleKnob : c.maxY + Self.handleKnob)
+            path.append(UIBezierPath(ovalIn: CGRect(x: knob.x - Self.handleKnob, y: knob.y - Self.handleKnob, width: Self.handleKnob * 2, height: Self.handleKnob * 2)))
+            h.path = path.cgPath
+            h.isHidden = false
+        }
+    }
+
+    /** A drag starting at [p] on a handle takes it, its other end held still; false if p isn't near one. */
+    private func grab(at p: CGPoint) -> Bool {
+        guard let s = selected, let t = terminal else { return false }
+        let ends = [(s.startCol, s.startRow), (s.endCol, s.endRow)]
+        var nearest: (Int, CGFloat)?
+        for (i, (col, row)) in ends.enumerated() where row >= 0 && row < gridRows && !handles[i].isHidden {
+            let c = cellFrame(col: col, row: row)
+            let x = i == 0 ? c.minX : c.maxX
+            let knob = i == 0 ? c.minY - Self.handleKnob : c.maxY + Self.handleKnob
+            let dx = abs(p.x - x)
+            let dy = p.y < min(c.minY, knob) ? min(c.minY, knob) - p.y : p.y > max(c.maxY, knob) ? p.y - max(c.maxY, knob) : 0
+            guard dx < Self.handleReach && dy < Self.handleReach else { continue }
+            if nearest == nil || dx + dy < nearest!.1 { nearest = (i, dx + dy) }
+        }
+        guard let (i, _) = nearest else { return false }
+        let c = cellFrame(col: ends[i].0, row: ends[i].1)
+        grabbed = i
+        grabOffset = CGPoint(x: c.midX - p.x, y: c.midY - p.y)
+        hideMenu()
+        t.selectHold(last: i == 1)
+        return true
+    }
+
+    /** The grabbed handle's cell follows the finger. */
+    private func drag(to p: CGPoint) {
+        let (col, row) = cell(at: CGPoint(x: p.x + grabOffset.x, y: p.y + grabOffset.y))
+        terminal?.selectTo(col: col, row: row)
+        if readSelection() { onSelectionMoved?() }
+    }
+
+    private func showMenu(at p: CGPoint? = nil) {
+        let source = p ?? selectionFrame().map { CGPoint(x: $0.midX, y: $0.minY) } ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: source))
+    }
+
+    private func hideMenu() { editMenu.dismissMenu() }
+
+    private func copySelection() {
+        if let text = terminal?.selectionText()?.trimmingCharacters(in: .newlines), !text.isEmpty { UIPasteboard.general.string = text }
+        clearSelection()
+    }
+
+    private func selectView() {
+        terminal?.selectView()
+        readSelection()
+        showMenu()
+    }
+
+    private static let handleBar: CGFloat = 2
+    private static let handleKnob: CGFloat = 5 // radius
+    private static let handleReach: CGFloat = 22 // how far off a handle a finger still takes it
+
     // MARK: Gestures
 
     private var swiping = false
@@ -399,13 +582,41 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
 
     private lazy var editMenu = UIEditMenuInteraction(delegate: self)
 
-    /** Held, it offers to paste into the pane, as iOS text does; there's no clipboard key on the phone's keyboard. */
+    /**
+     * Held on a word, it selects it, and the drag that follows takes in more
+     * as text does; let go, the edit menu comes up. Held where there's no
+     * word, the menu comes up there: paste, as iOS text offers (the phone's
+     * keyboard has no clipboard key), or select all.
+     */
     @objc private func held(_ g: UILongPressGestureRecognizer) {
-        guard g.state == .began, terminal != nil else { return }
-        stopMomentum()
-        onHeld?()
-        if typingEnabled && UIPasteboard.general.hasStrings && !isFirstResponder { _ = becomeFirstResponder() } // what pastes types, so the keyboard's up for it
-        editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: g.location(in: self)))
+        guard let t = terminal else { return }
+        let p = g.location(in: self)
+        switch g.state {
+        case .began:
+            stopMomentum()
+            hideMenu()
+            onHeld?()
+            let (col, row) = cell(at: p)
+            if t.selectWord(col: col, row: row) {
+                extending = true
+                readSelection()
+            } else {
+                clearSelection()
+                if typingEnabled && UIPasteboard.general.hasStrings && !isFirstResponder { _ = becomeFirstResponder() } // what pastes types, so the keyboard's up for it
+                showMenu(at: p)
+            }
+        case .changed:
+            guard extending else { return }
+            let (col, row) = cell(at: p)
+            t.selectExtend(col: col, row: row)
+            if readSelection() { onSelectionMoved?() }
+        case .ended:
+            guard extending else { return }
+            extending = false
+            showMenu()
+        default:
+            extending = false
+        }
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
@@ -419,8 +630,14 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         onTyped?(.text(text))
     }
 
-    @objc private func tapped() {
+    /** A tap brings up the keyboard; with text selected, it's for the selection: the menu again on it, else letting it go. */
+    @objc private func tapped(_ g: UITapGestureRecognizer) {
         stopMomentum()
+        if let s = selected {
+            let (col, row) = cell(at: g.location(in: self))
+            if s.contains(col: col, row: row) { showMenu() } else { clearSelection() }
+            return
+        }
         if typingEnabled && !isFirstResponder { _ = becomeFirstResponder() }
     }
 
@@ -432,18 +649,25 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
         switch g.state {
         case .began:
             stopMomentum()
+            if grab(at: CGPoint(x: touchPoint.x - t.x, y: touchPoint.y - t.y)) { return }
             let v = g.velocity(in: self)
             swiping = onSwipe != nil && abs(v.x) > abs(v.y) * 1.5
             scrollRemainder = 0
+            if swiping { clearSelection() } else { hideMenu() }
         case .changed:
-            if swiping {
+            if grabbed != nil {
+                drag(to: touchPoint)
+            } else if swiping {
                 onSwipe?(t.x)
             } else {
                 scrollPixels(-t.y)
                 g.setTranslation(CGPoint(x: t.x, y: 0), in: self)
             }
         case .ended, .cancelled, .failed:
-            if swiping {
+            if grabbed != nil {
+                grabbed = nil
+                showMenu()
+            } else if swiping {
                 swiping = false
                 onSwipeEnd?(t.x, g.state == .ended ? g.velocity(in: self).x : 0)
             } else if g.state == .ended {
@@ -568,28 +792,18 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
 }
 
 extension TerminalView: UIEditMenuInteractionDelegate {
-    /** Held: paste, when there's something to, and copy what the screen shows. */
+    /** Copy what's selected; paste, when there's something to (the system's own, so it reads the clipboard unasked); select all that's in view. */
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]) -> UIMenu? {
-        let copy = UIAction(title: "Copy screen") { [weak self] _ in
-            guard let text = self?.screenText(), !text.isEmpty else { return }
-            UIPasteboard.general.string = text
-        }
-        return UIMenu(children: suggestedActions + [copy])
+        var items: [UIMenuElement] = []
+        if selected != nil { items.append(UIAction(title: "Copy") { [weak self] _ in self?.copySelection() }) }
+        items += suggestedActions
+        items.append(UIAction(title: "Select All") { [weak self] _ in self?.selectView() })
+        return UIMenu(children: items)
     }
 
-    /** The text on screen, a line a row, rows the program wrapped joined up, trailing blanks gone. */
-    func screenText() -> String? {
-        guard let bytes = terminal?.screenBytes(), let s = Screen.parse(bytes) else { return nil }
-        var out = ""
-        for y in 0..<s.rows {
-            var row = ""
-            for x in 0..<s.cols where !s.isSpacer(x, y) {
-                let t = s.text(x, y)
-                row += t.isEmpty ? " " : t
-            }
-            out += s.isWrapped(y) ? row : row.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression) + "\n"
-        }
-        return out.trimmingCharacters(in: .newlines)
+    /** Over the selection, as far as it's in view; else where it was held. */
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction, targetRectFor configuration: UIEditMenuConfiguration) -> CGRect {
+        selectionFrame() ?? CGRect(origin: configuration.sourcePoint, size: .zero)
     }
 }
 
