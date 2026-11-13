@@ -1,17 +1,24 @@
 package sh.ahmd.wallflower.terminal
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PointF
+import android.graphics.Rect
 import android.graphics.RenderNode
 import android.graphics.Typeface
 import android.graphics.fonts.Font
 import android.graphics.fonts.FontFamily
 import android.os.SystemClock
 import android.util.TypedValue
+import android.view.ActionMode
 import android.view.GestureDetector
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.VelocityTracker
@@ -37,6 +44,11 @@ import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_STRIKETHROUGH
  * Draws a [Terminal]. Each row is a RenderNode re-recorded only when the
  * terminal reports it dirty, so a frame costs as much as what changed.
  * Content is pulled once per vsync after [requestFrame].
+ *
+ * Held, it selects the word there, and the drag that follows takes in
+ * more; the selection's ends then have handles to drag. The terminal keeps
+ * it on its cells as they scroll. The floating toolbar copies it, pastes
+ * ([onPaste]), or selects all that's in view.
  */
 class TerminalView(context: Context) : View(context) {
     /** What it shows; while attached, its output brings a frame. */
@@ -44,6 +56,11 @@ class TerminalView(context: Context) : View(context) {
         set(value) {
             if (field === value) return
             if (isAttachedToWindow) field?.removeListener(changed)
+            if (selected != null) {
+                field?.unselect()
+                selected = null
+                hideMenu()
+            }
             field = value
             if (isAttachedToWindow) value?.addListener(changed)
             forceFull = true
@@ -226,6 +243,7 @@ class TerminalView(context: Context) : View(context) {
         scrollback = (frame.scrollTotal - frame.scrollLength).coerceAtLeast(0)
         rest()
         if (!predictions.isEmpty && predictions.confirm(::codepointAt, SystemClock.uptimeMillis())) scheduleExpiry()
+        if (selected != null) readSelection()
         invalidate()
     }
 
@@ -397,11 +415,13 @@ class TerminalView(context: Context) : View(context) {
             if (fading != null) node.alpha = 1f - oldAlpha
             canvas.drawRenderNode(node)
         }
+        drawSelection(canvas)
         drawPredictions(canvas)
         // The cursor runs ahead with the predictions, so typing feels local.
         val (cx, cy) = predictions.cursorAfter(cols) ?: (cursorX to cursorY)
         if (cursorVisible && cx < cols && cy < rows) drawCursor(canvas, cx, cy)
         canvas.restore()
+        drawHandles(canvas)
         if (fading != null && old != null) {
             canvas.save()
             canvas.translate(0f, -shift(fadingRows, fadingCursorRows, fadingScrollback, fadingAlt, fadingScale))
@@ -574,14 +594,39 @@ class TerminalView(context: Context) : View(context) {
             return true
         }
 
+        // With text selected, a tap is for the selection: the toolbar again on it, else letting it go.
         override fun onSingleTapUp(e: MotionEvent): Boolean {
+            val s = selected
+            if (s != null) {
+                val (col, row) = cell(e.x, e.y)
+                if (s.contains(col, row)) showMenu() else clearSelection()
+                return true
+            }
             onTap?.invoke()
             return onTap != null
         }
 
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+            hideMenu()
             scrollPixels(dy)
             return true
+        }
+
+        // Held on a word, it's selected, and the drag that follows takes in more; where there's no word, the toolbar comes up there.
+        override fun onLongPress(e: MotionEvent) {
+            val t = terminal ?: return
+            scroller.forceFinished(true)
+            hideMenu()
+            onHeld?.invoke()
+            val (col, row) = cell(e.x, e.y)
+            if (t.selectWord(col, row)) {
+                extending = true
+                parent?.requestDisallowInterceptTouchEvent(true)
+                readSelection()
+            } else {
+                clearSelection()
+                showMenu(PointF(e.x, e.y))
+            }
         }
 
         override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
@@ -646,21 +691,43 @@ class TerminalView(context: Context) : View(context) {
                 downX = event.x
                 downY = event.y
                 swiping = false
+                extending = false
+                if (grab(event.x, event.y)) {
+                    scroller.forceFinished(true)
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    return true
+                }
             }
             MotionEvent.ACTION_MOVE -> {
+                if (grabbed >= 0) {
+                    drag(event.x, event.y)
+                    return true
+                }
+                if (extending) {
+                    val (col, row) = cell(event.x, event.y)
+                    terminal?.selectExtend(col, row)
+                    if (readSelection()) onSelectionMoved?.invoke()
+                    return true
+                }
                 val dx = event.x - downX
                 if (!swiping && onSwipe != null && abs(dx) > slop * 2 && abs(dx) > abs(event.y - downY) * 1.5f) {
                     swiping = true
                     swipeX = event.x
                     scroller.forceFinished(true)
                     parent?.requestDisallowInterceptTouchEvent(true)
+                    clearSelection()
                 }
                 if (swiping) {
                     onSwipe?.invoke(event.x - swipeX)
                     return true
                 }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (swiping) {
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (grabbed >= 0 || extending) {
+                grabbed = -1
+                extending = false
+                if (event.actionMasked == MotionEvent.ACTION_UP) showMenu()
+                return true
+            } else if (swiping) {
                 swiping = false
                 velocity.computeCurrentVelocity(1000)
                 val fling = if (event.actionMasked == MotionEvent.ACTION_UP) velocity.xVelocity else 0f
@@ -671,6 +738,223 @@ class TerminalView(context: Context) : View(context) {
         return gestures.onTouchEvent(event) || super.onTouchEvent(event)
     }
 
+    // Selection
+
+    /** Held: felt, as the word there is selected or the toolbar comes up. */
+    var onHeld: (() -> Unit)? = null
+
+    /** A selection's end moved to another cell: felt. */
+    var onSelectionMoved: (() -> Unit)? = null
+
+    /** Text pasted from the toolbar, for the pane; null where it can't be typed into, and there's no paste. */
+    var onPaste: ((String) -> Unit)? = null
+
+    /** What selected text is marked in, and its handles. */
+    var selectionColor = 0xFFA7C080.toInt()
+        set(value) {
+            if (field == value) return
+            field = value
+            if (selected != null) invalidate()
+        }
+
+    /** The selection made here, its first and last cells in the viewport, while the terminal keeps one. */
+    private var selected: Terminal.Selection? = null
+    /** A press selected a word, and its drag takes in more. */
+    private var extending = false
+    /** The handle being dragged (0 the start, 1 the end; -1 none), and how far off its cell's middle the finger took it. */
+    private var grabbed = -1
+    private var grabX = 0f
+    private var grabY = 0f
+    private var menu: ActionMode? = null
+    private var menuAt: PointF? = null // where a toolbar with no selection was asked for
+    private var dropping = false // the toolbar's put away from here, which keeps the selection
+    private val density = resources.displayMetrics.density
+    private val clipboard get() = context.getSystemService(ClipboardManager::class.java)
+
+    /** The viewport cell under a point in the view, kept within the grid. */
+    private fun cell(x: Float, y: Float): Pair<Int, Int> {
+        val s = fitScale()
+        val col = floor(x / (cellWidth * s)).toInt().coerceIn(0, maxOf(cols - 1, 0))
+        val row = floor((y + shift()) / (cellHeight * s)).toInt().coerceIn(0, maxOf(rows - 1, 0))
+        return col to row
+    }
+
+    /** What the terminal has selected now, which output may have moved or cleared; true if that changed. */
+    private fun readSelection(): Boolean {
+        val now = terminal?.selection()
+        if (now == selected) return false
+        selected = now
+        if (now == null) hideMenu()
+        invalidate()
+        return true
+    }
+
+    /** Lets go of the selection: tapped away, swiped to another pane, or typed over. */
+    fun clearSelection() {
+        extending = false
+        grabbed = -1
+        if (selected == null) return
+        terminal?.unselect()
+        selected = null
+        hideMenu()
+        invalidate()
+    }
+
+    /** Whole rows between the selection's first and last, in the grid's own pixels, as drawn under the scale. */
+    private fun drawSelection(canvas: Canvas) {
+        val s = selected ?: return
+        fill.color = (selectionColor and 0xFFFFFF) or (0x55 shl 24)
+        for (y in maxOf(s.startRow, 0)..minOf(s.endRow, rows - 1)) {
+            val from = if (y == s.startRow) s.startCol else 0
+            val to = if (y == s.endRow) s.endCol + 1 else cols
+            canvas.drawRect(from * cellWidth, y * cellHeight, to * cellWidth, (y + 1) * cellHeight, fill)
+        }
+    }
+
+    /** Where a handle's point is in the view (the start's at its cell's bottom left, the end's at its bottom right), or null out of view. */
+    private fun handlePoint(end: Int): PointF? {
+        val s = selected ?: return null
+        val row = if (end == 0) s.startRow else s.endRow
+        if (row < 0 || row >= rows) return null
+        val k = fitScale()
+        val col = if (end == 0) s.startCol else s.endCol + 1
+        return PointF(col * cellWidth * k, (row + 1) * cellHeight * k - shift())
+    }
+
+    /** The handles, as Android's text has them: a drop hanging below each end, its corner on the end. */
+    private fun drawHandles(canvas: Canvas) {
+        if (selected == null) return
+        val r = HANDLE_RADIUS * density
+        fill.color = opaque(selectionColor)
+        for (end in 0..1) {
+            val p = handlePoint(end) ?: continue
+            val cx = if (end == 0) p.x - r else p.x + r
+            canvas.drawCircle(cx, p.y + r, r, fill)
+            canvas.drawRect(minOf(cx, p.x), p.y, maxOf(cx, p.x), p.y + r, fill)
+        }
+    }
+
+    /** A touch at x, y on a handle takes it, its other end held still; false if it isn't near one. */
+    private fun grab(x: Float, y: Float): Boolean {
+        val t = terminal ?: return false
+        if (selected == null) return false
+        val r = HANDLE_RADIUS * density
+        val reach = r + HANDLE_REACH * density
+        var nearest = -1
+        var best = Float.MAX_VALUE
+        for (end in 0..1) {
+            val p = handlePoint(end) ?: continue
+            val cx = if (end == 0) p.x - r else p.x + r
+            val d = kotlin.math.hypot(x - cx, y - (p.y + r))
+            if (d < reach && d < best) {
+                nearest = end
+                best = d
+            }
+        }
+        if (nearest < 0) return false
+        val p = handlePoint(nearest)!!
+        val k = fitScale()
+        // From the finger to the middle of the cell the handle stands for.
+        grabX = (if (nearest == 0) p.x + cellWidth * k / 2 else p.x - cellWidth * k / 2) - x
+        grabY = p.y - cellHeight * k / 2 - y
+        grabbed = nearest
+        hideMenu()
+        t.selectHold(last = nearest == 1)
+        return true
+    }
+
+    /** The grabbed handle's cell follows the finger. */
+    private fun drag(x: Float, y: Float) {
+        val (col, row) = cell(x + grabX, y + grabY)
+        terminal?.selectTo(col, row)
+        if (readSelection()) onSelectionMoved?.invoke()
+    }
+
+    /** Where the selection is in the view, as far as it's in view. */
+    private fun selectionFrame(): Rect? {
+        val s = selected ?: return null
+        val top = maxOf(s.startRow, 0)
+        val bottom = minOf(s.endRow, rows - 1)
+        if (top > bottom) return null
+        val k = fitScale()
+        val left = if (top == bottom) s.startCol * cellWidth * k else 0f
+        val right = if (top == bottom) (s.endCol + 1) * cellWidth * k else cols * cellWidth * k
+        val r = Rect(left.toInt(), (top * cellHeight * k - shift()).toInt(), ceil(right).toInt(), ceil((bottom + 1) * cellHeight * k - shift()).toInt())
+        return if (r.intersect(0, 0, width, height)) r else null
+    }
+
+    /** The floating toolbar, over the selection, or at [at] with none. */
+    private fun showMenu(at: PointF? = null) {
+        menuAt = at
+        val m = menu
+        if (m != null) {
+            m.invalidate()
+            m.invalidateContentRect()
+        } else {
+            menu = startActionMode(menuCallback, ActionMode.TYPE_FLOATING)
+        }
+    }
+
+    private fun hideMenu() {
+        val m = menu ?: return
+        menu = null
+        dropping = true
+        m.finish()
+        dropping = false
+    }
+
+    private val canPaste get() = onPaste != null && clipboard?.primaryClipDescription?.hasMimeType("text/*") == true
+
+    private val menuCallback = object : ActionMode.Callback2() {
+        override fun onCreateActionMode(mode: ActionMode, items: Menu): Boolean = onPrepareActionMode(mode, items)
+
+        override fun onPrepareActionMode(mode: ActionMode, items: Menu): Boolean {
+            items.clear()
+            if (selected != null) items.add(Menu.NONE, android.R.id.copy, 0, android.R.string.copy)
+            if (canPaste) items.add(Menu.NONE, android.R.id.paste, 1, android.R.string.paste)
+            items.add(Menu.NONE, android.R.id.selectAll, 2, android.R.string.selectAll)
+            return true
+        }
+
+        override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+            when (item.itemId) {
+                android.R.id.copy -> {
+                    val text = terminal?.selectionText()?.trim('\n')
+                    if (!text.isNullOrEmpty()) clipboard?.setPrimaryClip(ClipData.newPlainText("terminal", text))
+                    clearSelection()
+                }
+                android.R.id.paste -> {
+                    val text = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
+                    clearSelection()
+                    hideMenu()
+                    if (!text.isNullOrEmpty()) onPaste?.invoke(text)
+                }
+                android.R.id.selectAll -> {
+                    terminal?.selectView()
+                    readSelection()
+                    showMenu()
+                }
+            }
+            return true
+        }
+
+        // Put away by the user (back): the selection goes with it.
+        override fun onDestroyActionMode(mode: ActionMode) {
+            if (menu === mode) menu = null
+            if (!dropping) clearSelection()
+        }
+
+        override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
+            val r = selectionFrame()
+            val at = menuAt
+            when {
+                r != null -> outRect.set(r)
+                at != null -> outRect.set(at.x.toInt(), at.y.toInt(), at.x.toInt() + 1, at.y.toInt() + 1)
+                else -> outRect.set(0, 0, width, height)
+            }
+        }
+    }
+
     private fun Int.orIfDefault(other: Int) = if (this == DEFAULT) other else this
     private fun opaque(rgb: Int) = rgb or (0xFF shl 24)
 
@@ -679,6 +963,8 @@ class TerminalView(context: Context) : View(context) {
             FLAG_INVERSE or FLAG_SELECTED
 
         const val FADE_MS = 180L
+        const val HANDLE_RADIUS = 10f // dp
+        const val HANDLE_REACH = 14f // dp past a handle that still takes it
 
         private val typefaces = HashMap<Int, Typeface>()
 
