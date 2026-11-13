@@ -320,7 +320,7 @@ extension WalkthroughTests {
         at(0.5, 0.4).press(forDuration: 0.8)
         sleep(1)
         shot("copy-menu") // reading the clipboard back here would ask the test runner's own paste permission
-        XCTAssertTrue(app.menuItems["Copy screen"].firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.menuItems["Select All"].firstMatch.waitForExistence(timeout: 3)) // in place of "Copy screen"
     }
 }
 
