@@ -47,6 +47,16 @@ public final class Haptics {
     /** A held key repeating: lighter, for many in a row. */
     public func repeating() { if on { soft.impactOccurred(intensity: 0.45) } }
 
+    /** Something dragged moved on a notch: the faintest soft click, many in a row, like a fine dial. */
+    public func detent() {
+        guard on else { return }
+        soft.impactOccurred(intensity: 0.32)
+        soft.prepare() // the next comes soon
+    }
+
+    /** Detents are about to come: woken now, so the first isn't late. */
+    public func ready() { if on { soft.prepare() } }
+
     /**
      * Something sliding open or shut over [seconds]: a soft swell that peaks
      * as it moves fastest and eases off as it settles. Without Core Haptics,

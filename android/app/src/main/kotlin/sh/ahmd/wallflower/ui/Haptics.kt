@@ -44,6 +44,20 @@ class Haptics(private val view: View, private val on: StateFlow<Boolean>) {
     /** A held key repeating: lighter, for many in a row. */
     fun repeat() = play(HapticFeedbackConstants.SEGMENT_FREQUENT_TICK)
 
+    /** Something dragged moved on a notch: the faintest low click, many in a row, like a fine dial. */
+    fun detent() {
+        val v = vibrator
+        val e = notch
+        if (!on.value) return
+        if (v != null && e != null) v.vibrate(e, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_TOUCH))
+        else play(HapticFeedbackConstants.SEGMENT_FREQUENT_TICK)
+    }
+
+    private val notch: VibrationEffect? by lazy {
+        vibrator?.takeIf { it.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_LOW_TICK) }
+            ?.let { VibrationEffect.startComposition().addPrimitive(VibrationEffect.Composition.PRIMITIVE_LOW_TICK, DETENT_SCALE).compose() }
+    }
+
     /**
      * Something sliding open or shut over [millis]: a soft swell that peaks
      * as it moves fastest and eases off as it settles. Where the phone can't
@@ -93,6 +107,7 @@ private const val SLIDE_POINTS = 12L
 private const val SLIDE_PEAK = 0.32f // of the motor's strength: gentle
 private const val SLIDE_SHARPNESS = 0.2f // low: soft and round rather than crisp
 private const val SWELL_PEAK = 0.18f // of the way through
+private const val DETENT_SCALE = 0.3f // of a low tick's strength: barely there
 
 val LocalHaptics = staticCompositionLocalOf<Haptics?> { null }
 

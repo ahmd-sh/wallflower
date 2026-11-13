@@ -1,7 +1,9 @@
 package sh.ahmd.wallflower.ui.composer
 
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateOffsetAsState
+import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,7 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,7 +44,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntSize
@@ -101,10 +102,17 @@ internal class ArrowPad {
     }
 }
 
-/** [pad], while it's open, over everything; its keys go to [onKey]. */
+/**
+ * [pad], while it's open, over everything; its keys go to [onKey]. It grows
+ * out of the arrows key, and its × shrinks it back into the key, or where it
+ * was moved to, in place. Dragged, it ticks softly as it goes, as a fine
+ * dial does.
+ */
 @Composable
 internal fun ArrowPadUp(pad: ArrowPad, onKey: (BarKey) -> Unit) {
-    if (!pad.open) return
+    val up = remember { MutableTransitionState(false) }
+    up.targetState = pad.open
+    if (!up.currentState && !up.targetState) return // put away, and done shrinking
     val haptics = haptics()
     val press by rememberUpdatedState(onKey)
     fun send(i: Int, again: Boolean) {
@@ -117,39 +125,50 @@ internal fun ArrowPadUp(pad: ArrowPad, onKey: (BarKey) -> Unit) {
         val density = LocalDensity.current
         val direction = LocalLayoutDirection.current
         val insets = WindowInsets.safeDrawing // the bars, and the keyboard while it's up
-        var size by remember { mutableStateOf(IntSize.Zero) }
         var dragging by remember { mutableStateOf(false) }
+        val left = remember { Spot() }
+        val grow = rememberTransition(up, label = "pad")
+        val scale by grow.animateFloat({ if (targetState) Motion.bounce() else Motion.effect() }, label = "scale") { if (it) 1f else SEED }
+        val fade by grow.animateFloat({ Motion.effect() }, label = "fade") { if (it) 1f else 0f }
         BoxWithConstraints(Modifier.fillMaxSize()) {
+            val size = with(density) { IntSize(PAD_WIDTH.roundToPx(), PAD_HEIGHT.roundToPx()) } // known before it's drawn, so it starts where it should
             val origin = host.at?.takeIf { it.isAttached }?.windowToLocal(Offset.Zero) ?: Offset.Zero
-            val left = insets.getLeft(density, direction).toFloat()
+            val leftmost = insets.getLeft(density, direction).toFloat()
             val top = insets.getTop(density).toFloat()
-            val right = (constraints.maxWidth - insets.getRight(density, direction) - size.width).toFloat().coerceAtLeast(left)
+            val right = (constraints.maxWidth - insets.getRight(density, direction) - size.width).toFloat().coerceAtLeast(leftmost)
             val bottom = (constraints.maxHeight - insets.getBottom(density) - size.height).toFloat().coerceAtLeast(top)
-            val clamp = { o: Offset -> Offset(o.x.coerceIn(left, right), o.y.coerceIn(top, bottom)) }
-            val home = with(density) { Offset(pad.home.center.x - size.width / 2f, pad.home.top - GAP.toPx() - size.height) } + origin
-            val target = clamp(pad.at?.plus(origin) ?: home)
-            val placed = size != IntSize.Zero
-            val shown by animateOffsetAsState(target, if (dragging || !placed) snap() else Motion.spatial(), label = "pad")
+            val clamp = { o: Offset -> Offset(o.x.coerceIn(leftmost, right), o.y.coerceIn(top, bottom)) }
+            val key = pad.home.center + origin // the arrows key's middle
+            val home = with(density) { Offset(key.x - size.width / 2f, pad.home.top + origin.y - GAP.toPx() - size.height) }
+            // Put away, it forgets where it was moved to, but shrinks away from there.
+            val target = if (pad.open) clamp(pad.at?.plus(origin) ?: home) else left.at
+            val atHome = if (pad.open) pad.at == null else left.home
+            SideEffect {
+                if (pad.open) {
+                    left.at = target
+                    left.home = atHome
+                }
+            }
+            val shown by animateOffsetAsState(target, if (dragging) snap() else Motion.spatial(), label = "pad")
             val now by rememberUpdatedState(shown)
             val shift by rememberUpdatedState(origin)
             val bounds by rememberUpdatedState(clamp)
-            val rise = remember { Animatable(0f) }
-            LaunchedEffect(placed) { if (placed) rise.animateTo(1f, Motion.bounce()) }
             Column(
                 Modifier
                     .offset { shown.round() }
-                    .onSizeChanged { size = it }
+                    .size(PAD_WIDTH, PAD_HEIGHT)
                     .graphicsLayer {
-                        alpha = rise.value.coerceIn(0f, 1f)
-                        scaleX = 0.6f + 0.4f * rise.value
-                        scaleY = scaleX
-                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        alpha = fade
+                        scaleX = scale
+                        scaleY = scale
+                        // Above the key it grows from the key's middle; moved away, from its own.
+                        transformOrigin = if (atHome) TransformOrigin((key.x - shown.x) / size.width, (key.y - shown.y) / size.height) else TransformOrigin.Center
                     }
                     .clip(PANEL)
                     .frosted(10.dp)
                     .background(Palette.bg1.copy(alpha = 0.55f))
                     .border(1.dp, Palette.border, PANEL)
-                    .padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
+                    .padding(start = INSET, end = INSET, bottom = INSET),
             ) {
                 // The bar it's dragged by, and its ×.
                 Box(
@@ -158,18 +177,27 @@ internal fun ArrowPadUp(pad: ArrowPad, onKey: (BarKey) -> Unit) {
                         .height(BAR)
                         .pointerInput(Unit) {
                             var to = Offset.Zero
+                            var travelled = 0f
+                            val notch = DETENT.toPx()
                             detectDragGestures(
                                 onDragStart = {
                                     dragging = true
                                     to = now
+                                    travelled = 0f
                                     haptics.tick()
                                 },
                                 onDragEnd = { dragging = false },
                                 onDragCancel = { dragging = false },
                             ) { change, by ->
                                 change.consume()
+                                val was = to
                                 to = bounds(to + by)
                                 pad.at = to - shift
+                                travelled += (to - was).getDistance() // as far as it moved: held at an edge, it's still
+                                if (travelled >= notch) {
+                                    travelled %= notch
+                                    haptics.detent()
+                                }
                             }
                         },
                 ) {
@@ -199,6 +227,12 @@ internal fun ArrowPadUp(pad: ArrowPad, onKey: (BarKey) -> Unit) {
             }
         }
     }
+}
+
+/** Where the pad last was while it was open, and whether that was above its key. */
+private class Spot {
+    var at = Offset.Zero
+    var home = true
 }
 
 /** A key of the pad: it sends on tap, and the arrows repeat while held. */
@@ -237,4 +271,13 @@ private val PLACE = 46.dp
 private val KEY_GAP = 4.dp
 private val BAR = 22.dp
 private val GAP = 16.dp // above the key, clear of the composer's edge
+private val INSET = 6.dp
+private val PAD_WIDTH = PLACE * 3 + KEY_GAP * 2 + INSET * 2
+private val PAD_HEIGHT = BAR + PLACE * 2 + KEY_GAP + INSET
 private val PANEL = RoundedCornerShape(18.dp)
+
+/** How small it is as it starts to grow: about the key's size. */
+private const val SEED = 0.25f
+
+/** How far it moves between detents. */
+private val DETENT = 14.dp

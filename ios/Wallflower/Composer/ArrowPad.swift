@@ -42,31 +42,55 @@ final class ArrowPad {
     static let space = "terminal screen"
 }
 
-/** [pad], while it's open, over the terminal screen, kept within it; its keys go to [onKey]. */
+/**
+ * [pad], while it's open, over the terminal screen, kept within it; its keys
+ * go to [onKey]. It grows out of the arrows key, and the × shrinks it back
+ * into the key, or where it was moved to, in place. Dragged, it ticks
+ * softly as it goes, as a fine dial does.
+ */
 struct ArrowPadUp: View {
     @Environment(\.palette) private var palette
     @Environment(\.haptics) private var haptics
     let pad: ArrowPad
     let onKey: (BarKey) -> Void
-    @State private var size: CGSize = .zero
     @State private var dragging = false
     @State private var from: CGPoint = .zero
+    @State private var travelled: CGFloat = 0
+    /** On screen: open, or still shrinking away. */
+    @State private var mounted = false
+    /** Full size; it grows from small as it opens and shrinks as it's put away. */
+    @State private var grown = false
+    /** Where it last was while open: the × forgets where it was moved to, but it shrinks away from there. */
+    @State private var left = Spot(to: .zero, home: true)
 
     var body: some View {
         GeometryReader { geo in
-            if pad.open {
+            if mounted {
                 let bounds = geo.size
+                let size = Self.size
                 let home = CGPoint(x: pad.home.midX - size.width / 2, y: pad.home.minY - Self.gap - size.height)
-                let to = clamp(pad.at ?? home, in: bounds)
-                panel(at: to, in: bounds)
-                    .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
-                    .opacity(size == .zero ? 0 : 1)
-                    .offset(x: to.x, y: to.y)
-                    .animation(dragging || size == .zero ? nil : Motion.spatial, value: to)
-                    .transition(.scale(scale: 0.6, anchor: .bottom).combined(with: .opacity))
+                let spot = pad.open ? Spot(to: clamp(pad.at ?? home, in: bounds), home: pad.at == nil) : left
+                // Above the key it grows from the key's middle; moved away, from its own.
+                let anchor = spot.home ? UnitPoint(x: (pad.home.midX - spot.to.x) / size.width, y: (pad.home.midY - spot.to.y) / size.height) : .center
+                panel(at: spot.to, in: bounds)
+                    .frame(width: size.width, height: size.height)
+                    .scaleEffect(grown ? 1 : Self.seed, anchor: anchor)
+                    .animation(Motion.effect) { $0.opacity(grown ? 1 : 0) }
+                    .offset(x: spot.to.x, y: spot.to.y)
+                    .animation(dragging ? nil : Motion.spatial, value: spot.to)
+                    .allowsHitTesting(pad.open)
+                    .onChange(of: spot, initial: true) { _, now in if pad.open { left = now } }
             }
         }
-        .animation(Motion.bounce, value: pad.open)
+        .onChange(of: pad.open, initial: true) { _, open in
+            if open {
+                mounted = true
+                // A turn later, so it's there small to grow from.
+                Task { @MainActor in withAnimation(Motion.bounce) { grown = pad.open } }
+            } else {
+                withAnimation(Motion.effect) { grown = false } completion: { if !pad.open { mounted = false } }
+            }
+        }
     }
 
     private func panel(at: CGPoint, in bounds: CGSize) -> some View {
@@ -103,29 +127,38 @@ struct ArrowPadUp: View {
                 }
             }
         }
-        .padding([.horizontal, .bottom], 6)
+        .padding([.horizontal, .bottom], Self.inset)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(palette.bg1.opacity(0.55)))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(palette.border, lineWidth: 1))
         .environment(\.colorScheme, palette.light ? .light : .dark)
     }
 
-    /** Its bar dragged from [at]: it goes with the finger, within [bounds]. */
+    /** Its bar dragged from [at]: it goes with the finger, within [bounds], a soft detent every so far it moves. */
     private func drag(at: CGPoint, in bounds: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 2, coordinateSpace: .named(ArrowPad.space))
             .onChanged { v in
                 if !dragging {
                     dragging = true
                     from = at
+                    travelled = 0
                     haptics.tick()
+                    haptics.ready()
                 }
-                pad.at = clamp(CGPoint(x: from.x + v.translation.width, y: from.y + v.translation.height), in: bounds)
+                let was = pad.at ?? at
+                let now = clamp(CGPoint(x: from.x + v.translation.width, y: from.y + v.translation.height), in: bounds)
+                pad.at = now
+                travelled += hypot(now.x - was.x, now.y - was.y) // as far as it moved: held at an edge, it's still
+                if travelled >= Self.detent {
+                    travelled.formTruncatingRemainder(dividingBy: Self.detent)
+                    haptics.detent()
+                }
             }
             .onEnded { _ in dragging = false }
     }
 
     private func clamp(_ p: CGPoint, in bounds: CGSize) -> CGPoint {
-        CGPoint(x: min(max(p.x, 0), max(bounds.width - size.width, 0)), y: min(max(p.y, 0), max(bounds.height - size.height, 0)))
+        CGPoint(x: min(max(p.x, 0), max(bounds.width - Self.size.width, 0)), y: min(max(p.y, 0), max(bounds.height - Self.size.height, 0)))
     }
 
     private func send(_ i: Int, again: Bool) {
@@ -141,6 +174,19 @@ struct ArrowPadUp: View {
     private static let keyGap: CGFloat = 4
     private static let bar: CGFloat = 22
     private static let gap: CGFloat = 16 // above the key, clear of the composer's edge
+    private static let inset: CGFloat = 6
+    /** Its size, known before it's drawn, so it starts where it should. */
+    static let size = CGSize(width: place * 3 + keyGap * 2 + inset * 2, height: bar + place * 2 + keyGap + inset)
+    /** How small it is as it starts to grow: about the key's size. */
+    private static let seed: CGFloat = 0.25
+    /** How far it moves between detents. */
+    private static let detent: CGFloat = 14
+}
+
+/** Where the pad is, and whether that's above its key. */
+private struct Spot: Equatable {
+    var to: CGPoint
+    var home: Bool
 }
 
 /** A key of the pad: it sends on tap, and the arrows repeat while held. */
