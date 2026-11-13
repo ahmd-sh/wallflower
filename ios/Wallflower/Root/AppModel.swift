@@ -279,12 +279,34 @@ final class AppModel {
         return "wallflower@" + (name.isEmpty ? "iPhone" : name)
     }
 
-    /** Face ID or the passcode, then the connection goes again. */
+    /** Face ID's up. */
+    private var asking = false
+    /** Turned down this visit: it isn't asked for again by itself till the app's next time in front. */
+    private var declined = false
+
+    /** Face ID or the passcode, then the connection goes again: the card's unlock. */
     func unlock() {
+        guard !asking else { return }
+        guard key.needsAuth else { // unlocked meanwhile
+            session?.retry()
+            return
+        }
+        asking = true
         Task {
-            if await key.unlock() { session?.retry() }
+            let ok = await key.unlock()
+            asking = false
+            declined = !ok
+            if ok { session?.retry() }
         }
     }
+
+    /** Asked by itself, as the key locks or the app comes back to it: once a visit. */
+    func askToUnlock() {
+        if !declined { unlock() }
+    }
+
+    /** The app went to the background: back in front, it asks again. */
+    func left() { declined = false }
 }
 
 /** A wait that goes once, whichever comes first: the change it waits for, or its task being cancelled. */

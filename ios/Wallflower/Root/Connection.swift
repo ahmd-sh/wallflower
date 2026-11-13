@@ -27,14 +27,14 @@ struct Blocking: View {
 /**
  * A screen keeping up with the connection: it's down ([saysDown]) once it's
  * been down a moment, and a locked key asks for Face ID with the app in
- * front, as it locks or as the app comes back to it.
+ * front, as it locks or as the app comes to the front (from launch too);
+ * turned down, the card's unlock asks again.
  */
 struct ConnectionWatch: ViewModifier {
     @Environment(\.scenePhase) private var phase
     let status: Status
     let model: AppModel
     @Binding var saysDown: Bool
-    @State private var left = false
 
     func body(content: Content) -> some View {
         content
@@ -47,14 +47,12 @@ struct ConnectionWatch: ViewModifier {
             }
             .task(id: status.isKeyLocked) {
                 // Connecting is the moment to ask for Face ID, so ask right away.
-                if status.isKeyLocked && phase == .active { model.unlock() }
+                if status.isKeyLocked && phase == .active { model.askToUnlock() }
             }
             .onChange(of: phase) { _, p in
-                // Back from the background, not from Face ID's own sheet (which only makes the app inactive), to a key that locked meanwhile.
-                if p == .background { left = true }
-                guard p == .active, left else { return }
-                left = false
-                if status.isKeyLocked { model.unlock() }
+                if p == .background { model.left() }
+                // Face ID's own sheet only makes the app inactive: turned down there, it isn't asked again till the app's been away.
+                if p == .active && status.isKeyLocked { model.askToUnlock() }
             }
     }
 }

@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import sh.ahmd.wallflower.notify.Notices
 import sh.ahmd.wallflower.ui.Haptics
 import sh.ahmd.wallflower.ui.LocalHaptics
+import sh.ahmd.wallflower.ui.Unlocker
 import sh.ahmd.wallflower.ui.WallflowerRoot
 import sh.ahmd.wallflower.ui.WallflowerTheme
 import sh.ahmd.wallflower.ui.colorsOf
@@ -34,6 +35,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private val model: AppModel by viewModels()
+
+    /** Unlocking the phone counts while the key's time lasts: then it isn't asked for. */
+    private val unlocker by lazy { Unlocker(needed = { runCatching { model.key.needsAuth() }.getOrDefault(true) }, prompt = ::prompt) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,7 +51,7 @@ class MainActivity : ComponentActivity() {
             val haptics = remember(view) { Haptics(view, model.settings.haptics.flow) }
             CompositionLocalProvider(LocalHaptics provides haptics, LocalViewer provides model.viewer) {
                 WallflowerTheme(look, colors) {
-                    WallflowerRoot(model, ::unlock) {
+                    WallflowerRoot(model, unlocker) {
                         model.disconnect()
                         finish()
                     }
@@ -90,6 +94,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         connection.away(true)
+        unlocker.left()
     }
 
     private val notifyPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -103,8 +108,8 @@ class MainActivity : ComponentActivity() {
         notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
-    /** Fingerprint or screen lock; unlocks the key for HardwareKey.AUTH_SECONDS. */
-    private fun unlock(onDone: (Boolean) -> Unit) {
+    /** Fingerprint or screen lock; unlocks the key for as long as it was made to last. */
+    private fun prompt(onDone: (Boolean) -> Unit) {
         BiometricPrompt.Builder(this)
             .setTitle("Unlock wallflower")
             .setSubtitle("Your SSH key lives in this phone's secure hardware")

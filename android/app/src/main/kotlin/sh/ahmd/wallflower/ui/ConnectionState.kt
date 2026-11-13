@@ -33,10 +33,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +56,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import sh.ahmd.wallflower.AppModel
 import sh.ahmd.wallflower.R
@@ -212,7 +216,9 @@ internal fun Reconnecting(shown: Boolean, status: Status, machine: String, onRet
 /**
  * What the connection to [machine] waits on the user for, if it does, as a
  * card that comes and goes ([BlockedCard]): a locked key is asked for at
- * once, as connecting is the moment to ask for the fingerprint.
+ * once, with the app in front, as it locks or as the app comes back to it,
+ * since connecting is the moment to ask for the fingerprint; turned down,
+ * the card's unlock asks again.
  */
 @Composable
 internal fun Blocking(
@@ -220,12 +226,15 @@ internal fun Blocking(
     machine: String,
     model: AppModel,
     session: Session,
-    unlock: (onDone: (Boolean) -> Unit) -> Unit,
+    unlocker: Unlocker,
     onSetup: () -> Unit,
 ) {
     val blocked = (status as? Status.NeedsUser)?.blocked
-    val unlocked = { unlock { ok -> if (ok) session.retry() } }
-    LaunchedEffect(blocked) { if (blocked is Blocked.KeyLocked) unlocked() }
+    val retry by rememberUpdatedState { ok: Boolean -> if (ok) session.retry() }
+    val front by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    val inFront = front.isAtLeast(Lifecycle.State.RESUMED) // a prompt can't come up over a stopped app
+    LaunchedEffect(blocked is Blocked.KeyLocked, inFront) { if (blocked is Blocked.KeyLocked && inFront) unlocker.ask { retry(it) } }
+    val unlocked = { unlocker.unlock { retry(it) } }
     val last = rememberLast(blocked)
     AnimatedVisibility(blocked != null, enter = fadeIn(Motion.effect()) + expandVertically(Motion.spatial()), exit = fadeOut(Motion.effect()) + shrinkVertically(Motion.spatial())) {
         last?.let {

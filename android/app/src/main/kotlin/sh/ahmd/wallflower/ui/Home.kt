@@ -69,7 +69,7 @@ internal fun HomeScreen(
     session: Session,
     host: Host,
     model: AppModel,
-    unlock: (onDone: (Boolean) -> Unit) -> Unit,
+    unlocker: Unlocker,
     onSettings: () -> Unit,
     onExit: () -> Unit,
     onFiles: (() -> Unit)? = null,
@@ -136,7 +136,7 @@ internal fun HomeScreen(
             }
             ConnectionButton(status, machine, address, null, session::retry, null, onSettings, onExit, onFiles)
         }
-        Blocking(status, machine, model, session, unlock, onSetup = onSettings)
+        Blocking(status, machine, model, session, unlocker, onSetup = onSettings)
         val muxes = list?.muxes
         if (muxes == null) {
             Box(Modifier.weight(1f)) {

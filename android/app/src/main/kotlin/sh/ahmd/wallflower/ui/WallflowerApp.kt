@@ -105,7 +105,7 @@ private fun Screen.previous(): Screen = when (this) {
 }
 
 @Composable
-fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit, onExit: () -> Unit) {
+fun WallflowerRoot(model: AppModel, unlocker: Unlocker, onExit: () -> Unit) {
     val host by model.host.collectAsStateWithLifecycle()
     val session by model.session.collectAsStateWithLifecycle()
     val hasKey by model.hasKey.collectAsStateWithLifecycle()
@@ -165,7 +165,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                         if (home) {
                             LaunchedEffect(Unit) { program = null; programId = null }
                             HomeScreen(
-                                current, computer, model, unlock,
+                                current, computer, model, unlocker,
                                 onSettings = { screen = Screen.Settings },
                                 onExit = onExit,
                                 onFiles = if (canFiles) ({ screen = Screen.Files("~", null) }) else null,
@@ -175,7 +175,7 @@ fun WallflowerRoot(model: AppModel, unlock: (onDone: (Boolean) -> Unit) -> Unit,
                                 current,
                                 computer,
                                 model,
-                                unlock,
+                                unlocker,
                                 onProgram = { command, id -> program = command; programId = id },
                                 onSessions = current::detach,
                                 onSettings = { screen = Screen.Settings },
@@ -271,7 +271,7 @@ private fun TerminalScreen(
     session: Session,
     host: Host,
     model: AppModel,
-    unlock: (onDone: (Boolean) -> Unit) -> Unit,
+    unlocker: Unlocker,
     onProgram: (command: String?, program: String?) -> Unit,
     onSessions: () -> Unit,
     onSettings: () -> Unit,
@@ -397,7 +397,7 @@ private fun TerminalScreen(
         val reconnecting = rememberSaysDown(status) && state != null
         Reconnecting(reconnecting, status, machine, session::retry)
         val shown by animateFloatAsState(if (reconnecting) 0.45f else 1f, Motion.effect(), label = "down")
-        Blocking(status, machine, model, session, unlock, onSetup = onSettings)
+        Blocking(status, machine, model, session, unlocker, onSetup = onSettings)
 
         val overview = rememberOverview()
         LaunchedEffect(window == null) {
