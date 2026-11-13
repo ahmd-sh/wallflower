@@ -37,7 +37,6 @@ import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_INVERSE
 import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_INVISIBLE
 import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_ITALIC
 import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_OVERLINE
-import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_SELECTED
 import sh.ahmd.wallflower.terminal.FrameBuffer.Companion.FLAG_STRIKETHROUGH
 
 /**
@@ -328,16 +327,11 @@ class TerminalView(context: Context) : View(context) {
             f and STYLE_MASK == flags and STYLE_MASK && cellFg(i, x) == fg && f and FLAG_INVISIBLE == 0
     }
 
-    private fun cellFg(i: Int, x: Int): Int {
-        val f = frame.flags(i, x)
-        var fg = if (f and FLAG_INVERSE != 0) frame.bg(i, x).orIfDefault(background) else frame.fg(i, x).orIfDefault(foreground)
-        if (f and FLAG_SELECTED != 0) fg = background
-        return fg
-    }
+    private fun cellFg(i: Int, x: Int): Int =
+        if (frame.flags(i, x) and FLAG_INVERSE != 0) frame.bg(i, x).orIfDefault(background) else frame.fg(i, x).orIfDefault(foreground)
 
     private fun cellBg(i: Int, x: Int): Int {
         val f = frame.flags(i, x)
-        if (f and FLAG_SELECTED != 0) return foreground
         return if (f and FLAG_INVERSE != 0) frame.fg(i, x).orIfDefault(foreground) else frame.bg(i, x)
     }
 
@@ -960,7 +954,7 @@ class TerminalView(context: Context) : View(context) {
 
     private companion object {
         val STYLE_MASK = FLAG_BOLD or FLAG_ITALIC or FLAG_FAINT or (7 shl 8) or FLAG_STRIKETHROUGH or FLAG_OVERLINE or
-            FLAG_INVERSE or FLAG_SELECTED
+            FLAG_INVERSE
 
         const val FADE_MS = 180L
         const val HANDLE_RADIUS = 10f // dp

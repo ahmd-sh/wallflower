@@ -257,13 +257,8 @@ final class TerminalView: UIView, UIKeyInput, UIGestureRecognizerDelegate {
             let flags = fb.flags(i, x)
             let cp = fb.codepoint(i, x)
             let inverse = flags & FrameBuffer.FLAG_INVERSE != 0
-            let selected = flags & FrameBuffer.FLAG_SELECTED != 0
-            var fg = inverse ? or(fb.bg(i, x), background) : or(fb.fg(i, x), foreground)
-            var bg = inverse ? or(fb.fg(i, x), foreground) : fb.bg(i, x)
-            if selected {
-                fg = background
-                bg = foreground
-            }
+            let fg = inverse ? or(fb.bg(i, x), background) : or(fb.fg(i, x), foreground)
+            let bg = inverse ? or(fb.fg(i, x), foreground) : fb.bg(i, x)
             let text = (flags & FrameBuffer.FLAG_GRAPHEME != 0) ? fb.text(i, x) : nil
             cells.append(Cell(codepoint: cp, text: text, fg: fg, bg: bg, underline: fb.underlineColor(i, x), flags: flags))
         }
@@ -1008,7 +1003,7 @@ final class RowLayer: CALayer {
         }
     }
 
-    private static let styleMask: Int32 = FrameBuffer.FLAG_BOLD | FrameBuffer.FLAG_ITALIC | FrameBuffer.FLAG_FAINT | (7 << 8) | FrameBuffer.FLAG_STRIKETHROUGH | FrameBuffer.FLAG_OVERLINE | FrameBuffer.FLAG_INVERSE | FrameBuffer.FLAG_SELECTED
+    private static let styleMask: Int32 = FrameBuffer.FLAG_BOLD | FrameBuffer.FLAG_ITALIC | FrameBuffer.FLAG_FAINT | (7 << 8) | FrameBuffer.FLAG_STRIKETHROUGH | FrameBuffer.FLAG_OVERLINE | FrameBuffer.FLAG_INVERSE
 
     private static func sameRun(_ a: Cell, _ first: Cell) -> Bool {
         a.codepoint < 0x80 && FrameBuffer.wide(a.flags) == 0 && a.text == nil && a.flags & FrameBuffer.FLAG_GRAPHEME == 0 &&

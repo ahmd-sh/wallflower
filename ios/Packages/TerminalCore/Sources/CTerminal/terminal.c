@@ -547,8 +547,6 @@ int wf_term_frame(WFTerm *t, int32_t *buf, size_t cap, bool force) {
       GhosttyColorRgb c;
       int32_t fg = ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &c) == GHOSTTY_SUCCESS ? rgb(c) : NO_COLOR;
       int32_t bg = ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &c) == GHOSTTY_SUCCESS ? rgb(c) : NO_COLOR;
-      bool selected = false;
-      ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_SELECTED, &selected);
       GhosttyCell raw = 0;
       GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
       if (ghostty_render_state_row_cells_get(t->cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW, &raw) == GHOSTTY_SUCCESS) {
@@ -560,7 +558,7 @@ int wf_term_frame(WFTerm *t, int32_t *buf, size_t cap, bool force) {
                       (style.inverse ? FLAG_INVERSE : 0) | (style.invisible ? FLAG_INVISIBLE : 0) |
                       (style.strikethrough ? FLAG_STRIKETHROUGH : 0) | (style.overline ? FLAG_OVERLINE : 0) |
                       ((style.underline & 7) << FLAG_UNDERLINE_SHIFT) | (((int32_t)wide & 3) << FLAG_WIDE_SHIFT) |
-                      (selected ? FLAG_SELECTED : 0) | (glen > 1 ? FLAG_GRAPHEME : 0);
+                      (glen > 1 ? FLAG_GRAPHEME : 0);  // no FLAG_SELECTED: views draw the selection over the rows
       cell[0] = glen > 0 ? (int32_t)cps[0] : 0;
       cell[1] = fg;
       cell[2] = bg;
