@@ -4,6 +4,10 @@
 #   curl -fsSL https://ahmd.sh/wallflower/install.sh | sh
 set -eu
 
+if [ "$(id -u)" = 0 ] && [ -n "${SUDO_USER:-}" ]; then
+	echo "run this without sudo: wallflower installs for your user" >&2
+	exit 1
+fi
 case $(uname -s) in
 Linux) os=linux ;;
 Darwin) os=darwin ;;
@@ -14,12 +18,19 @@ x86_64 | amd64) arch=amd64 ;;
 aarch64 | arm64) arch=arm64 ;;
 *) echo "there's no wallflower for $(uname -m) yet" >&2; exit 1 ;;
 esac
+# A Mac with Apple silicon, in a terminal under Rosetta, still gets its own.
+[ "$os" = darwin ] && [ "$arch" = amd64 ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ] && arch=arm64
 command -v ssh-keygen >/dev/null || { echo "wallflower's installer checks the download with ssh-keygen: install OpenSSH first" >&2; exit 1; }
+command -v curl >/dev/null || command -v wget >/dev/null || { echo "wallflower's installer needs curl or wget" >&2; exit 1; }
 
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 url=${WALLFLOWER_URL:-https://github.com/ahmd-sh/wallflower/releases/latest/download}
 get() {
+	if ! command -v curl >/dev/null; then
+		wget -q -O "$dir/$1" "$url/$1"
+		return
+	fi
 	case $url in
 	https://*) curl -fsSL --proto '=https' --proto-redir '=https' "$url/$1" -o "$dir/$1" ;;
 	*) curl -fsSL "$url/$1" -o "$dir/$1" ;;
