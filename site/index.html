@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wallflower</title>
+<meta name="description" content="Your terminal, from your phone.">
+<link rel="icon" href="flower.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg0: #eff1f5; --bg1: #e6e9ef; --bg2: #dce0e8;
+    --fg: #4c4f69; --grey: #6c6f85; --dim: #8c8fa1; --green: #40a02b;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg0: #1e2326; --bg1: #272e33; --bg2: #2e383c;
+      --fg: #d3c6aa; --grey: #859289; --dim: #5c6a72; --green: #a7c080;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg0);
+    color: var(--fg);
+    font-family: "Bricolage Grotesque", system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  main { width: 100%; max-width: 600px; display: flex; flex-direction: column; align-items: center; }
+  .mark { width: 44px; height: 44px; margin-bottom: 14px; }
+  h1 { font-weight: 600; font-size: clamp(40px, 11vw, 56px); letter-spacing: -0.02em; margin: 0 0 32px; line-height: 1; }
+  .install {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    background: var(--bg1);
+    border-radius: 14px;
+    padding: 4px 4px 4px 18px;
+  }
+  code {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 10px 0;
+  }
+  @media (max-width: 480px) { code { font-size: 13px; } }
+  code .prompt { color: var(--dim); user-select: none; margin-right: 0.6em; }
+  button {
+    flex: none;
+    margin-left: 10px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--bg2);
+    color: var(--grey);
+    font: 500 14px "Bricolage Grotesque", system-ui, sans-serif;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  button:hover { color: var(--fg); }
+  button.done { color: var(--green); }
+  p { color: var(--grey); font-size: 15px; margin: 14px 0 0; text-align: center; }
+  footer { position: fixed; bottom: 20px; font-size: 14px; }
+  a { color: var(--dim); text-decoration: none; }
+  a:hover { color: var(--grey); }
+</style>
+</head>
+<body>
+<main>
+  <img class="mark" src="flower.svg" alt="">
+  <h1>wallflower</h1>
+  <div class="install">
+    <code><span class="prompt">$</span><span id="line">curl -fsSL https://ahmd.sh/wallflower/install.sh | sh</span></code>
+    <button id="copy" type="button">copy</button>
+  </div>
+  <p>on your Mac or Linux computer</p>
+</main>
+<footer><a href="https://github.com/ahmd-sh/wallflower/releases/latest">apps</a></footer>
+<script>
+  const button = document.getElementById("copy");
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById("line").textContent);
+      button.textContent = "copied";
+      button.classList.add("done");
+      setTimeout(() => { button.textContent = "copy"; button.classList.remove("done"); }, 1600);
+    } catch {
+      getSelection().selectAllChildren(document.getElementById("line"));
+    }
+  });
+</script>
+</body>
+</html>

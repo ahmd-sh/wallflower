@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="22 20 64 64">
+  <g transform="translate(54 42) scale(0.95)">
+    <path d="M0,5 C0.6,15 1.8,27 0,39" fill="none" stroke="#A7C080" stroke-linecap="round" stroke-width="3.2"/>
+    <path fill="#A7C080" d="M1.2,30.5 C2.4,24.6 7.4,21 13.6,21.4 C12.4,27.4 7.4,31 1.2,30.5 Z"/>
+    <g fill="#E69875">
+      <path id="petal" transform="rotate(-8)" d="M-1,-3.6 C-4.09,-5.8 -6.93,-9 -6.6,-12.78 C-6.27,-16.2 -3.3,-18 0,-18 C3.3,-18 6.27,-16.2 6.6,-12.78 C6.93,-9 4.09,-5.8 1,-3.6 Q0,-3.1 -1,-3.6 Z"/>
+      <use href="#petal" transform="rotate(72)"/>
+      <use href="#petal" transform="rotate(144)"/>
+      <use href="#petal" transform="rotate(216)"/>
+      <use href="#petal" transform="rotate(288)"/>
+    </g>
+    <circle r="3" fill="#DBBC7F"/>
+  </g>
+</svg>
